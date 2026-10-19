@@ -20,7 +20,19 @@ public final class SelfTest {
         settingsDefaultsWritten();
         settingsRead();
         settingsGarbage();
+        frameEnd();
+        frameEnterTwice();
+        openLogUnwritable();
+        frameLogRotates();
+        frameFailureDisables();   // last: it switches the clock off
+        delete(DIR);
         System.out.println("ok");
+    }
+
+    static void delete(File f) {
+        File[] kids = f.listFiles();
+        if (kids != null) for (File k : kids) delete(k);
+        f.delete();
     }
 
     static File tmp(String name) {
@@ -55,5 +67,44 @@ public final class SelfTest {
         File d = tmp("dir.properties"); d.mkdirs();
         Settings.load(d);
         assert !Settings.enabled && !Settings.frameLog;
+    }
+
+    // 16.667 ms wall, 9.5 ms CPU
+    static void frameEnd() {
+        FrameClock.on = true;
+        long n = FrameClock.frameNo;
+        FrameClock.end(16_667_000L, 9_500_000L);
+        assert FrameClock.frameNo == n + 1 && Math.abs(FrameClock.wallMs - 16.667) < 1e-9 && FrameClock.cpuMs == 9.5;
+    }
+
+    // enter, enter, exit: one frame, measured from the second enter
+    static void frameEnterTwice() {
+        FrameClock.enter(); FrameClock.enter(); long n = FrameClock.frameNo; FrameClock.exit();
+        assert FrameClock.frameNo == n + 1 && FrameClock.wallMs < 50;
+        FrameClock.exit();   // no start stored: no frame
+        assert FrameClock.frameNo == n + 1;
+    }
+
+    // unwritable path: no log, clock stays on, nothing thrown
+    static void openLogUnwritable() {
+        FrameClock.openLog(new File("/proc/pzbutter-no/frames.out"));
+        assert FrameClock.on && FrameClock.log == null;
+    }
+
+    // limit lowered to 1 KB: frames.out.1 appears, frames.out restarts small
+    static void frameLogRotates() {
+        File f = tmp("log/frames.out"); FrameClock.logLimit = 1024; FrameClock.openLog(f);
+        for (int i = 0; i < 200; i++) FrameClock.end(16_000_000L, 8_000_000L);
+        FrameClock.flush();
+        assert new File(f.getPath() + ".1").exists() && f.length() > 0 && f.length() < 1024;
+        FrameClock.logLimit = 50L << 20;
+    }
+
+    // writer closed under it: IOExceptions -> clock off after 5 failures, nothing thrown
+    static void frameFailureDisables() throws RuntimeException {
+        FrameClock.openLog(tmp("fail/frames.out"));
+        try { FrameClock.log.close(); } catch (IOException e) { throw new RuntimeException(e); }
+        for (int i = 0; i < 5; i++) FrameClock.end(1_000_000L, 1_000_000L);
+        assert !FrameClock.on;
     }
 }
