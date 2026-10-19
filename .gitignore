@@ -1,0 +1,6 @@
+# pzopt's own code and builds: local reference only, never part of pz-butter (clean room)
+harness/
+PZOptZB.jar
+build/
+.superpowers/
+.serena/
