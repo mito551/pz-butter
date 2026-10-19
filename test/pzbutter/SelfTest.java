@@ -5,6 +5,8 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 
+import me.zed_0xff.zombie_buddy.Patch;
+
 /** Run with java -ea. No framework: each check is a static method, failures are AssertionErrors. */
 public final class SelfTest {
     private static final File DIR;
@@ -21,13 +23,19 @@ public final class SelfTest {
         settingsRead();
         settingsGarbage();
         frameEnd();
+        frameInterval();
         frameEnterTwice();
+        exitAdviceSuppresses();
         openLogUnwritable();
         frameLogRotates();
         frameFailureDisables();   // last: it switches the clock off
         optionalInit();
         delete(DIR);
         System.out.println("ok");
+    }
+
+    static void sleep(long ms) {
+        try { Thread.sleep(ms); } catch (InterruptedException e) { throw new RuntimeException(e); }
     }
 
     static void delete(File f) {
@@ -70,18 +78,27 @@ public final class SelfTest {
         assert !Settings.enabled && !Settings.frameLog;
     }
 
-    // 16.667 ms wall, 9.5 ms CPU
+    // 16.667 ms since the last frame started, 4.2 ms inside frameStep, 3.5 ms CPU
     static void frameEnd() {
         FrameClock.on = true;
         long n = FrameClock.frameNo;
-        FrameClock.end(16_667_000L, 9_500_000L);
-        assert FrameClock.frameNo == n + 1 && Math.abs(FrameClock.wallMs - 16.667) < 1e-9 && FrameClock.cpuMs == 9.5;
+        FrameClock.end(16_667_000L, 4_200_000L, 3_500_000L);
+        assert FrameClock.frameNo == n + 1 && Math.abs(FrameClock.intervalMs - 16.667) < 1e-9
+            && Math.abs(FrameClock.stepMs - 4.2) < 1e-9 && FrameClock.cpuMs == 3.5;
     }
 
-    // enter, enter, exit: one frame, measured from the second enter
+    // the interval spans the wait outside frameStep; the step does not
+    static void frameInterval() {
+        FrameClock.enter(); FrameClock.exit();
+        sleep(30);
+        FrameClock.enter(); FrameClock.exit();
+        assert FrameClock.intervalMs >= 30 && FrameClock.stepMs < 30;
+    }
+
+    // enter, (no exit), enter, exit: one frame, step measured from the second enter
     static void frameEnterTwice() {
-        FrameClock.enter(); FrameClock.enter(); long n = FrameClock.frameNo; FrameClock.exit();
-        assert FrameClock.frameNo == n + 1 && FrameClock.wallMs < 50;
+        FrameClock.enter(); sleep(80); FrameClock.enter(); long n = FrameClock.frameNo; FrameClock.exit();
+        assert FrameClock.frameNo == n + 1 && FrameClock.stepMs < 50;
         FrameClock.exit();   // no start stored: no frame
         assert FrameClock.frameNo == n + 1;
     }
@@ -95,7 +112,7 @@ public final class SelfTest {
     // limit lowered to 1 KB: frames.out.1 appears, frames.out restarts small
     static void frameLogRotates() {
         File f = tmp("log/frames.out"); FrameClock.logLimit = 1024; FrameClock.openLog(f);
-        for (int i = 0; i < 200; i++) FrameClock.end(16_000_000L, 8_000_000L);
+        for (int i = 0; i < 200; i++) FrameClock.end(16_000_000L, 8_000_000L, 8_000_000L);
         FrameClock.flush();
         assert new File(f.getPath() + ".1").exists() && f.length() > 0 && f.length() < 1024;
         FrameClock.logLimit = 50L << 20;
@@ -105,8 +122,16 @@ public final class SelfTest {
     static void frameFailureDisables() throws RuntimeException {
         FrameClock.openLog(tmp("fail/frames.out"));
         try { FrameClock.log.close(); } catch (IOException e) { throw new RuntimeException(e); }
-        for (int i = 0; i < 5; i++) FrameClock.end(1_000_000L, 1_000_000L);
+        for (int i = 0; i < 5; i++) FrameClock.end(1_000_000L, 1_000_000L, 1_000_000L);
         assert !FrameClock.on;
+    }
+
+    // ByteBuddy inlines advice into frameStep; an exception from the exit advice must not reach the game
+    static void exitAdviceSuppresses() {
+        try {
+            Patch.OnExit a = Patches.Frame.class.getMethod("exit").getAnnotation(Patch.OnExit.class);
+            assert a.suppress() == Throwable.class && a.onThrowable() == Throwable.class;
+        } catch (NoSuchMethodException e) { throw new AssertionError(e); }
     }
 
     public static final class Probe {

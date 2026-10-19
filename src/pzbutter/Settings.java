@@ -17,7 +17,7 @@ public final class Settings {
       + "enabled=false\n"
       + "#\n"
       + "# frameLog: one line per frame in Zomboid/pzbutter/frames.out:\n"
-      + "#   <epoch ms> <frame no> <wall ms> <main-thread CPU ms>\n"
+      + "#   <epoch ms> <frame no> <ms since the last frame started> <ms in the frame step> <its main-thread CPU ms>\n"
       + "frameLog=false\n";
 
     public static volatile boolean enabled;

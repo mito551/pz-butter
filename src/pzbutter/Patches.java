@@ -10,7 +10,7 @@ public final class Patches {
         @Patch.OnEnter
         public static void enter() { FrameClock.enter(); }
 
-        @Patch.OnExit(onThrowable = Throwable.class)
+        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
         public static void exit() { FrameClock.exit(); }
     }
 }
