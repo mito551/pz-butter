@@ -1,0 +1,8 @@
+id=PZButter
+name=PZ Butter
+description=Smoother frames for Build 42. Every feature is off until you switch it on in Zomboid/PZButter.properties.
+modversion=0.1
+versionMin=42.21
+require=\ZombieBuddy
+javaJarFile=media/java/client/PZButter.jar
+javaPkgName=pzbutter
