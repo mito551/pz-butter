@@ -5,6 +5,7 @@ public class Main {
         Settings.load();
         FrameClock.init();
         PresentLog.init();
+        LimiterSleep.init();
         System.out.println("[PZButter] " + Settings.VERSION + ", enabled=" + Settings.enabled);
         if (Settings.enabled) initIfPresent("pzbutter.luabudget.Budget");   // after tools/merge-luabudget.sh
     }

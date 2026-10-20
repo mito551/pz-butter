@@ -15,6 +15,93 @@ final class DeliveryTest {
         stampsUnknownState();
         presentLineFormat();
         threadsLineFormat();
+        limiterSleepsToSpin();
+        limiterNoSleepInsideSpin();
+        limiterOverdue();
+        limiterUncapped();
+        limiterBounded();
+        limiterWakesOnQueue();
+        adviceOnlyPublic();
+    }
+
+    /**
+     * ZombieBuddy inlines advice bytecode into the game class, so an advice method may only touch public members
+     * of public classes (anything else is an IllegalAccessError inside the game). Checks every advice method.
+     */
+    static void adviceOnlyPublic() {
+        java.util.List<String> bad = new java.util.ArrayList<>();
+        for (Class<?> outer : new Class<?>[] {Patches.class, DeliveryPatches.class})
+            for (Class<?> c : outer.getDeclaredClasses())
+                if (c.isAnnotationPresent(me.zed_0xff.zombie_buddy.Patch.class)) checkAdvice(c, bad);
+        assert bad.isEmpty() : bad;
+    }
+
+    static void checkAdvice(Class<?> c, java.util.List<String> bad) {
+        java.lang.classfile.ClassModel m;
+        try (java.io.InputStream in = c.getResourceAsStream(c.getSimpleName().isEmpty() ? null
+                : c.getName().substring(c.getName().lastIndexOf('.') + 1) + ".class")) {
+            m = java.lang.classfile.ClassFile.of().parse(in.readAllBytes());
+        } catch (java.io.IOException e) { throw new RuntimeException(e); }
+        for (java.lang.classfile.MethodModel mm : m.methods()) {
+            if (mm.methodName().stringValue().equals("<init>")) continue;
+            mm.code().ifPresent(code -> code.forEach(e -> {
+                String owner = null, name = null; boolean field = false;
+                if (e instanceof java.lang.classfile.instruction.InvokeInstruction i) { owner = i.owner().asInternalName(); name = i.name().stringValue(); }
+                else if (e instanceof java.lang.classfile.instruction.FieldInstruction f) { owner = f.owner().asInternalName(); name = f.name().stringValue(); field = true; }
+                if (owner == null || owner.startsWith("java/")) return;
+                if (!isPublic(owner.replace('/', '.'), name, field)) bad.add(c.getSimpleName() + "." + mm.methodName() + " -> " + owner + "." + name);
+            }));
+        }
+    }
+
+    static boolean isPublic(String cls, String name, boolean field) {
+        try {
+            Class<?> k = Class.forName(cls, false, DeliveryTest.class.getClassLoader());
+            if (!java.lang.reflect.Modifier.isPublic(k.getModifiers())) return false;
+            if (field) return java.lang.reflect.Modifier.isPublic(k.getDeclaredField(name).getModifiers());
+            for (java.lang.reflect.Method mt : k.getDeclaredMethods())
+                if (mt.getName().equals(name) && java.lang.reflect.Modifier.isPublic(mt.getModifiers())) return true;
+            return false;
+        } catch (ReflectiveOperationException | LinkageError e) { return false; }
+    }
+
+    static final long P120 = 1_000_000_000L / 120;   // 8.333 ms
+
+    // the next frame is due in 5 ms: sleep 4.8 ms, spin the last 0.2 ms
+    static void limiterSleepsToSpin() {
+        long now = 100_000_000L, current = now - 1_000_000L, acc = P120 - 5_000_000L - 1_000_000L;
+        assert LimiterSleep.sleepNanos(now, current, acc, P120, LimiterSleep.SPIN_NS) == 4_800_000L;
+    }
+
+    static void limiterNoSleepInsideSpin() {
+        long now = 100_000_000L;
+        assert LimiterSleep.sleepNanos(now, now, P120 - 150_000L, P120, LimiterSleep.SPIN_NS) == 0;
+    }
+
+    static void limiterOverdue() {
+        long now = 100_000_000L;
+        assert LimiterSleep.sleepNanos(now, now, P120 + 10, P120, LimiterSleep.SPIN_NS) == 0;
+        assert LimiterSleep.sleepNanos(now, now + 5, 0, P120, LimiterSleep.SPIN_NS) == 0;   // clock went back
+    }
+
+    static void limiterUncapped() {
+        assert !LimiterSleep.active(true, 120) && !LimiterSleep.active(false, 0) && LimiterSleep.active(false, 60);
+    }
+
+    static void limiterBounded() {
+        long now = 100_000_000L, twoSeconds = 2_000_000_000L;
+        assert LimiterSleep.sleepNanos(now, now, 0, twoSeconds, LimiterSleep.SPIN_NS) == LimiterSleep.MAX_NS;
+    }
+
+    // work queued for the main thread wakes the limiter at once
+    static void limiterWakesOnQueue() {
+        Thread waker = new Thread(() -> { SelfTest.sleep(5); LimiterSleep.wake(); });
+        waker.start();
+        long t0 = System.nanoTime();
+        LimiterSleep.park(40_000_000L);
+        long took = System.nanoTime() - t0;
+        try { waker.join(); } catch (InterruptedException e) { throw new RuntimeException(e); }
+        assert took < 25_000_000L : took;
     }
 
     // the render thread sees the stamps of the state it acquired, not of the newest push

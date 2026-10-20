@@ -11,6 +11,6 @@ public final class Patches {
         public static void enter() { FrameClock.enter(); }
 
         @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
-        public static void exit() { FrameClock.exit(); PresentLog.tick(); }
+        public static void exit() { FrameClock.exit(); DeliveryPatches.onFrameEnd(); }
     }
 }
