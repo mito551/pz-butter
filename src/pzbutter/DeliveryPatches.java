@@ -126,13 +126,21 @@ public final class DeliveryPatches {
         try {
             if (!InputLatch.request(FrameClock.frameNo)) return;
             SpriteRenderer.instance.notifyRenderStateQueue();   // wakes a render thread waiting for a frame
-            InputLatch.awaitServed();
+            SwapHold.wakeForRequest();                          // or one sitting in the swap hold
+            int fps = PerformanceSettings.getLockFPS();
+            boolean uncapped = PerformanceSettings.instance.isFramerateUncapped() || fps <= 0;
+            InputLatch.awaitServed(InputLatch.waitBoundNs(uncapped ? 0 : 1_000_000_000L / fps));
         } catch (Throwable t) { InputLatch.guard.fail(t); }
     }
 
     /** RenderThread.flushInvokeQueue entry (render thread, every loop pass and every wake while waiting). */
     public static void onRenderFlush() {
         if (!InputLatch.guard.on || !InputLatch.latch || !InputLatch.pending()) return;
+        serveInputRequest();
+    }
+
+    /** Render thread: pump events and re-poll keyboard and mouse (merged), then mark the request served. */
+    static void serveInputRequest() {
         try {
             if (!bindInput()) return;
             Display.processMessages();
@@ -247,8 +255,9 @@ public final class DeliveryPatches {
         try {
             if (!aimBound) { aimBound = true; timeRightPressed = Game.staticField(zombie.input.Mouse.class, "timeRightPressed", float.class); }
             if (timeRightPressed == null) { AimHold.guard.on = false; return stock; }
-            boolean[] b = zombie.input.Mouse.buttonDownStates;
-            return AimHold.delayed(b != null && b.length > 1 && b[1], (float) timeRightPressed.get(), AimHold.holdMs);
+            boolean[] b = zombie.input.Mouse.buttonDownStates, ui = zombie.input.Mouse.uiCaptured;
+            return AimHold.delayed(ui != null && ui.length > 1 && ui[1], b != null && b.length > 1 && b[1],
+                (float) timeRightPressed.get(), AimHold.holdMs);
         } catch (Throwable t) { AimHold.guard.fail(t); return stock; }
     }
 
@@ -280,8 +289,7 @@ public final class DeliveryPatches {
             if (cap <= 0) return;
             long period = 1_000_000_000L / cap, start = FrameStamps.renderFrameStartNs, now = System.nanoTime();
             long gpu = SwapHold.gpu && GpuTimer.guard.on ? Math.max(0, GpuTimer.lastGpuNs) : 0;
-            SwapHold.learner.observe(now - start + gpu, now, period);
-            long w = SwapHold.waitNs(now, start, SwapHold.holdNs(period, cap, SwapHold.queue, SwapHold.learner.holdNs(), SwapHold.config));
+            long w = SwapHold.holdWaitNs(now, start, gpu, period, cap, SwapHold.learner, SwapHold.queue, SwapHold.config);
             if (w > 0) SwapHold.waitPrecise(w);
         } catch (Throwable t) { SwapHold.guard.fail(t); }
     }
@@ -348,17 +356,22 @@ public final class DeliveryPatches {
 
     /** PerformanceSettings.getLockFPS exit: the cap the game runs at. */
     public static int capLockFps(int stock) {
-        if (!Caps.guard.on) return stock;
-        try { int c = capNow(); return c > 0 ? c : stock; }
+        if (!Caps.guard.on || Caps.saving) return stock;
+        try { return Caps.overrideFps(stock, capNow(), Caps.saving); }
         catch (Throwable t) { Caps.guard.fail(t); return stock; }
     }
 
     /** PerformanceSettings.isFramerateUncapped exit: a cap applied by Caps means not uncapped. */
     public static boolean capUncapped(boolean stock) {
-        if (!Caps.guard.on || !stock) return stock;
-        try { return capNow() <= 0; }
+        if (!Caps.guard.on || !stock || Caps.saving) return stock;
+        try { return Caps.overrideUncapped(stock, capNow(), Caps.saving); }
         catch (Throwable t) { Caps.guard.fail(t); return stock; }
     }
+
+    /** Core.addFakeOptionsForWriting entry / exit: the options file gets the game's own cap. */
+    public static void onOptionsWriteStart() { Caps.saving = true; }
+
+    public static void onOptionsWriteEnd() { Caps.saving = false; }
 
     /** Display.setVSyncEnabled exit (the thread with the GL context): vsyncAdaptive. */
     public static void onVsyncSet(boolean enabled) {
@@ -419,6 +432,8 @@ public final class DeliveryPatches {
             long m = windowMonitor != 0 ? windowMonitor : GLFW.glfwGetPrimaryMonitor();
             GLFWVidMode v = GLFW.glfwGetVideoMode(m);
             if (v == null) return;
+            // a GLFW fullscreen window iconifies on focus loss by default; a borderless window must not
+            GLFW.glfwSetWindowAttrib(Display.getWindow(), GLFW.GLFW_AUTO_ICONIFY, GLFW.GLFW_FALSE);
             GLFW.glfwSetWindowMonitor(Display.getWindow(), m, 0, 0, v.width(), v.height(), v.refreshRate());
             Vrr.fullscreenWindowApplied = true;
             System.out.println("[PZButter] borderlessFullscreen: fullscreen window at " + v.width() + "x" + v.height() + "@" + v.refreshRate());
@@ -550,6 +565,15 @@ public final class DeliveryPatches {
     public static class WorldExit {
         @Patch.OnEnter
         public static void enter() { onWorldExit(); }
+    }
+
+    @Patch(className = "zombie.core.Core", methodName = "addFakeOptionsForWriting")
+    public static class OptionsWrite {
+        @Patch.OnEnter
+        public static void enter() { onOptionsWriteStart(); }
+
+        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
+        public static void exit() { onOptionsWriteEnd(); }
     }
 
     @Patch(className = "zombie.core.PerformanceSettings", methodName = "getLockFPS")

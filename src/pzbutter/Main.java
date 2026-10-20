@@ -8,6 +8,7 @@ public class Main {
         LimiterSleep.init();
         RenderIdle.init();
         InputLatch.init();
+        if (InputLatch.latch) SwapHold.serveDuringWait = DeliveryPatches::serveInputRequest;
         Vrr.init();
         SwapHold.init();
         GpuTimer.init();

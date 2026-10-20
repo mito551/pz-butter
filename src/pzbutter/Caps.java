@@ -23,7 +23,15 @@ final class Caps {
         guard.on = vrrCap || reflex || adaptive;
     }
 
+    static volatile boolean saving;   // the game is writing its options: report its own values
+
     static int vrrCapFps(int refreshHz) { return (refreshHz * 3600 - refreshHz * refreshHz) / 3600; }
+
+    /** getLockFPS's answer: the cap, unless none applies or the game is saving its options. */
+    static int overrideFps(int stock, int cap, boolean saving) { return saving || cap <= 0 ? stock : cap; }
+
+    /** isFramerateUncapped's answer: false while a cap applies, unless the game is saving its options. */
+    static boolean overrideUncapped(boolean stock, int cap, boolean saving) { return saving || cap <= 0 ? stock : false; }
 
     /** The cap to use instead of the game's, or 0 to keep the game's. */
     static int capFor(int lockFps, boolean uncapped, int refreshHz, boolean vrrOn, boolean vsyncOn, boolean reflexOn,

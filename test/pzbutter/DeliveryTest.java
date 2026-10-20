@@ -56,7 +56,76 @@ final class DeliveryTest {
         cursorRecordLookup();
         cursorNoRecordNoMove();
         aimHoldDelay();
+        holdLateFrameNotHeld();
+        capNotSavedToOptions();
+        latchWaitScaled();
+        latchServedDuringHold();
+        aimHoldUiCaptured();
+        vrrProbeOffThread();
         adviceOnlyPublic();
+    }
+
+    // review I1: a frame ready after the current hold is swapped at once; the learner rises for the next ones
+    static void holdLateFrameNotHeld() {
+        SwapHold.Learner l = new SwapHold.Learner(HOLD);
+        l.observe(5_000_000L, 1_000_000_000L, P60);                                   // hold = 60 % = 10 ms
+        long w = SwapHold.holdWaitNs(1_025_000_000L, 1_000_000_000L, 0, P60, 60, l, false, HOLD);
+        assert w == 0 : w;
+        assert l.holdNs() > 25_000_000L : l.holdNs();
+        long early = SwapHold.holdWaitNs(2_002_000_000L, 2_000_000_000L, 0, P60, 60, l, false, HOLD);
+        assert early > 20_000_000L : early;                                            // an early frame waits for the raised hold
+    }
+
+    // review I2: while the game writes its options, the getters return the game's own values
+    static void capNotSavedToOptions() {
+        assert Caps.overrideFps(300, 224, false) == 224 && Caps.overrideFps(300, 224, true) == 300 && Caps.overrideFps(300, 0, false) == 300;
+        assert !Caps.overrideUncapped(true, 224, false) && Caps.overrideUncapped(true, 224, true) && Caps.overrideUncapped(true, 0, false);
+    }
+
+    // review I3: the game thread waits at most an eighth of a frame (2 ms at most) for a fresh poll
+    static void latchWaitScaled() {
+        assert InputLatch.waitBoundNs(P240) == P240 / 8 && InputLatch.waitBoundNs(P60) == 2_000_000L;
+        assert InputLatch.waitBoundNs(0) == 500_000L;
+    }
+
+    // review I3: a request made while the render thread sits in the swap hold is served from the hold
+    static void latchServedDuringHold() {
+        boolean latchWas = InputLatch.latch, guardWas = InputLatch.guard.on;
+        InputLatch.latch = true; InputLatch.guard.on = true;
+        Runnable serveWas = SwapHold.serveDuringWait;
+        SwapHold.serveDuringWait = InputLatch::markServed;
+        Thread holder = new Thread(() -> SwapHold.waitPrecise(40_000_000L));
+        holder.start();
+        SelfTest.sleep(5);
+        InputLatch.request(Long.MAX_VALUE - 1);
+        SwapHold.wakeForRequest();
+        long t0 = System.nanoTime();
+        InputLatch.awaitServed(10_000_000L);
+        long took = System.nanoTime() - t0;
+        try { holder.join(); } catch (InterruptedException e) { throw new RuntimeException(e); }
+        SwapHold.serveDuringWait = serveWas; InputLatch.latch = latchWas; InputLatch.guard.on = guardWas;
+        assert !InputLatch.pending() && took < 5_000_000L : took;
+    }
+
+    // review I5: a right button held over UI (captured) never starts aiming
+    static void aimHoldUiCaptured() {
+        assert !AimHold.delayed(true, true, 1f, 50) && AimHold.delayed(false, true, 1f, 50);
+    }
+
+    // review I7: the render thread only asks for a probe; a slow probe runs elsewhere
+    static void vrrProbeOffThread() {
+        String modeWas = Vrr.mode;
+        java.util.function.Supplier<int[][]> was = Vrr.prober;
+        Vrr.mode = "auto";
+        Vrr.prober = () -> { SelfTest.sleep(200); return new int[][] {{2560, 1440, 120, 1, 1}}; };
+        long t0 = System.nanoTime();
+        Vrr.update(new int[] {0, 0, 2560, 1440}, 120);
+        long took = System.nanoTime() - t0;
+        for (int i = 0; i < 100 && Vrr.probed == null; i++) SelfTest.sleep(10);
+        Vrr.prober = was; Vrr.mode = modeWas;
+        assert took < 20_000_000L : took;
+        assert Vrr.probed == Boolean.TRUE;
+        Vrr.probed = null;
     }
 
     // the cursor quad recorded for a frame is found again when that frame is drawn
@@ -76,8 +145,8 @@ final class DeliveryTest {
 
     // aiming starts once the right button has been held aimHoldMs (stock: 150 ms)
     static void aimHoldDelay() {
-        assert AimHold.delayed(true, 0.15f, 150) && !AimHold.delayed(true, 0.10f, 150);
-        assert AimHold.delayed(true, 0.05f, 50) && !AimHold.delayed(false, 1f, 0);
+        assert AimHold.delayed(false, true, 0.15f, 150) && !AimHold.delayed(false, true, 0.10f, 150);
+        assert AimHold.delayed(false, true, 0.05f, 50) && !AimHold.delayed(false, false, 1f, 0);
     }
 
     static final int X11 = 0x00060004, WAYLAND = 0x00060003;   // GLFW_PLATFORM_* values

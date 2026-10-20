@@ -50,10 +50,31 @@ final class SwapHold {
     /** ns to wait before swapping; 0 when the frame is already past its hold. */
     static long waitNs(long now, long frameStartNs, long holdNs) { return Math.max(0, frameStartNs + holdNs - now); }
 
-    /** Park, then spin the last 0.2 ms, until ns have passed. */
+    /**
+     * The wait for this frame's swap. The hold is taken before this frame is learned from, so a frame that is
+     * already late is swapped at once; the raised hold applies from the next frame on.
+     */
+    static long holdWaitNs(long now, long start, long gpuNs, long periodNs, int cap, Learner l, boolean queue, Config c) {
+        long hold = holdNs(periodNs, cap, queue, l.holdNs(), c);
+        l.observe(now - start + gpuNs, now, periodNs);
+        return waitNs(now, start, hold);
+    }
+
+    static volatile Runnable serveDuringWait;   // serves a pending input request (inputLatch) from inside the hold
+
+    /** A thread that asked for a fresh input poll wakes the hold so it can be served at once. */
+    static void wakeForRequest() { parker.wake(); }
+
+    /** Park (in a loop, serving input requests), then spin the last 0.2 ms, until ns have passed. */
     static void waitPrecise(long ns) {
         long deadline = System.nanoTime() + Math.min(ns, Parker.MAX_NS);
-        if (ns > SPIN_NS) parker.park(ns - SPIN_NS);
+        for (;;) {
+            Runnable r = serveDuringWait;
+            if (r != null && InputLatch.pending()) r.run();
+            long left = deadline - System.nanoTime();
+            if (left <= SPIN_NS) break;
+            parker.park(left - SPIN_NS);
+        }
         while (System.nanoTime() < deadline) Thread.onSpinWait();
     }
 

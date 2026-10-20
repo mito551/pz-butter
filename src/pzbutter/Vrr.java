@@ -67,24 +67,48 @@ final class Vrr {
         return mode.equals("on") || mode.equals("auto") && Boolean.TRUE.equals(vrr);
     }
 
-    /** Render thread, every few seconds with the window's monitor: refresh the auto result. */
+    static volatile java.util.function.Supplier<int[][]> prober = () -> probe("libdrm.so.2");
+    private static final java.util.concurrent.atomic.AtomicBoolean probing = new java.util.concurrent.atomic.AtomicBoolean();
+
+    /**
+     * Render thread, every few seconds with the window's monitor: start a probe on a daemon thread (the driver
+     * calls can stall, and the render thread is what this mod smooths). At most one probe runs at a time.
+     */
     static void update(int[] monitorRect, int refreshHz) {
-        if (!mode.equals("auto") || monitorRect == null) return;
-        int[][] o = probe("libdrm.so.2");
-        Boolean v = o == null ? null : pick(o, monitorRect[2], monitorRect[3], refreshHz);
-        if (v != probed) System.out.println("[PZButter] vrr: " + (v == null ? "unknown" : v ? "active" : "not active"));
-        probed = v;
+        if (!mode.equals("auto") || monitorRect == null || !probing.compareAndSet(false, true)) return;
+        Thread t = new Thread(() -> {
+            try {
+                int[][] o = prober.get();
+                Boolean v = o == null ? null : pick(o, monitorRect[2], monitorRect[3], refreshHz);
+                if (v != probed) System.out.println("[PZButter] vrr: " + (v == null ? "unknown" : v ? "active" : "not active"));
+                probed = v;
+            } catch (Throwable e) {
+                probed = null;
+            } finally {
+                probing.set(false);
+            }
+        }, "PZButter vrr probe");
+        t.setDaemon(true);
+        t.start();
     }
 
-    /** Every connected output of every /dev/dri/card*, or null when libdrm can't be used. */
-    static int[][] probe(String lib) {
+    private static String handlesLib;
+    private static MethodHandle open, close;
+    private static Drm drm;
+
+    /** Every connected output of every /dev/dri/card*, or null when libdrm can't be used. Handles are built once. */
+    static synchronized int[][] probe(String lib) {
         try {
-            Linker l = Linker.nativeLinker();
-            SymbolLookup drm = SymbolLookup.libraryLookup(lib, Arena.global());
-            SymbolLookup libc = l.defaultLookup();
-            MethodHandle open = l.downcallHandle(libc.find("open").orElseThrow(), FunctionDescriptor.of(JAVA_INT, ADDRESS, JAVA_INT));
-            MethodHandle close = l.downcallHandle(libc.find("close").orElseThrow(), FunctionDescriptor.of(JAVA_INT, JAVA_INT));
-            Drm d = new Drm(l, drm);
+            if (!lib.equals(handlesLib)) {
+                Linker l = Linker.nativeLinker();
+                SymbolLookup d = SymbolLookup.libraryLookup(lib, Arena.global());
+                SymbolLookup libc = l.defaultLookup();
+                open = l.downcallHandle(libc.find("open").orElseThrow(), FunctionDescriptor.of(JAVA_INT, ADDRESS, JAVA_INT));
+                close = l.downcallHandle(libc.find("close").orElseThrow(), FunctionDescriptor.of(JAVA_INT, JAVA_INT));
+                drm = new Drm(l, d);
+                handlesLib = lib;
+            }
+            Drm d = drm;
             File[] cards = new File("/dev/dri").listFiles((dir, n) -> n.startsWith("card"));
             if (cards == null) return null;
             List<int[]> out = new ArrayList<>();
@@ -107,7 +131,10 @@ final class Vrr {
 
         Drm(Linker l, SymbolLookup drm) {
             getRes = h(l, drm, "drmModeGetResources", FunctionDescriptor.of(ADDRESS, JAVA_INT));
-            getConn = h(l, drm, "drmModeGetConnector", FunctionDescriptor.of(ADDRESS, JAVA_INT, JAVA_INT));
+            // ...Current reads the connector's known state without forcing a hardware probe
+            getConn = drm.find("drmModeGetConnectorCurrent").isPresent()
+                ? h(l, drm, "drmModeGetConnectorCurrent", FunctionDescriptor.of(ADDRESS, JAVA_INT, JAVA_INT))
+                : h(l, drm, "drmModeGetConnector", FunctionDescriptor.of(ADDRESS, JAVA_INT, JAVA_INT));
             getEnc = h(l, drm, "drmModeGetEncoder", FunctionDescriptor.of(ADDRESS, JAVA_INT, JAVA_INT));
             getCrtc = h(l, drm, "drmModeGetCrtc", FunctionDescriptor.of(ADDRESS, JAVA_INT, JAVA_INT));
             getProps = h(l, drm, "drmModeObjectGetProperties", FunctionDescriptor.of(ADDRESS, JAVA_INT, JAVA_INT, JAVA_INT));

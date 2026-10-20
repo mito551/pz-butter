@@ -2,7 +2,7 @@ package pzbutter;
 
 /**
  * aimHoldMs (SPEC 3.8): how long the right button is held before aiming starts. The game's Mouse.isRightDelay()
- * checks the held time against a fixed 0.15 s; this rewrites its answer with aimHoldMs. 150 is stock, so it only
+ * is !uiCaptured[1] && button down && held >= 0.15 s; this rewrites its answer with aimHoldMs. 150 is stock, so it only
  * applies when the value differs.
  */
 final class AimHold {
@@ -16,7 +16,8 @@ final class AimHold {
         guard.on = Settings.enabled && holdMs != 150;
     }
 
-    static boolean delayed(boolean rightDown, float heldSeconds, int holdMs) {
-        return rightDown && heldSeconds >= holdMs / 1000f;
+    /** As the game's check: not captured by UI, button down, held long enough. */
+    static boolean delayed(boolean uiCaptured, boolean rightDown, float heldSeconds, int holdMs) {
+        return !uiCaptured && rightDown && heldSeconds >= holdMs / 1000f;
     }
 }

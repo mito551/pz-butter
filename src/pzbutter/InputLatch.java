@@ -77,9 +77,12 @@ final class InputLatch {
         return true;
     }
 
-    /** Game thread: wait (bounded) until the render thread has served the request. */
-    static void awaitServed() {
-        long deadline = System.nanoTime() + WAIT_MAX_NS;
+    /** The longest the game thread waits for a fresh poll: an eighth of a frame, at most 2 ms (0.5 ms uncapped). */
+    static long waitBoundNs(long periodNs) { return periodNs <= 0 ? 500_000L : Math.min(WAIT_MAX_NS, periodNs / 8); }
+
+    /** Game thread: wait (at most maxNs) until the render thread has served the request. */
+    static void awaitServed(long maxNs) {
+        long deadline = System.nanoTime() + maxNs;
         long want = requested;
         while (served < want) {
             long left = deadline - System.nanoTime();
