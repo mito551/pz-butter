@@ -29,15 +29,12 @@ final class DeliveryTest {
         latchInputAge();
         gateSwapDone();
         gateBounded();
-        holdFixedHighCap();
-        holdLowCapUsesLearner();
-        holdLateFrameNoWait();
-        holdLearnBounded();
-        holdDecays();
-        holdCapChange();
+        paceFollowsP95();
+        paceIgnoresSpike();
+        paceCappedAndMargin();
+        holdLateFrameNotHeld();
         holdUncappedNone();
-        gpuRingIndex();
-        gpuUnavailableNegative();
+        holdLateFrameNoWait();
         capFormula();
         capOnlyWhenAbove();
         capReflexWithVsync();
@@ -56,7 +53,6 @@ final class DeliveryTest {
         cursorRecordLookup();
         cursorNoRecordNoMove();
         aimHoldDelay();
-        holdLateFrameNotHeld();
         capNotSavedToOptions();
         latchWaitScaled();
         latchServedDuringHold();
@@ -65,16 +61,6 @@ final class DeliveryTest {
         adviceOnlyPublic();
     }
 
-    // review I1: a frame ready after the current hold is swapped at once; the learner rises for the next ones
-    static void holdLateFrameNotHeld() {
-        SwapHold.Learner l = new SwapHold.Learner(HOLD);
-        l.observe(5_000_000L, 1_000_000_000L, P60);                                   // hold = 60 % = 10 ms
-        long w = SwapHold.holdWaitNs(1_025_000_000L, 1_000_000_000L, 0, P60, 60, l, false, HOLD);
-        assert w == 0 : w;
-        assert l.holdNs() > 25_000_000L : l.holdNs();
-        long early = SwapHold.holdWaitNs(2_002_000_000L, 2_000_000_000L, 0, P60, 60, l, false, HOLD);
-        assert early > 20_000_000L : early;                                            // an early frame waits for the raised hold
-    }
 
     // review I2: while the game writes its options, the getters return the game's own values
     static void capNotSavedToOptions() {
@@ -256,30 +242,54 @@ final class DeliveryTest {
         assert Caps.monitorAt(m, 3000, 500) == 1 && Caps.monitorAt(m, 100, 100) == 0 && Caps.monitorAt(m, 9000, 0) == -1;
     }
 
-    // frame n writes slot n % 4 and reads frame n - 2 (no stall waiting on the GPU)
-    static void gpuRingIndex() {
-        assert GpuTimer.slot(5) == 1 && GpuTimer.readSlot(5) == 3 && GpuTimer.readSlot(1) == -1 && GpuTimer.readSlot(2) == 0;
-    }
 
-    static void gpuUnavailableNegative() {
-        assert !GpuTimer.available(false, false) && GpuTimer.available(true, false) && GpuTimer.available(false, true);
-        assert GpuTimer.lastGpuNs == -1;
-    }
 
-    static final SwapHold.Config HOLD = new SwapHold.Config(260, 260, 100, 60, 1000, 25, 20);
+    static final SwapHold.Config PACE = new SwapHold.Config(100, 0);   // presentPacingMaxPct, presentPacingMarginPct
     static final long P60 = 1_000_000_000L / 60, P240 = 1_000_000_000L / 240;
 
-    // frameQueue at a 240 cap: the fixed 2.6-frame hold, whatever was learned
-    static void holdFixedHighCap() {
-        long h = SwapHold.holdNs(P240, 240, true, 1_000_000L, HOLD);
-        assert Math.abs(h - 10_833_333L) < 1_000 : h;
+
+
+    // one second of frames ready 5 ms after their start: the hold becomes 5 ms (none before that)
+    static void paceFollowsP95() {
+        SwapHold.Learner l = new SwapHold.Learner(PACE);
+        long t = 1_000_000_000L;
+        for (int i = 0; i < 60; i++) l.observe(5_000_000L, t + i * P60, P60);
+        assert l.holdNs() == 0 : l.holdNs();
+        l.observe(5_000_000L, t + 60 * P60 + 1_000, P60);
+        assert l.holdNs() == 5_000_000L : l.holdNs();
     }
 
-    // below 100 fps the learned hold is used, within 60 %..260 % of a frame
-    static void holdLowCapUsesLearner() {
-        assert SwapHold.holdNs(P60, 60, true, 12_000_000L, HOLD) == 12_000_000L;
-        assert SwapHold.holdNs(P60, 60, true, 1_000_000L, HOLD) == P60 * 60 / 100;
-        assert SwapHold.holdNs(P240, 240, false, 3_000_000L, HOLD) == 3_000_000L;   // presentPacing alone: learner
+    // a single 40 ms frame among 61 doesn't move the hold (no raise on one late frame)
+    static void paceIgnoresSpike() {
+        SwapHold.Learner l = new SwapHold.Learner(PACE);
+        long t = 1_000_000_000L;
+        for (int i = 0; i < 61; i++) l.observe(i == 30 ? 40_000_000L : 5_000_000L, t + i * P60 + (i == 60 ? 1_000 : 0), P60);
+        assert l.holdNs() == 5_000_000L : l.holdNs();
+    }
+
+    // never more than presentPacingMaxPct of a frame (100 %: one frame); the margin is added on top of the p95
+    static void paceCappedAndMargin() {
+        SwapHold.Learner l = new SwapHold.Learner(PACE);
+        long t = 1_000_000_000L;
+        for (int i = 0; i < 61; i++) l.observe(30_000_000L, t + i * P60 + (i == 60 ? 1_000 : 0), P60);
+        assert l.holdNs() == P60 : l.holdNs();
+        SwapHold.Learner m = new SwapHold.Learner(new SwapHold.Config(100, 10));
+        for (int i = 0; i < 61; i++) m.observe(5_000_000L, t + i * P60 + (i == 60 ? 1_000 : 0), P60);
+        assert m.holdNs() == 5_000_000L + P60 / 10 : m.holdNs();
+    }
+
+    // with a 5 ms hold: a frame ready at 8 ms is swapped at once, one ready at 2 ms waits 3 ms
+    static void holdLateFrameNotHeld() {
+        SwapHold.Learner l = new SwapHold.Learner(PACE);
+        long t = 1_000_000_000L;
+        for (int i = 0; i < 61; i++) l.observe(5_000_000L, t + i * P60 + (i == 60 ? 1_000 : 0), P60);
+        long s = 2_100_000_000L;   // within the second after the last update: the hold stays 5 ms
+        assert SwapHold.holdWaitNs(s + 8_000_000L, s, P60, 60, l, PACE) == 0;
+        assert SwapHold.holdWaitNs(s + 2_000_000L, s, P60, 60, l, PACE) == 3_000_000L;
+    }
+
+    static void holdUncappedNone() {
+        assert SwapHold.holdNs(0, 0, 12_000_000L, PACE) == 0 && SwapHold.holdNs(P60, 60, 12_000_000L, PACE) == 12_000_000L;
     }
 
     static void holdLateFrameNoWait() {
@@ -287,37 +297,9 @@ final class DeliveryTest {
         assert SwapHold.waitNs(25_000_000L, 10_000_000L, 20_000_000L) == 5_000_000L;
     }
 
-    // one 4 s hitch does not push the hold past 260 % of a frame
-    static void holdLearnBounded() {
-        SwapHold.Learner l = new SwapHold.Learner(HOLD);
-        l.observe(4_000_000_000L, 1_000_000_000L, P60);
-        assert l.holdNs() <= P60 * 260 / 100 : l.holdNs();
-    }
 
-    // a late frame raises the hold at once; it falls only after 1 s of calm, by 25 % of a frame a second,
-    // and not below 60 %
-    static void holdDecays() {
-        SwapHold.Learner l = new SwapHold.Learner(HOLD);
-        long t = 1_000_000_000L;
-        l.observe(30_000_000L, t, P60);
-        long raised = l.holdNs();
-        assert Math.abs(raised - (30_000_000L + P60 * 20 / 100)) < 1_000 : raised;
-        for (long dt = P60; dt <= 3_000_000_000L; dt += P60) l.observe(5_000_000L, t + dt, P60);
-        long at3 = l.holdNs();
-        assert at3 > raised - 2 * P60 * 25 / 100 - 1_000_000L && at3 < raised - 2 * P60 * 25 / 100 + 1_000_000L : at3;
-        for (long dt = 3_000_000_000L; dt <= 10_000_000_000L; dt += P60) l.observe(5_000_000L, t + dt, P60);
-        assert Math.abs(l.holdNs() - P60 * 60 / 100) < 1_000 : l.holdNs();
-    }
 
-    // the cap drops from 240 to 60: the next hold uses the 60 cap's frame
-    static void holdCapChange() {
-        long hi = SwapHold.holdNs(P240, 240, true, 0, HOLD), lo = SwapHold.holdNs(P60, 60, true, 0, HOLD);
-        assert Math.abs(hi - P240 * 26 / 10) < 1_000 && lo == P60 * 60 / 100;
-    }
 
-    static void holdUncappedNone() {
-        assert SwapHold.holdNs(0, 0, true, 12_000_000L, HOLD) == 0;
-    }
 
     // a key seen down by an earlier poll stays down after a re-poll that sees it up, until the swap
     static void latchTapKept() {
@@ -508,7 +490,7 @@ final class DeliveryTest {
         assert readAll(new java.io.File(dir, "threads.out")).equals("2000 50.000 25.000\n");
     }
 
-    static final String[] FLAGS = {"limiterSleep", "renderIdleWait", "frameQueue", "frameQueueGpu", "inputLatch",
+    static final String[] FLAGS = {"limiterSleep", "renderIdleWait", "inputLatch",
         "keyboardFresh", "frameStartGate", "cursorLatch", "vsyncAdaptive", "vrrCap", "reflexSleep", "reflexBoost",
         "vblankLock"};
     static final String[] MODES = {"presentPacing", "vrr", "borderlessFullscreen"};
@@ -521,13 +503,13 @@ final class DeliveryTest {
         assert Settings.enabled;
         for (String k : FLAGS) assert !Settings.flag(k) : k;
         for (String k : MODES) assert Settings.mode(k).equals("off") : k;
-        assert Settings.num("frameQueueMinPct", -1, 0, 1000) == 260 && Settings.num("aimHoldMs", -1, 0, 5000) == 150;
+        assert Settings.num("presentPacingMaxPct", -1, 0, 1000) == 100 && Settings.num("aimHoldMs", -1, 0, 5000) == 150;
         assert readAll(f).contains("frameStartGate=false") && readAll(f).contains("gpuMaxFrames=0");
     }
 
     static void settingsNumClamped() {
-        Settings.load(write("enabled=true\nframeQueueMinPct=9999\ngpuMaxFrames=abc\n"));
-        assert Settings.num("frameQueueMinPct", 260, 10, 1000) == 1000;
+        Settings.load(write("enabled=true\npresentPacingMaxPct=9999\ngpuMaxFrames=abc\n"));
+        assert Settings.num("presentPacingMaxPct", 100, 10, 1000) == 1000;
         assert Settings.num("gpuMaxFrames", 0, 0, 8) == 0;
         assert Settings.num("missingKey", 7, 0, 8) == 7;
     }

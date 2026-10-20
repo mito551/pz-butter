@@ -90,7 +90,7 @@ public final class DeliveryBench {
         double[] ns = new double[7];
         long check = 0;
         for (int r = -1; r < 7; r++) {
-            SwapHold.Learner l = new SwapHold.Learner(new SwapHold.Config(260, 260, 100, 60, 1000, 25, 20));
+            SwapHold.Learner l = new SwapHold.Learner(new SwapHold.Config(100, 0));
             long seed = 42, sum = 0, now = 1_000_000_000L;
             int n = 240 * 120;
             long t0 = System.nanoTime();

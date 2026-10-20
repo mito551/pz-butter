@@ -11,7 +11,6 @@ public class Main {
         if (InputLatch.latch) SwapHold.serveDuringWait = DeliveryPatches::serveInputRequest;
         Vrr.init();
         SwapHold.init();
-        GpuTimer.init();
         Caps.init();
         GpuQueue.init();
         Reflex.init();
