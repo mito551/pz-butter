@@ -65,7 +65,7 @@ public final class DeliveryPatches {
     private static VarHandle kbCache, mouseCache, kbLock, mouseLock, keyDown, mouseButtons, wheel;
     private static MethodHandle kbPolling, mousePolling;
     private static boolean inputBound;
-    private static Object lastKeyboardRead;
+    private static long lastKeyboardReadPollNs = -1;   // poll time of the state GameKeyboard.update read
     private static final boolean[] keysBefore = new boolean[256], buttonsBefore = new boolean[16];
 
     private static boolean bindInput() {
@@ -105,7 +105,7 @@ public final class DeliveryPatches {
     /** frameStep entry, after FrameClock.enter (game thread): the input age of this frame. */
     public static void onFrameStarted() {
         if (!InputLatch.guard.on || !FrameStamps.guard.on) return;
-        try { FrameStamps.pendingInputAgeNs = InputLatch.ageAt(lastKeyboardRead, FrameClock.frameStartNs); }
+        try { FrameStamps.pendingInputAgeNs = InputLatch.ageFrom(lastKeyboardReadPollNs, FrameClock.frameStartNs); }
         catch (Throwable t) { InputLatch.guard.fail(t); }
     }
 
@@ -116,7 +116,7 @@ public final class DeliveryPatches {
             if (!bindInput()) return;
             KeyboardStateCache c = (KeyboardStateCache) kbCache.get();
             if (InputLatch.fresh) c.swap();
-            lastKeyboardRead = c.getState();
+            lastKeyboardReadPollNs = InputLatch.pollTimeOf(c.getState());
         } catch (Throwable t) { InputLatch.guard.fail(t); }
     }
 

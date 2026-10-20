@@ -59,7 +59,19 @@ final class DeliveryTest {
         aimHoldUiCaptured();
         vrrProbeOffThread();
         inputAgeMeasuredWithLog();
+        inputAgeSnapshot();
         adviceOnlyPublic();
+    }
+
+    // the poll time is taken when the game reads the state: a later re-poll of the same (reused) state object
+    // must not make the input look younger
+    static void inputAgeSnapshot() {
+        Object a = new Object();
+        InputLatch.notePoll(a, 1_000_000L);
+        long read = InputLatch.pollTimeOf(a);
+        InputLatch.notePoll(a, 9_000_000L);
+        assert read == 1_000_000L && InputLatch.ageFrom(read, 6_500_000L) == 5_500_000L;
+        assert InputLatch.pollTimeOf(new Object()) == -1 && InputLatch.ageFrom(-1, 6_500_000L) == 0;
     }
 
     // with frameLog on and no input feature, the input age is still measured (a baseline to compare against)

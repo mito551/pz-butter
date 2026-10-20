@@ -52,10 +52,15 @@ final class InputLatch {
     }
 
     /** The age at frameStart of the input in state; 0 when its poll time is unknown. */
-    static long ageAt(Object state, long frameStart) {
+    static long ageAt(Object state, long frameStart) { return ageFrom(pollTimeOf(state), frameStart); }
+
+    /** When state was last polled, or -1. Take it when the game reads the state: the object is reused. */
+    static long pollTimeOf(Object state) {
         int i = find(state);
-        return i < 0 ? 0 : Math.max(0, frameStart - pollNs[i]);
+        return i < 0 ? -1 : pollNs[i];
     }
+
+    static long ageFrom(long pollNs, long frameStart) { return pollNs < 0 ? 0 : Math.max(0, frameStart - pollNs); }
 
     private static int find(Object s) {
         if (s == null) return -1;
