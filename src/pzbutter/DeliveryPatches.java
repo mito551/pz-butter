@@ -176,6 +176,17 @@ public final class DeliveryPatches {
         catch (Throwable t) { FrameStamps.guard.fail(t); }
     }
 
+    /** SpriteRenderer.postRender entry / exit (render thread): GPU timestamps for frameQueueGpu. */
+    public static void onPostRenderStart() {
+        if (!GpuTimer.guard.on) return;
+        try { GpuTimer.begin(); } catch (Throwable t) { GpuTimer.guard.fail(t); }
+    }
+
+    public static void onPostRenderEnd() {
+        if (!GpuTimer.guard.on) return;
+        try { GpuTimer.end(); } catch (Throwable t) { GpuTimer.guard.fail(t); }
+    }
+
     /** SpriteRenderer / RenderThread notifyRenderStateQueue exit (any thread). */
     public static void onRenderNotify() { RenderIdle.wake(); }
 
@@ -193,7 +204,8 @@ public final class DeliveryPatches {
             int cap = PerformanceSettings.instance.isFramerateUncapped() ? 0 : fps;
             if (cap <= 0) return;
             long period = 1_000_000_000L / cap, start = FrameStamps.renderFrameStartNs, now = System.nanoTime();
-            SwapHold.learner.observe(now - start, now, period);
+            long gpu = SwapHold.gpu && GpuTimer.guard.on ? Math.max(0, GpuTimer.lastGpuNs) : 0;
+            SwapHold.learner.observe(now - start + gpu, now, period);
             long w = SwapHold.waitNs(now, start, SwapHold.holdNs(period, cap, SwapHold.queue, SwapHold.learner.holdNs(), SwapHold.config));
             if (w > 0) SwapHold.waitPrecise(w);
         } catch (Throwable t) { SwapHold.guard.fail(t); }
@@ -270,6 +282,15 @@ public final class DeliveryPatches {
     public static class KeyboardPolled {
         @Patch.OnEnter
         public static void enter(@Patch.This Object state) { onKeyboardPolled(state); }
+    }
+
+    @Patch(className = "zombie.core.SpriteRenderer", methodName = "postRender")
+    public static class PostRender {
+        @Patch.OnEnter
+        public static void enter() { onPostRenderStart(); }
+
+        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
+        public static void exit() { onPostRenderEnd(); }
     }
 
     // the game's own wake-up for a waiting render thread also ends renderIdleWait's park

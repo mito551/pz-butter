@@ -9,6 +9,7 @@ public class Main {
         RenderIdle.init();
         InputLatch.init();
         SwapHold.init();
+        GpuTimer.init();
         System.out.println("[PZButter] " + Settings.VERSION + ", enabled=" + Settings.enabled);
         if (Settings.enabled) initIfPresent("pzbutter.luabudget.Budget");   // after tools/merge-luabudget.sh
     }

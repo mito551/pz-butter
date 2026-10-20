@@ -36,7 +36,19 @@ final class DeliveryTest {
         holdDecays();
         holdCapChange();
         holdUncappedNone();
+        gpuRingIndex();
+        gpuUnavailableNegative();
         adviceOnlyPublic();
+    }
+
+    // frame n writes slot n % 4 and reads frame n - 2 (no stall waiting on the GPU)
+    static void gpuRingIndex() {
+        assert GpuTimer.slot(5) == 1 && GpuTimer.readSlot(5) == 3 && GpuTimer.readSlot(1) == -1 && GpuTimer.readSlot(2) == 0;
+    }
+
+    static void gpuUnavailableNegative() {
+        assert !GpuTimer.available(false, false) && GpuTimer.available(true, false) && GpuTimer.available(false, true);
+        assert GpuTimer.lastGpuNs == -1;
     }
 
     static final SwapHold.Config HOLD = new SwapHold.Config(260, 260, 100, 60, 1000, 25, 20);
