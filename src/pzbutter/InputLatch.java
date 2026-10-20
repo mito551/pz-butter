@@ -29,7 +29,7 @@ final class InputLatch {
         latch = Settings.flag("inputLatch");
         fresh = Settings.flag("keyboardFresh");
         gate = Settings.flag("frameStartGate");
-        guard.on = latch || fresh || gate;
+        guard.on = latch || fresh || gate || Settings.enabled && Settings.frameLog;   // frameLog alone: measure the input age
     }
 
     /** held[i] |= now[i]: a key or button seen down since the swap stays down until the next swap. */

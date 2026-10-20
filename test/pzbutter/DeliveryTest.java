@@ -58,7 +58,18 @@ final class DeliveryTest {
         latchServedDuringHold();
         aimHoldUiCaptured();
         vrrProbeOffThread();
+        inputAgeMeasuredWithLog();
         adviceOnlyPublic();
+    }
+
+    // with frameLog on and no input feature, the input age is still measured (a baseline to compare against)
+    static void inputAgeMeasuredWithLog() {
+        Settings.load(write("enabled=true\nframeLog=true\n"));
+        InputLatch.init();
+        assert InputLatch.guard.on && !InputLatch.latch && !InputLatch.fresh && !InputLatch.gate;
+        Settings.load(write("enabled=true\n"));
+        InputLatch.init();
+        assert !InputLatch.guard.on;
     }
 
 
