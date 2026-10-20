@@ -30,6 +30,7 @@ public final class SelfTest {
         frameLogRotates();
         frameFailureDisables();   // last: it switches the clock off
         optionalInit();
+        DeliveryTest.run();
         delete(DIR);
         System.out.println("ok");
     }

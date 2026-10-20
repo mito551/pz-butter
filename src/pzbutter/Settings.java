@@ -18,10 +18,62 @@ public final class Settings {
       + "#\n"
       + "# frameLog: one line per frame in Zomboid/pzbutter/frames.out:\n"
       + "#   <epoch ms> <frame no> <ms since the last frame started> <ms in the frame step> <its main-thread CPU ms>\n"
-      + "frameLog=false\n";
+      + "# and per presented frame in present.out, per second in threads.out.\n"
+      + "frameLog=false\n"
+      + "#\n"
+      + "# Frame delivery. Modes take off, on or auto.\n"
+      + "# limiterSleep: the frame limiter sleeps until 0.2 ms before the frame instead of spinning.\n"
+      + "limiterSleep=false\n"
+      + "# renderIdleWait: the render thread waits for the next frame instead of spinning.\n"
+      + "renderIdleWait=false\n"
+      + "# presentPacing: each frame's swap is held to a steady time after the game moment it shows (auto: with VRR).\n"
+      + "presentPacing=off\n"
+      + "# frameQueue: every frame is held a fixed time after its game moment, so nearly every frame is ready.\n"
+      + "frameQueue=false\n"
+      + "# frameQueueGpu: the hold also covers the GPU's drawing (timer queries).\n"
+      + "frameQueueGpu=false\n"
+      + "# Hold bounds in % of a frame, the cap the fixed hold starts at, and the low-cap learner.\n"
+      + "frameQueueMinPct=260\n"
+      + "frameQueueMaxPct=260\n"
+      + "frameQueueFixedMinFps=100\n"
+      + "frameQueueLowCapMinPct=60\n"
+      + "frameQueueLowCapCalmMs=1000\n"
+      + "frameQueueLowCapDecayPct=25\n"
+      + "frameQueueLowCapMarginPct=20\n"
+      + "# vrr: variable refresh (auto: detected from the display driver).\n"
+      + "vrr=off\n"
+      + "# vrrCap: with VRR, uncapped or above the panel's max caps at refresh - refresh^2/3600.\n"
+      + "vrrCap=false\n"
+      + "# borderlessFullscreen: the borderless window becomes a fullscreen window at the desktop mode (auto: with VRR).\n"
+      + "borderlessFullscreen=off\n"
+      + "# vsyncAdaptive: swap interval -1, a late frame tears instead of waiting a refresh.\n"
+      + "vsyncAdaptive=false\n"
+      + "# gpuMaxFrames: at most this many frames queued for the GPU (0: off).\n"
+      + "gpuMaxFrames=0\n"
+      + "# reflexSleep: each frame measures its queue wait and the next starts that much later.\n"
+      + "reflexSleep=false\n"
+      + "# reflexBoost: NVIDIA's prefer-maximum-performance while in a world.\n"
+      + "reflexBoost=false\n"
+      + "# reflexCapFps: with vsync, the cap (0: auto, refresh - refresh^2/3600).\n"
+      + "reflexCapFps=0\n"
+      + "# vblankLock: with vsync, frames start a measured time before vblank (X11 + NVIDIA).\n"
+      + "vblankLock=false\n"
+      + "#\n"
+      + "# Input.\n"
+      + "# inputLatch: a fresh input poll when the frame starts.\n"
+      + "inputLatch=false\n"
+      + "# keyboardFresh: the keyboard is read from the poll this frame swapped in.\n"
+      + "keyboardFresh=false\n"
+      + "# frameStartGate: wait for the render thread before reading input.\n"
+      + "frameStartGate=false\n"
+      + "# cursorLatch: the cursor is moved to the newest pointer position just before the frame is drawn.\n"
+      + "cursorLatch=false\n"
+      + "# aimHoldMs: right-button hold before aiming starts.\n"
+      + "aimHoldMs=150\n";
 
     public static volatile boolean enabled;
     public static volatile boolean frameLog;
+    private static volatile Properties props = new Properties();
 
     private Settings() {}
 
@@ -29,15 +81,41 @@ public final class Settings {
 
     public static void load(File f) {
         enabled = frameLog = false;
+        props = new Properties();
         try {
             if (!f.exists()) try (FileWriter w = new FileWriter(f)) { w.write(DEFAULTS); }
             Properties p = new Properties();
             try (FileInputStream in = new FileInputStream(f)) { p.load(in); }
+            props = p;
             enabled = bool(p, "enabled", false);
             frameLog = bool(p, "frameLog", false);
         } catch (Throwable t) {
             enabled = frameLog = false;
+            props = new Properties();
             System.out.println("[PZButter] settings failed, all features off: " + t);
+        }
+    }
+
+    /** A feature switch: true only when the master switch and the key are both on. */
+    public static boolean flag(String key) { return enabled && bool(props, key, false); }
+
+    /** A number key, clamped to [min, max]; the default when missing or unreadable. */
+    public static int num(String key, int dflt, int min, int max) {
+        String v = props.getProperty(key);
+        int n = dflt;
+        if (v != null) try { n = Integer.parseInt(v.trim()); } catch (NumberFormatException e) { n = dflt; }
+        return Math.max(min, Math.min(max, n));
+    }
+
+    /** "off", "on" or "auto"; "off" when the master switch is off or the value is unreadable. */
+    public static String mode(String key) {
+        if (!enabled) return "off";
+        String v = props.getProperty(key);
+        if (v == null) return "off";
+        switch (v.trim().toLowerCase(Locale.ROOT)) {
+            case "on": case "true": case "yes": case "1": return "on";
+            case "auto": return "auto";
+            default: return "off";
         }
     }
 
