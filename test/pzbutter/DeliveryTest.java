@@ -8,6 +8,7 @@ final class DeliveryTest {
 
     static void run() {
         settingsKeysOffByDefault();
+        settingsDefaultsOn();
         settingsNumClamped();
         settingsModeMasterOff();
         gameStaticLongMissing();
@@ -76,10 +77,11 @@ final class DeliveryTest {
 
     // with frameLog on and no input feature, the input age is still measured (a baseline to compare against)
     static void inputAgeMeasuredWithLog() {
-        Settings.load(write("enabled=true\nframeLog=true\n"));
+        String inputOff = "inputLatch=false\nkeyboardFresh=false\nframeStartGate=false\n";   // on by default since Task 13
+        Settings.load(write("enabled=true\nframeLog=true\n" + inputOff));
         InputLatch.init();
         assert InputLatch.guard.on && !InputLatch.latch && !InputLatch.fresh && !InputLatch.gate;
-        Settings.load(write("enabled=true\n"));
+        Settings.load(write("enabled=true\n" + inputOff));
         InputLatch.init();
         assert !InputLatch.guard.on;
     }
@@ -524,10 +526,22 @@ final class DeliveryTest {
         Settings.load(f);
         Settings.load(write(readAll(f).replace("enabled=false", "enabled=true")));
         assert Settings.enabled;
-        for (String k : FLAGS) assert !Settings.flag(k) : k;
+        for (String k : FLAGS) assert Settings.flag(k) == ON_BY_DEFAULT.contains(k) : k;
         for (String k : MODES) assert Settings.mode(k).equals("off") : k;
         assert Settings.num("presentPacingMaxPct", -1, 0, 1000) == 100 && Settings.num("aimHoldMs", -1, 0, 5000) == 150;
-        assert readAll(f).contains("frameStartGate=false") && readAll(f).contains("gpuMaxFrames=0");
+        assert readAll(f).contains("frameStartGate=true") && readAll(f).contains("vrrCap=false") && readAll(f).contains("gpuMaxFrames=0");
+    }
+
+    // passed in game (Task 13) and switched on by the user: on when the key is missing, but never without the master
+    static final java.util.Set<String> ON_BY_DEFAULT = java.util.Set.of("limiterSleep", "inputLatch", "keyboardFresh", "frameStartGate");
+
+    static void settingsDefaultsOn() {
+        Settings.load(write("enabled=true\n"));
+        for (String k : FLAGS) assert Settings.flag(k) == ON_BY_DEFAULT.contains(k) : k;
+        Settings.load(write("enabled=false\nlimiterSleep=true\n"));
+        assert !Settings.flag("limiterSleep");
+        Settings.load(write("enabled=true\nlimiterSleep=false\n"));
+        assert !Settings.flag("limiterSleep") && Settings.flag("inputLatch");
     }
 
     static void settingsNumClamped() {

@@ -21,9 +21,10 @@ public final class Settings {
       + "# and per presented frame in present.out, per second in threads.out.\n"
       + "frameLog=false\n"
       + "#\n"
-      + "# Frame delivery. Modes take off, on or auto.\n"
+      + "# Frame delivery. Modes take off, on or auto. limiterSleep and the three input keys are on by default:\n"
+      + "# they passed in-game checks. Everything else stays off until you switch it on.\n"
       + "# limiterSleep: the frame limiter sleeps until 0.2 ms before the frame instead of spinning.\n"
-      + "limiterSleep=false\n"
+      + "limiterSleep=true\n"
       + "# renderIdleWait: the render thread waits for the next frame instead of spinning.\n"
       + "renderIdleWait=false\n"
       + "# presentPacing: each frame's swap is held to a steady time after the game moment it shows (auto: with VRR).\n"
@@ -53,11 +54,11 @@ public final class Settings {
       + "#\n"
       + "# Input.\n"
       + "# inputLatch: a fresh input poll when the frame starts.\n"
-      + "inputLatch=false\n"
+      + "inputLatch=true\n"
       + "# keyboardFresh: the keyboard is read from the poll this frame swapped in.\n"
-      + "keyboardFresh=false\n"
+      + "keyboardFresh=true\n"
       + "# frameStartGate: wait for the render thread before reading input.\n"
-      + "frameStartGate=false\n"
+      + "frameStartGate=true\n"
       + "# cursorLatch: the cursor is moved to the newest pointer position just before the frame is drawn.\n"
       + "cursorLatch=false\n"
       + "# aimHoldMs: right-button hold before aiming starts.\n"
@@ -88,8 +89,11 @@ public final class Settings {
         }
     }
 
-    /** A feature switch: true only when the master switch and the key are both on. */
-    public static boolean flag(String key) { return enabled && bool(props, key, false); }
+    /** A feature switch: never on without the master switch; a missing key takes its default. */
+    /** Features that passed their in-game check and default to on (still only with the master switch). */
+    static final java.util.Set<String> ON_BY_DEFAULT = java.util.Set.of("limiterSleep", "inputLatch", "keyboardFresh", "frameStartGate");
+
+    public static boolean flag(String key) { return enabled && bool(props, key, ON_BY_DEFAULT.contains(key)); }
 
     /** A number key, clamped to [min, max]; the default when missing or unreadable. */
     public static int num(String key, int dflt, int min, int max) {
