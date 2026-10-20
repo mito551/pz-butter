@@ -1,7 +1,5 @@
 package pzbutter;
 
-import java.util.concurrent.locks.LockSupport;
-
 /**
  * limiterSleep (SPEC 3.12): the game's frame limiter (GameWindow.mainThreadStep, called in a yield loop) waits
  * by spinning. Before each check this parks the game thread until 0.2 ms before the frame is due; the spin
@@ -10,9 +8,9 @@ import java.util.concurrent.locks.LockSupport;
 final class LimiterSleep {
     static final Guard guard = new Guard("limiterSleep");
     static final long SPIN_NS = 200_000L;
-    static final long MAX_NS = 50_000_000L;
+    static final long MAX_NS = Parker.MAX_NS;
     static volatile long extraDelayNs;   // reflexSleep adds the measured queue wait here
-    private static volatile Thread sleeper;
+    private static final Parker parker = new Parker();
 
     private LimiterSleep() {}
 
@@ -30,14 +28,7 @@ final class LimiterSleep {
         return s <= 0 ? 0 : Math.min(s, MAX_NS);
     }
 
-    static void park(long ns) {
-        sleeper = Thread.currentThread();
-        try { LockSupport.parkNanos(Math.min(ns, MAX_NS)); }
-        finally { sleeper = null; }
-    }
+    static void park(long ns) { parker.park(ns); }
 
-    static void wake() {
-        Thread t = sleeper;
-        if (t != null) LockSupport.unpark(t);
-    }
+    static void wake() { parker.wake(); }
 }

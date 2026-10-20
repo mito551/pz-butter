@@ -21,7 +21,27 @@ final class DeliveryTest {
         limiterUncapped();
         limiterBounded();
         limiterWakesOnQueue();
+        idleWaitTimesOut();
+        idleWaitWakes();
         adviceOnlyPublic();
+    }
+
+    // nobody wakes it: back within the timeout (plus scheduling slack)
+    static void idleWaitTimesOut() {
+        long t0 = System.nanoTime();
+        RenderIdle.park(RenderIdle.WAIT_NS);
+        assert System.nanoTime() - t0 < RenderIdle.WAIT_NS + 5_000_000L;
+    }
+
+    // a hand-off (the game's notifyRenderStateQueue) wakes it before the timeout
+    static void idleWaitWakes() {
+        Thread waker = new Thread(() -> { SelfTest.sleep(5); RenderIdle.wake(); });
+        waker.start();
+        long t0 = System.nanoTime();
+        RenderIdle.park(40_000_000L);
+        long took = System.nanoTime() - t0;
+        try { waker.join(); } catch (InterruptedException e) { throw new RuntimeException(e); }
+        assert took < 25_000_000L : took;
     }
 
     /**

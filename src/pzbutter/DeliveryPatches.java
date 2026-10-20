@@ -51,10 +51,17 @@ public final class DeliveryPatches {
 
     /** SpriteRenderer.acquireStateForRendering exit (render thread), with the state it returns. */
     public static void onAcquire(Object state) {
-        if (!FrameStamps.guard.on || state == null) return;
+        if (state == null) {
+            if (RenderIdle.guard.on) try { RenderIdle.park(RenderIdle.WAIT_NS); } catch (Throwable t) { RenderIdle.guard.fail(t); }
+            return;
+        }
+        if (!FrameStamps.guard.on) return;
         try { FrameStamps.onAcquire(state); }
         catch (Throwable t) { FrameStamps.guard.fail(t); }
     }
+
+    /** SpriteRenderer / RenderThread notifyRenderStateQueue exit (any thread). */
+    public static void onRenderNotify() { RenderIdle.wake(); }
 
     /** Display.swapBuffers entry (render thread). */
     public static void onSwapStart() {
@@ -103,6 +110,27 @@ public final class DeliveryPatches {
     public static class Acquire {
         @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
         public static void exit(@Patch.Return Object state) { onAcquire(state); }
+    }
+
+    // the game's own wake-up for a waiting render thread also ends renderIdleWait's park
+    @Patch(className = "zombie.core.SpriteRenderer", methodName = "notifyRenderStateQueue")
+    public static class SpriteNotify {
+        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
+        public static void exit() { onRenderNotify(); }
+    }
+
+    @Patch(className = "zombie.core.opengl.RenderThread", methodName = "notifyRenderStateQueue")
+    public static class RenderNotify {
+        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
+        public static void exit() { onRenderNotify(); }
+    }
+
+    // a thread that wants the GL context waits for RenderThread.m_contextLock, which renderIdleWait's park
+    // holds; waking the park first lets the render thread finish its pass and release the lock, as the spin does
+    @Patch(className = "zombie.core.opengl.RenderThread", methodName = "acquireContextReentrant")
+    public static class ContextWake {
+        @Patch.OnEnter
+        public static void enter() { onRenderNotify(); }
     }
 
     @Patch(className = "org.lwjglx.opengl.Display", methodName = "swapBuffers")
