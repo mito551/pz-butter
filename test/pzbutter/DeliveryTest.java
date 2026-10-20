@@ -53,7 +53,31 @@ final class DeliveryTest {
         borderlessDecision();
         probeUnavailableOff();
         vblankSecondsMargin();
+        cursorRecordLookup();
+        cursorNoRecordNoMove();
+        aimHoldDelay();
         adviceOnlyPublic();
+    }
+
+    // the cursor quad recorded for a frame is found again when that frame is drawn
+    static void cursorRecordLookup() {
+        Object a = new Object(), b = new Object();
+        CursorLatch.record(7, a, 100, 200);
+        CursorLatch.record(8, b, 110, 205);
+        int i = CursorLatch.find(8);
+        assert i >= 0 && CursorLatch.drawAt(i) == b && CursorLatch.xAt(i) == 110 && CursorLatch.yAt(i) == 205;
+        assert CursorLatch.drawAt(CursorLatch.find(7)) == a;
+    }
+
+    // no cursor drawn in that frame: nothing to move
+    static void cursorNoRecordNoMove() {
+        assert CursorLatch.find(9) == -1 && CursorLatch.find(-1) == -1;
+    }
+
+    // aiming starts once the right button has been held aimHoldMs (stock: 150 ms)
+    static void aimHoldDelay() {
+        assert AimHold.delayed(true, 0.15f, 150) && !AimHold.delayed(true, 0.10f, 150);
+        assert AimHold.delayed(true, 0.05f, 50) && !AimHold.delayed(false, 1f, 0);
     }
 
     static final int X11 = 0x00060004, WAYLAND = 0x00060003;   // GLFW_PLATFORM_* values

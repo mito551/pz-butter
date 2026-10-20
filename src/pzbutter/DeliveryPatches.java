@@ -17,6 +17,8 @@ import zombie.GameWindow;
 import zombie.core.Core;
 import zombie.core.PerformanceSettings;
 import zombie.core.SpriteRenderer;
+import zombie.core.sprite.GenericSpriteRenderState;
+import zombie.core.textures.TextureDraw;
 import zombie.input.GameKeyboard;
 import zombie.input.KeyboardState;
 import zombie.input.KeyboardStateCache;
@@ -192,10 +194,62 @@ public final class DeliveryPatches {
         catch (Throwable t) { FrameStamps.guard.fail(t); }
     }
 
-    /** SpriteRenderer.postRender entry / exit (render thread): GPU timestamps for frameQueueGpu. */
+    /** SpriteRenderer.postRender entry / exit (render thread): the cursor move, GPU timestamps for frameQueueGpu. */
     public static void onPostRenderStart() {
+        if (CursorLatch.guard.on) moveCursor();
         if (!GpuTimer.guard.on) return;
         try { GpuTimer.begin(); } catch (Throwable t) { GpuTimer.guard.fail(t); }
+    }
+
+    // ---- cursorLatch, aimHoldMs ----
+
+    private static int cursorSpritesBefore = -1;
+    private static final double[] cursorX = new double[1], cursorY = new double[1];
+    private static VarHandle timeRightPressed;
+    private static boolean aimBound;
+
+    /** Mouse.renderCursorTexture entry (game thread). */
+    public static void onCursorRecordStart() {
+        if (!CursorLatch.guard.on) return;
+        try { cursorSpritesBefore = SpriteRenderer.instance.states.getPopulatingActiveState().numSprites; }
+        catch (Throwable t) { cursorSpritesBefore = -1; CursorLatch.guard.fail(t); }
+    }
+
+    /** Mouse.renderCursorTexture exit (game thread): the quad it added is this frame's cursor. */
+    public static void onCursorRecordEnd() {
+        if (!CursorLatch.guard.on || cursorSpritesBefore < 0) return;
+        try {
+            GenericSpriteRenderState s = SpriteRenderer.instance.states.getPopulatingActiveState();
+            if (s.numSprites == cursorSpritesBefore + 1)
+                CursorLatch.record(FrameClock.frameNo + 1, s.sprite[s.numSprites - 1], zombie.input.Mouse.getXA(), zombie.input.Mouse.getYA());
+        } catch (Throwable t) { CursorLatch.guard.fail(t); }
+        cursorSpritesBefore = -1;
+    }
+
+    private static void moveCursor() {
+        try {
+            int i = CursorLatch.find(FrameStamps.renderFrameNo);
+            if (i < 0) return;
+            GLFW.glfwGetCursorPos(Display.getWindow(), cursorX, cursorY);   // asks the window system: fresher than the event queue
+            int nx = (int) cursorX[0];
+            int ny = Core.getInstance().getScreenHeight() - (Display.getHeight() - (int) cursorY[0]) - 1;   // as Mouse.update
+            float dx = nx - CursorLatch.xAt(i), dy = ny - CursorLatch.yAt(i);
+            if (dx == 0 && dy == 0) return;
+            TextureDraw d = (TextureDraw) CursorLatch.drawAt(i);
+            d.x0 += dx; d.x1 += dx; d.x2 += dx; d.x3 += dx;
+            d.y0 += dy; d.y1 += dy; d.y2 += dy; d.y3 += dy;
+        } catch (Throwable t) { CursorLatch.guard.fail(t); }
+    }
+
+    /** Mouse.isRightDelay exit: the hold before aiming, from aimHoldMs. */
+    public static boolean aimDelay(boolean stock) {
+        if (!AimHold.guard.on) return stock;
+        try {
+            if (!aimBound) { aimBound = true; timeRightPressed = Game.staticField(zombie.input.Mouse.class, "timeRightPressed", float.class); }
+            if (timeRightPressed == null) { AimHold.guard.on = false; return stock; }
+            boolean[] b = zombie.input.Mouse.buttonDownStates;
+            return AimHold.delayed(b != null && b.length > 1 && b[1], (float) timeRightPressed.get(), AimHold.holdMs);
+        } catch (Throwable t) { AimHold.guard.fail(t); return stock; }
     }
 
     public static void onPostRenderEnd() {
@@ -439,6 +493,21 @@ public final class DeliveryPatches {
     public static class KeyboardPolled {
         @Patch.OnEnter
         public static void enter(@Patch.This Object state) { onKeyboardPolled(state); }
+    }
+
+    @Patch(className = "zombie.input.Mouse", methodName = "renderCursorTexture")
+    public static class CursorRecord {
+        @Patch.OnEnter
+        public static void enter() { onCursorRecordStart(); }
+
+        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
+        public static void exit() { onCursorRecordEnd(); }
+    }
+
+    @Patch(className = "zombie.input.Mouse", methodName = "isRightDelay")
+    public static class RightDelay {
+        @Patch.OnExit
+        public static void exit(@Patch.Return(readOnly = false) boolean ret) { ret = aimDelay(ret); }
     }
 
     @Patch(className = "zombie.core.SpriteRenderer", methodName = "postRender")

@@ -1,0 +1,22 @@
+package pzbutter;
+
+/**
+ * aimHoldMs (SPEC 3.8): how long the right button is held before aiming starts. The game's Mouse.isRightDelay()
+ * checks the held time against a fixed 0.15 s; this rewrites its answer with aimHoldMs. 150 is stock, so it only
+ * applies when the value differs.
+ */
+final class AimHold {
+    static final Guard guard = new Guard("aimHoldMs");
+    static volatile int holdMs = 150;
+
+    private AimHold() {}
+
+    static void init() {
+        holdMs = Settings.num("aimHoldMs", 150, 0, 5000);
+        guard.on = Settings.enabled && holdMs != 150;
+    }
+
+    static boolean delayed(boolean rightDown, float heldSeconds, int holdMs) {
+        return rightDown && heldSeconds >= holdMs / 1000f;
+    }
+}
