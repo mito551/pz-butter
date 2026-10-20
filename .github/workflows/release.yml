@@ -41,8 +41,11 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -y -qq lib32gcc-s1 > /dev/null
           mkdir -p "$RUNNER_TEMP/steamcmd" && cd "$RUNNER_TEMP/steamcmd"
           curl -fsSL https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz | tar xz
-          ./steamcmd.sh +force_install_dir "$HOME/pzserver" +login anonymous \
-            +app_update 380870 -beta "$PZ_SERVER_BETA" validate +quit || true
+          for try in 1 2 3; do   # a first app_update often fails with "Missing configuration"
+            ./steamcmd.sh +force_install_dir "$HOME/pzserver" +login anonymous \
+              +app_update 380870 -beta "$PZ_SERVER_BETA" validate +quit || true
+            [ -d "$HOME/pzserver/java" ] && break
+          done
           test -d "$HOME/pzserver/java" || { echo "::error::dedicated server download failed"; exit 1; }
 
       - name: Fetch ZombieBuddy and collect the game jars
