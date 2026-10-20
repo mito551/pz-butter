@@ -47,7 +47,42 @@ final class DeliveryTest {
         reflexEwma();
         reflexOncePerFrame();
         reflexBoostParse();
+        vrrMatchOutput();
+        vrrProbeNoDrm();
+        vrrMode();
+        borderlessDecision();
         adviceOnlyPublic();
+    }
+
+    // outputs: {w, h, refresh, vrr_capable, VRR_ENABLED}; the window's monitor is matched by mode size and refresh
+    static void vrrMatchOutput() {
+        int[][] o = {{1920, 1080, 60, 0, 0}, {2560, 1440, 165, 1, 1}};
+        assert Vrr.pick(o, 2560, 1440, 165) == Boolean.TRUE;
+        assert Vrr.pick(o, 1920, 1080, 60) == Boolean.FALSE;
+        assert Vrr.pick(o, 3840, 2160, 60) == null;                       // no match: unknown
+        assert Vrr.pick(o, 2560, 1440, 0) == Boolean.TRUE;                // refresh unknown: size only
+        int[][] twins = {{2560, 1440, 165, 1, 1}, {2560, 1440, 165, 1, 0}};
+        assert Vrr.pick(twins, 2560, 1440, 165) == null;                  // ambiguous and they disagree
+        assert Vrr.pick(new int[][] {{2560, 1440, 165, 1, 1}, {2560, 1440, 165, 1, 1}}, 2560, 1440, 165) == Boolean.TRUE;
+    }
+
+    static void vrrProbeNoDrm() {
+        assert Vrr.probe("libpzbutter-no-such-drm.so.9") == null;
+    }
+
+    // vrr=on/off force it; auto uses the probe
+    static void vrrMode() {
+        assert Vrr.resolve("on", null) == Boolean.TRUE && Vrr.resolve("off", Boolean.TRUE) == Boolean.FALSE;
+        assert Vrr.resolve("auto", Boolean.TRUE) == Boolean.TRUE && Vrr.resolve("auto", null) == null;
+    }
+
+    // borderlessFullscreen: only for the game's borderless window mode; auto needs VRR active
+    static void borderlessDecision() {
+        assert Vrr.wantFullscreenWindow("on", null, true, false);
+        assert !Vrr.wantFullscreenWindow("on", null, false, false);       // not borderless
+        assert !Vrr.wantFullscreenWindow("on", null, true, true);         // real fullscreen already
+        assert Vrr.wantFullscreenWindow("auto", Boolean.TRUE, true, false) && !Vrr.wantFullscreenWindow("auto", null, true, false);
+        assert !Vrr.wantFullscreenWindow("off", Boolean.TRUE, true, false);
     }
 
     // the smoothed swap wait converges to a steady wait and lets a spike fade

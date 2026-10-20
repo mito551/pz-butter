@@ -10,7 +10,8 @@ package pzbutter;
  */
 final class SwapHold {
     static final Guard guard = new Guard("swap hold");
-    static volatile boolean queue, pacing, gpu;
+    static volatile boolean queue, gpu;
+    static volatile String pacing = "off";
     static Config config = new Config(260, 260, 100, 60, 1000, 25, 20);
     static final Learner learner = new Learner(config);
     static final long SPIN_NS = 200_000L;
@@ -22,16 +23,20 @@ final class SwapHold {
 
     static void init() {
         queue = Settings.flag("frameQueue");
-        String p = Settings.mode("presentPacing");
-        pacing = p.equals("on") || (p.equals("auto") && Boolean.TRUE.equals(Vrr.active()));
+        pacing = Settings.mode("presentPacing");
         gpu = Settings.flag("frameQueueGpu");
         config = new Config(Settings.num("frameQueueMinPct", 260, 10, 1000), Settings.num("frameQueueMaxPct", 260, 10, 1000),
             Settings.num("frameQueueFixedMinFps", 100, 1, 1000), Settings.num("frameQueueLowCapMinPct", 60, 0, 1000),
             Settings.num("frameQueueLowCapCalmMs", 1000, 0, 60_000), Settings.num("frameQueueLowCapDecayPct", 25, 0, 1000),
             Settings.num("frameQueueLowCapMarginPct", 20, 0, 1000));
         learner.config = config;
-        guard.on = queue || pacing;
+        guard.on = queue || !pacing.equals("off");
         if (guard.on) { FrameStamps.guard.on = true; PresentLog.guard.on = true; }
+    }
+
+    /** Hold this frame? presentPacing=auto follows VRR, which is only known once the window is up. */
+    static boolean holding() {
+        return queue || pacing.equals("on") || pacing.equals("auto") && Boolean.TRUE.equals(Vrr.active());
     }
 
     /** The hold for a frame: none uncapped; the fixed bounds at high caps with frameQueue; else the learned value. */

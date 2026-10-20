@@ -10,6 +10,7 @@ import org.lwjgl.glfw.GLFW;
 import org.lwjgl.glfw.GLFWVidMode;
 import org.lwjglx.opengl.Display;
 import zombie.GameWindow;
+import zombie.core.Core;
 import zombie.core.PerformanceSettings;
 import zombie.core.SpriteRenderer;
 import zombie.input.GameKeyboard;
@@ -214,7 +215,7 @@ public final class DeliveryPatches {
 
     private static void holdSwap() {
         try {
-            if (FrameStamps.renderFrameNo < 0 || Thread.currentThread() != PresentLog.renderThread && PresentLog.renderThread != null) return;
+            if (!SwapHold.holding() || FrameStamps.renderFrameNo < 0) return;
             int fps = PerformanceSettings.getLockFPS();
             int cap = PerformanceSettings.instance.isFramerateUncapped() ? 0 : fps;
             if (cap <= 0) return;
@@ -232,7 +233,7 @@ public final class DeliveryPatches {
         if (PresentLog.guard.on) try { PresentLog.swapEnd(); } catch (Throwable t) { PresentLog.guard.fail(t); }
         if (Reflex.sleepGuard.on) Reflex.onSwap(PresentLog.lastSwapNs);
         if (GpuQueue.guard.on) try { GpuQueue.afterSwap(); } catch (Throwable t) { GpuQueue.guard.fail(t); }
-        if (Caps.guard.on) updateRefresh();
+        if (Caps.guard.on || Vrr.guard.on) updateRefresh();
     }
 
     // ---- caps (Caps) ----
@@ -296,11 +297,44 @@ public final class DeliveryPatches {
                 rects[i] = v == null ? new int[4] : new int[] {px[0], py[0], v.width(), v.height()};
             }
             int i = Caps.monitorAt(rects, Display.getX() + Display.getWidth() / 2, Display.getY() + Display.getHeight() / 2);
-            GLFWVidMode v = GLFW.glfwGetVideoMode(i >= 0 ? ids[i] : GLFW.glfwGetPrimaryMonitor());
+            windowMonitor = i >= 0 ? ids[i] : GLFW.glfwGetPrimaryMonitor();
+            GLFWVidMode v = GLFW.glfwGetVideoMode(windowMonitor);
             if (v != null) Caps.refreshHz = v.refreshRate();
             Caps.monitorRect = i >= 0 ? rects[i] : null;
+            if (Vrr.guard.on && refreshCount++ % 5 == 0) {
+                Vrr.update(Caps.monitorRect, Caps.refreshHz);
+                applyFullscreenWindow(Core.getInstance().isFullScreen());
+            }
         } catch (Throwable t) { Caps.guard.fail(t); }
     }
+
+    private static long windowMonitor;
+    private static int refreshCount;
+
+    // ---- borderlessFullscreen (Vrr) ----
+
+    /** Display.setDisplayModeAndFullscreenInternal exit (render thread). */
+    public static void onDisplayModeSet(boolean fullscreen) {
+        if (!Vrr.guard.on) return;
+        Vrr.fullscreenWindowApplied = false;
+        applyFullscreenWindow(fullscreen);
+    }
+
+    private static void applyFullscreenWindow(boolean fullscreen) {
+        try {
+            if (Vrr.fullscreenWindowApplied
+                || !Vrr.wantFullscreenWindow(Vrr.fullscreenWindow, Vrr.active(), Display.isBorderlessWindow(), fullscreen)) return;
+            long m = windowMonitor != 0 ? windowMonitor : GLFW.glfwGetPrimaryMonitor();
+            GLFWVidMode v = GLFW.glfwGetVideoMode(m);
+            if (v == null) return;
+            GLFW.glfwSetWindowMonitor(Display.getWindow(), m, 0, 0, v.width(), v.height(), v.refreshRate());
+            Vrr.fullscreenWindowApplied = true;
+            System.out.println("[PZButter] borderlessFullscreen: fullscreen window at " + v.width() + "x" + v.height() + "@" + v.refreshRate());
+        } catch (Throwable t) { Vrr.guard.fail(t); }
+    }
+
+    /** Display.isFullscreen exit: the window made fullscreen by borderlessFullscreen is still borderless to the game. */
+    public static boolean reportFullscreen(boolean stock) { return stock && !Vrr.fullscreenWindowApplied; }
 
     @Patch(className = "zombie.GameWindow", methodName = "mainThreadStep")
     public static class Step {
@@ -427,6 +461,18 @@ public final class DeliveryPatches {
     public static class Vsync {
         @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
         public static void exit(@Patch.Argument(0) boolean enabled) { onVsyncSet(enabled); }
+    }
+
+    @Patch(className = "org.lwjglx.opengl.Display", methodName = "setDisplayModeAndFullscreenInternal")
+    public static class DisplayModeSet {
+        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
+        public static void exit(@Patch.Argument(1) boolean fullscreen) { onDisplayModeSet(fullscreen); }
+    }
+
+    @Patch(className = "org.lwjglx.opengl.Display", methodName = "isFullscreen")
+    public static class IsFullscreen {
+        @Patch.OnExit
+        public static void exit(@Patch.Return(readOnly = false) boolean ret) { ret = reportFullscreen(ret); }
     }
 
     @Patch(className = "org.lwjglx.opengl.Display", methodName = "swapBuffers")

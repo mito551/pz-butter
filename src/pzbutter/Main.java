@@ -8,6 +8,7 @@ public class Main {
         LimiterSleep.init();
         RenderIdle.init();
         InputLatch.init();
+        Vrr.init();
         SwapHold.init();
         GpuTimer.init();
         Caps.init();
