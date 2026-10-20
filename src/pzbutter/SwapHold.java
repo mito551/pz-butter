@@ -57,41 +57,44 @@ final class SwapHold {
         while (System.nanoTime() < deadline) Thread.onSpinWait();
     }
 
-    /** Learns how long after its start a frame is ready to swap. Render thread only. */
+    /** Learns how long after its start a frame is ready to swap; the window is kept sorted. Render thread only. */
     static final class Learner {
         Config config;
-        private final long[] window = new long[512], scratch = new long[512];
-        private int count;
-        private long hold = -1, lastLateNs, lastUpdateNs;
 
         Learner(Config c) { config = c; }
+
+        private long hold, lastLate, lastUpdate;
+        private boolean started;
+        private final long[] win = new long[512]; // kept ascending
+        private int n;
 
         long holdNs() { return Math.max(0, hold); }
 
         void observe(long readyNs, long nowNs, long periodNs) {
             if (periodNs <= 0) return;
             Config c = config;
-            long min = periodNs * c.lowMinPct() / 100, max = periodNs * c.maxPct() / 100, margin = periodNs * c.marginPct() / 100;
-            if (hold < 0) { hold = min; lastLateNs = lastUpdateNs = nowNs; }
-            if (count < window.length) window[count++] = readyNs;
-            if (readyNs > hold) { hold = Math.min(max, readyNs + margin); lastLateNs = nowNs; }
-            long elapsed = nowNs - lastUpdateNs;
+            long min = periodNs * c.lowMinPct() / 100;
+            long max = periodNs * c.maxPct() / 100;
+            long margin = periodNs * c.marginPct() / 100;
+            if (!started) { started = true; hold = min; lastLate = lastUpdate = nowNs; }
+            if (n < 512) {
+                int lo = 0, hi = n;
+                while (lo < hi) { int m = (lo + hi) >>> 1; if (win[m] <= readyNs) lo = m + 1; else hi = m; }
+                System.arraycopy(win, lo, win, lo + 1, n - lo);
+                win[lo] = readyNs;
+                n++;
+            }
+            if (readyNs > hold) { hold = Math.min(max, readyNs + margin); lastLate = nowNs; }
+            long elapsed = nowNs - lastUpdate;
             if (elapsed >= 1_000_000_000L) {
-                long target = p95() + margin;
+                long target = (n == 0 ? 0 : win[Math.min(n - 1, n * 95 / 100)]) + margin;
                 if (target > hold) hold = target;
-                else if (nowNs - lastLateNs >= c.calmMs() * 1_000_000L)
+                else if (nowNs - lastLate >= c.calmMs() * 1_000_000L)
                     hold = Math.max(target, hold - periodNs * c.decayPct() / 100 * elapsed / 1_000_000_000L);
-                lastUpdateNs = nowNs;
-                count = 0;
+                lastUpdate = nowNs;
+                n = 0;
             }
             hold = Math.max(min, Math.min(max, hold));
-        }
-
-        private long p95() {
-            if (count == 0) return 0;
-            System.arraycopy(window, 0, scratch, 0, count);
-            java.util.Arrays.sort(scratch, 0, count);
-            return scratch[Math.min(count - 1, count * 95 / 100)];
         }
     }
 }
