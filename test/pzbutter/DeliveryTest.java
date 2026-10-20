@@ -11,6 +11,56 @@ final class DeliveryTest {
         settingsNumClamped();
         settingsModeMasterOff();
         gameStaticLongMissing();
+        stampsRoundTrip();
+        stampsUnknownState();
+        presentLineFormat();
+        threadsLineFormat();
+    }
+
+    // the render thread sees the stamps of the state it acquired, not of the newest push
+    static void stampsRoundTrip() {
+        Object a = new Object(), b = new Object();
+        FrameClock.frameNo = 6; FrameClock.frameStartNs = 10_000_000L; FrameStamps.pendingInputAgeNs = 2_000_000L;
+        FrameStamps.onPush(a);
+        FrameClock.frameNo = 7; FrameClock.frameStartNs = 26_000_000L; FrameStamps.pendingInputAgeNs = 0;
+        FrameStamps.onPush(b);
+        FrameStamps.onAcquire(a);
+        assert FrameStamps.renderFrameNo == 7 && FrameStamps.renderFrameStartNs == 10_000_000L
+            && FrameStamps.renderInputAgeNs == 2_000_000L;
+        FrameStamps.onAcquire(b);
+        assert FrameStamps.renderFrameNo == 8 && FrameStamps.renderFrameStartNs == 26_000_000L;
+    }
+
+    static void stampsUnknownState() {
+        FrameStamps.onAcquire(new Object());
+        assert FrameStamps.renderFrameNo == -1 && FrameStamps.renderFrameStartNs == 0;
+    }
+
+    // two swaps: the second line has the interval since the first, the time since its frame started, the swap time
+    static void presentLineFormat() {
+        java.io.File dir = SelfTest.tmp("present/x").getParentFile();
+        PresentLog.openLogs(dir);
+        Object a = new Object();
+        FrameClock.frameNo = 6; FrameClock.frameStartNs = 10_000_000L; FrameStamps.pendingInputAgeNs = 1_250_000L;
+        FrameStamps.onPush(a);
+        FrameStamps.onAcquire(new Object());
+        PresentLog.present(1_000_000L, 3_500_000L, 1000L);
+        FrameStamps.onAcquire(a);
+        PresentLog.present(17_000_000L, 18_000_000L, 1017L);
+        PresentLog.flush();
+        String[] lines = readAll(new java.io.File(dir, "present.out")).split("\n");
+        assert lines.length == 2 : lines.length;
+        assert lines[0].equals("1000 -1 0.000 0.000 2.500 0.000") : lines[0];
+        assert lines[1].equals("1017 7 14.500 8.000 1.000 1.250") : lines[1];
+        assert PresentLog.lastSwapEndNs == 18_000_000L && PresentLog.lastSwapNs == 1_000_000L;
+    }
+
+    // one second: game thread 500 ms of CPU, render thread 250 ms
+    static void threadsLineFormat() {
+        java.io.File dir = SelfTest.tmp("present/x").getParentFile();
+        PresentLog.threadsLine(2000L, 500_000_000L, 250_000_000L, 1_000_000_000L);
+        PresentLog.flush();
+        assert readAll(new java.io.File(dir, "threads.out")).equals("2000 50.000 25.000\n");
     }
 
     static final String[] FLAGS = {"limiterSleep", "renderIdleWait", "frameQueue", "frameQueueGpu", "inputLatch",
