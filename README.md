@@ -58,9 +58,24 @@ Values can be `true`/`false`, `yes`/`no`, `on`/`off` or `1`/`0`. If the file can
 | `./bench.sh` | Microbenchmark of the frame clock's per-frame cost. |
 | `tools/merge-luabudget.sh` | Folds the LuaBudget mod's sources into `pzbutter.luabudget`. `--check` tries the merge in a temporary copy and builds it. |
 
-`SPEC.md` describes the optimizations PZ Butter re-implements, and `ANALYSIS-SPEC.md` the analysis work that follows them. The plan is in `docs/superpowers/plans/`.
+## Mods that inspire PZ Butter
 
-PZ Butter is a clean-room implementation, written only from those specs and the game's own bytecode. `SPEC.md` documents xD3I's PZ_Optimization (pzopt). PZ Butter contains none of its code.
+PZ Butter is inspired by the mods below and aims to cover what they do, in one mod. It is a clean-room project: it contains none of their code. It is written from behaviour descriptions of each mod and from the game's own bytecode.
+
+| Mod | Author | Workshop |
+|---|---|---|
+| PZ_Optimization (pzopt) | xD3I | [3805285544](https://steamcommunity.com/sharedfiles/filedetails/?id=3805285544) |
+| [B42] PZ Optimization Preloader | Antikristianos | [3818209799](https://steamcommunity.com/sharedfiles/filedetails/?id=3818209799) |
+| Undying Optimizer | Mister K | [3777958977](https://steamcommunity.com/sharedfiles/filedetails/?id=3777958977) |
+| Viewpoint - Smooth Frames | EhChad | [3816784011](https://steamcommunity.com/sharedfiles/filedetails/?id=3816784011) |
+| Viewpoint Turbo | not stated | [3812559973](https://steamcommunity.com/sharedfiles/filedetails/?id=3812559973) |
+| Viewpoint Fixes | zirmango | [3817842243](https://steamcommunity.com/sharedfiles/filedetails/?id=3817842243) |
+| Viewpoint PZO Shader Compatibility | not stated | [3815225881](https://steamcommunity.com/sharedfiles/filedetails/?id=3815225881) |
+| VRAM Steady | VRAM Steady authors | [3819844505](https://steamcommunity.com/sharedfiles/filedetails/?id=3819844505) |
+| Character Texture VRAM Leak Fix [ZombieBuddy] | syeon | [3821525282](https://steamcommunity.com/sharedfiles/filedetails/?id=3821525282) |
+| Lua Budget | — | not on the Workshop; PZ Butter takes it in whole |
+
+Version 0.1 covers none of them yet; the table lists what the project aims to cover. The Viewpoint add-ons above need the Viewpoint mod itself ([3809306528](https://steamcommunity.com/sharedfiles/filedetails/?id=3809306528)). PZ Butter covers what the add-ons do, not Viewpoint.
 
 ## License
 

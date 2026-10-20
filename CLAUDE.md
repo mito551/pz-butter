@@ -2,6 +2,7 @@
 ## Learned rules
 - Implement features only from SPEC.md and the game's bytecode; never read or copy pzopt source code (clean-room requirement).
 - Do not launch the game for smoke runs without asking first; only run it when the user confirms the PC is unattended.
+- In the README, list every mod this project covers or is inspired by, and use the words "inspire" and "cover", not "(re-)implement".
 <!-- end claude-reflect -->
 
 ## Low-probability variants (hot path)
