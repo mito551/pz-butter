@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Microbenchmark of the frame clock's per-frame path. Usage: ./bench.sh [repo dir whose src/ is measured]
+# Microbenchmarks. Usage: ./bench.sh [repo dir whose src/ is measured] [parker|stamps|learner]
+# With no unit: the frame clock's per-frame cost (FrameBench).
 set -euo pipefail
 JDK="${JDK:-/usr/lib/jvm/java-25-openjdk}"
 PZ_GAME="${PZ_GAME:-/home/mitori/Sonic/SteamLibrary/steamapps/common/ProjectZomboid/projectzomboid}"
@@ -10,5 +11,6 @@ O="$(mktemp -d)"
 trap 'rm -rf "$O"' EXIT
 
 mapfile -t SRC < <(find "$R/src" -name '*.java')
-"$JDK/bin/javac" --release 25 -cp "$CP" -d "$O" "${SRC[@]}" "$HERE/bench/pzbutter/FrameBench.java"
-"$JDK/bin/java" -cp "$O:$CP" pzbutter.FrameBench
+"$JDK/bin/javac" --release 25 -cp "$CP" -d "$O" "${SRC[@]}" "$HERE"/bench/pzbutter/*.java
+if [[ -n "${2:-}" ]]; then "$JDK/bin/java" -cp "$O:$CP" pzbutter.DeliveryBench "$2"
+else "$JDK/bin/java" -cp "$O:$CP" pzbutter.FrameBench; fi
