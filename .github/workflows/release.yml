@@ -15,6 +15,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       ZB_VERSION: v2.3.4
+      PZ_SERVER_BETA: unstable
+      PZ_SERVER_KEY: 42.21-unstable
     steps:
       - uses: actions/checkout@v4
 
@@ -23,15 +25,41 @@ jobs:
           distribution: temurin
           java-version: '25'
 
-      # Only ZombieBuddy's jar is needed to compile; the game's own jar can't be published and isn't used.
-      - name: Fetch ZombieBuddy
+      # The game's classes come from the free dedicated server (Steam app 380870, anonymous login), cached.
+      # Bump PZ_SERVER_KEY when the game updates. If the server lacks a class pz-butter uses, the build stops:
+      # then releases are built locally.
+      - name: Cache the dedicated server
+        id: server-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/pzserver
+          key: pzserver-${{ env.PZ_SERVER_KEY }}
+
+      - name: Download the dedicated server
+        if: steps.server-cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq lib32gcc-s1 > /dev/null
+          mkdir -p "$RUNNER_TEMP/steamcmd" && cd "$RUNNER_TEMP/steamcmd"
+          curl -fsSL https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz | tar xz
+          ./steamcmd.sh +force_install_dir "$HOME/pzserver" +login anonymous \
+            +app_update 380870 -beta "$PZ_SERVER_BETA" validate +quit || true
+          test -d "$HOME/pzserver/java" || { echo "::error::dedicated server download failed"; exit 1; }
+
+      - name: Fetch ZombieBuddy and collect the game jars
         run: |
           mkdir -p "$RUNNER_TEMP/pz"
           curl -fsSL -o "$RUNNER_TEMP/pz/ZombieBuddy.jar" \
             "https://github.com/zed-0xff/ZombieBuddy/releases/download/$ZB_VERSION/ZombieBuddy.jar"
+          J="$HOME/pzserver/java"
+          if [ -f "$J/projectzomboid.jar" ]; then cp "$J/projectzomboid.jar" "$RUNNER_TEMP/pz/"
+          else jar --create --file "$RUNNER_TEMP/pz/projectzomboid.jar" -C "$J" .; fi   # loose classes
+          echo "PZ_EXTRA_CP=$(find "$J" -name '*.jar' ! -name projectzomboid.jar | paste -sd:)" >> "$GITHUB_ENV"
 
       - name: Build and test
-        run: JDK="$JAVA_HOME" PZ_GAME="$RUNNER_TEMP/pz" ./build.sh
+        run: |
+          JDK="$JAVA_HOME" PZ_GAME="$RUNNER_TEMP/pz" ./build.sh || {
+            echo "::error::build failed: if javac reports missing game classes, the dedicated server lacks them; build releases locally"
+            exit 1; }
 
       - name: Publish release
         env:

@@ -5,7 +5,7 @@ JDK="${JDK:-/usr/lib/jvm/java-25-openjdk}"
 PZ_GAME="${PZ_GAME:-/home/mitori/Sonic/SteamLibrary/steamapps/common/ProjectZomboid/projectzomboid}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 B="$HERE/build"
-CP="$PZ_GAME/projectzomboid.jar:$PZ_GAME/ZombieBuddy.jar"
+CP="$PZ_GAME/projectzomboid.jar:$PZ_GAME/ZombieBuddy.jar${PZ_EXTRA_CP:+:$PZ_EXTRA_CP}"   # PZ_EXTRA_CP: more game jars (CI)
 
 rm -rf "$B/classes" "$B/test-classes" "$B/mod"
 mapfile -t SRC < <(find "$HERE/src" -name '*.java')

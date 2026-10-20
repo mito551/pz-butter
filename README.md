@@ -58,7 +58,7 @@ Values can be `true`/`false`, `yes`/`no`, `on`/`off` or `1`/`0`. If the file can
 | `./bench.sh` | Microbenchmark of the frame clock's per-frame cost. |
 | `tools/merge-luabudget.sh` | Folds the LuaBudget mod's sources into `pzbutter.luabudget`. `--check` tries the merge in a temporary copy and builds it. |
 
-**Releases.** Bump `modversion` in `mod/PZButter/42/mod.info`, then push a commit to `main` whose message contains `[build]`. GitHub Actions builds the mod, runs the self-tests, and publishes a release `v<modversion>` with `PZButter-<modversion>.zip`. Only the newest commit of a push is checked. If that version already has a release, the run fails.
+**Releases.** Bump `modversion` in `mod/PZButter/42/mod.info`, then push a commit to `main` whose message contains `[build]`. GitHub Actions downloads the free Project Zomboid dedicated server (cached) to compile against, builds the mod, runs the self-tests, and publishes a release `v<modversion>` with `PZButter-<modversion>.zip`. Only the newest commit of a push is checked. If that version already has a release, the run fails.
 
 ## Mods that inspire PZ Butter
 
