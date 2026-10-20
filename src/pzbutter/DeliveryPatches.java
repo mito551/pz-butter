@@ -1,11 +1,19 @@
 package pzbutter;
 
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodType;
 import java.lang.invoke.VarHandle;
 
 import me.zed_0xff.zombie_buddy.Patch;
+import org.lwjglx.opengl.Display;
 import zombie.GameWindow;
 import zombie.core.PerformanceSettings;
 import zombie.core.SpriteRenderer;
+import zombie.input.GameKeyboard;
+import zombie.input.KeyboardState;
+import zombie.input.KeyboardStateCache;
+import zombie.input.MouseState;
+import zombie.input.MouseStateCache;
 
 /**
  * One patch holder per hooked game method; each calls the frame-delivery features in a fixed order
@@ -38,6 +46,114 @@ public final class DeliveryPatches {
 
     /** GameWindow.frameStep exit (game thread), after FrameClock.exit. */
     public static void onFrameEnd() { PresentLog.tick(); }
+
+    // ---- input (InputLatch) ----
+
+    private static VarHandle kbCache, mouseCache, kbLock, mouseLock, keyDown, mouseButtons, wheel;
+    private static MethodHandle kbPolling, mousePolling;
+    private static boolean inputBound;
+    private static Object lastKeyboardRead;
+    private static final boolean[] keysBefore = new boolean[256], buttonsBefore = new boolean[16];
+
+    private static boolean bindInput() {
+        if (!inputBound) {
+            inputBound = true;
+            kbCache = Game.staticField(GameKeyboard.class, "s_keyboardStateCache", KeyboardStateCache.class);
+            mouseCache = Game.staticField(zombie.input.Mouse.class, "s_mouseStateCache", MouseStateCache.class);
+            kbLock = Game.field(KeyboardStateCache.class, "lock", Object.class);
+            mouseLock = Game.field(MouseStateCache.class, "lock", Object.class);
+            keyDown = Game.field(KeyboardState.class, "keyDownStates", boolean[].class);
+            mouseButtons = Game.field(MouseState.class, "buttonDownStates", boolean[].class);
+            wheel = Game.field(MouseState.class, "wheelDelta", int.class);
+            kbPolling = Game.method(KeyboardStateCache.class, "getStatePolling", MethodType.methodType(KeyboardState.class));
+            mousePolling = Game.method(MouseStateCache.class, "getStatePolling", MethodType.methodType(MouseState.class));
+        }
+        boolean ok = kbCache != null && mouseCache != null && kbLock != null && mouseLock != null && keyDown != null
+            && mouseButtons != null && wheel != null && kbPolling != null && mousePolling != null;
+        if (!ok) InputLatch.guard.on = false;
+        return ok;
+    }
+
+    /** frameStep entry, before FrameClock.enter (game thread): frameStartGate. */
+    public static void onFrameGate() {
+        if (!InputLatch.guard.on || !InputLatch.gate) return;
+        try {
+            long want = FrameClock.frameNo, prevStart = FrameClock.frameStartNs;
+            if (want <= 0 || prevStart == 0) return;
+            int fps = PerformanceSettings.getLockFPS();
+            long period = PerformanceSettings.instance.isFramerateUncapped() || fps <= 0
+                ? Math.min(Parker.MAX_NS, (long) (FrameClock.intervalMs * 1e6)) : 1_000_000_000L / fps;
+            long w;
+            while ((w = InputLatch.gateWaitNs(System.nanoTime(), PresentLog.lastPresentedFrameNo, want, prevStart, period)) > 0)
+                InputLatch.waitShown.park(w);
+        } catch (Throwable t) { InputLatch.guard.fail(t); }
+    }
+
+    /** frameStep entry, after FrameClock.enter (game thread): the input age of this frame. */
+    public static void onFrameStarted() {
+        if (!InputLatch.guard.on || !FrameStamps.guard.on) return;
+        try { FrameStamps.pendingInputAgeNs = InputLatch.ageAt(lastKeyboardRead, FrameClock.frameStartNs); }
+        catch (Throwable t) { InputLatch.guard.fail(t); }
+    }
+
+    /** GameKeyboard.update entry (game thread): keyboardFresh swaps first; remember which state update reads. */
+    public static void onKeyboardUpdate() {
+        if (!InputLatch.guard.on) return;
+        try {
+            if (!bindInput()) return;
+            KeyboardStateCache c = (KeyboardStateCache) kbCache.get();
+            if (InputLatch.fresh) c.swap();
+            lastKeyboardRead = c.getState();
+        } catch (Throwable t) { InputLatch.guard.fail(t); }
+    }
+
+    /** KeyboardStateCache.swap / MouseStateCache.swap entry (game thread): inputLatch's fresh poll, once a frame. */
+    public static void onInputSwap() {
+        if (!InputLatch.guard.on || !InputLatch.latch) return;
+        try {
+            if (!InputLatch.request(FrameClock.frameNo)) return;
+            SpriteRenderer.instance.notifyRenderStateQueue();   // wakes a render thread waiting for a frame
+            InputLatch.awaitServed();
+        } catch (Throwable t) { InputLatch.guard.fail(t); }
+    }
+
+    /** RenderThread.flushInvokeQueue entry (render thread, every loop pass and every wake while waiting). */
+    public static void onRenderFlush() {
+        if (!InputLatch.guard.on || !InputLatch.latch || !InputLatch.pending()) return;
+        try {
+            if (!bindInput()) return;
+            Display.processMessages();
+            KeyboardStateCache kc = (KeyboardStateCache) kbCache.get();
+            synchronized (kbLock.get(kc)) {
+                KeyboardState s = (KeyboardState) kbPolling.invoke(kc);
+                boolean[] a = (boolean[]) keyDown.get(s);
+                boolean again = InputLatch.shouldRepoll(s.wasPolled(), true) && a != null;
+                if (again) System.arraycopy(a, 0, keysBefore, 0, Math.min(a.length, keysBefore.length));
+                s.poll();
+                if (again) InputLatch.mergeDown((boolean[]) keyDown.get(s), keysBefore);
+            }
+            MouseStateCache mc = (MouseStateCache) mouseCache.get();
+            synchronized (mouseLock.get(mc)) {
+                MouseState s = (MouseState) mousePolling.invoke(mc);
+                boolean[] b = (boolean[]) mouseButtons.get(s);
+                boolean again = InputLatch.shouldRepoll(s.wasPolled(), true) && b != null;
+                int wheelBefore = (int) wheel.get(s);
+                if (again) System.arraycopy(b, 0, buttonsBefore, 0, Math.min(b.length, buttonsBefore.length));
+                s.poll();
+                if (again) {
+                    InputLatch.mergeDown((boolean[]) mouseButtons.get(s), buttonsBefore);
+                    wheel.set(s, InputLatch.mergeWheel(wheelBefore, (int) wheel.get(s)));
+                }
+            }
+        } catch (Throwable t) { InputLatch.guard.fail(t); }
+        finally { InputLatch.markServed(); }
+    }
+
+    /** KeyboardState.poll entry (render thread): when this state's input was read. */
+    public static void onKeyboardPolled(Object state) {
+        if (!InputLatch.guard.on) return;
+        try { InputLatch.notePoll(state, System.nanoTime()); } catch (Throwable t) { InputLatch.guard.fail(t); }
+    }
 
     /** MainThread.invokeOnMainThread / invokeQueryOnMainThread / queueInvokeOnMainThread entry (any thread). */
     public static void onMainQueue() { LimiterSleep.wake(); }
@@ -110,6 +226,36 @@ public final class DeliveryPatches {
     public static class Acquire {
         @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
         public static void exit(@Patch.Return Object state) { onAcquire(state); }
+    }
+
+    @Patch(className = "zombie.input.GameKeyboard", methodName = "update")
+    public static class KeyboardUpdate {
+        @Patch.OnEnter
+        public static void enter() { onKeyboardUpdate(); }
+    }
+
+    @Patch(className = "zombie.input.KeyboardStateCache", methodName = "swap")
+    public static class KeyboardSwap {
+        @Patch.OnEnter
+        public static void enter() { onInputSwap(); }
+    }
+
+    @Patch(className = "zombie.input.MouseStateCache", methodName = "swap")
+    public static class MouseSwap {
+        @Patch.OnEnter
+        public static void enter() { onInputSwap(); }
+    }
+
+    @Patch(className = "zombie.core.opengl.RenderThread", methodName = "flushInvokeQueue")
+    public static class RenderFlush {
+        @Patch.OnEnter
+        public static void enter() { onRenderFlush(); }
+    }
+
+    @Patch(className = "zombie.input.KeyboardState", methodName = "poll")
+    public static class KeyboardPolled {
+        @Patch.OnEnter
+        public static void enter(@Patch.This Object state) { onKeyboardPolled(state); }
     }
 
     // the game's own wake-up for a waiting render thread also ends renderIdleWait's park

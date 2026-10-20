@@ -23,7 +23,58 @@ final class DeliveryTest {
         limiterWakesOnQueue();
         idleWaitTimesOut();
         idleWaitWakes();
+        latchTapKept();
+        latchWheelSums();
+        latchNoRequestNoRepoll();
+        latchInputAge();
+        gateSwapDone();
+        gateBounded();
         adviceOnlyPublic();
+    }
+
+    // a key seen down by an earlier poll stays down after a re-poll that sees it up, until the swap
+    static void latchTapKept() {
+        boolean[] held = new boolean[256];
+        boolean[] now = new boolean[256];
+        now[30] = true;
+        InputLatch.mergeDown(held, now);
+        assert held[30];
+        InputLatch.mergeDown(held, new boolean[256]);
+        assert held[30];
+        InputLatch.mergeDown(held, null);   // a state without keys yet: no change, no throw
+        assert held[30];
+    }
+
+    static void latchWheelSums() {
+        assert InputLatch.mergeWheel(120, -240) == -120 && InputLatch.mergeWheel(0, 0) == 0;
+    }
+
+    // a re-poll happens only when one was asked for and the state was already polled since the swap
+    static void latchNoRequestNoRepoll() {
+        assert !InputLatch.shouldRepoll(true, false);
+        assert !InputLatch.shouldRepoll(false, true);   // the normal first poll does it
+        assert InputLatch.shouldRepoll(true, true);
+    }
+
+    // input age: frame start minus the time the state in use was polled; unknown state: 0
+    static void latchInputAge() {
+        Object a = new Object(), b = new Object();
+        InputLatch.notePoll(a, 1_000_000L);
+        InputLatch.notePoll(b, 9_000_000L);
+        assert InputLatch.ageAt(a, 6_500_000L) == 5_500_000L && InputLatch.ageAt(b, 11_000_000L) == 2_000_000L;
+        assert InputLatch.ageAt(new Object(), 11_000_000L) == 0;
+    }
+
+    // the previous frame (7) is already on screen: no wait
+    static void gateSwapDone() {
+        assert InputLatch.gateWaitNs(20_000_000L, 7, 7, 10_000_000L, P120) == 0;
+        assert InputLatch.gateWaitNs(20_000_000L, 8, 7, 10_000_000L, P120) == 0;
+    }
+
+    // frame 7 not shown yet: wait, but never past one period after frame 7 started
+    static void gateBounded() {
+        assert InputLatch.gateWaitNs(12_000_000L, 6, 7, 10_000_000L, P120) == 10_000_000L + P120 - 12_000_000L;
+        assert InputLatch.gateWaitNs(30_000_000L, 6, 7, 10_000_000L, P120) == 0;
     }
 
     // nobody wakes it: back within the timeout (plus scheduling slack)

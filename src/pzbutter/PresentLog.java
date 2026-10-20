@@ -14,6 +14,7 @@ final class PresentLog {
     static final Guard guard = new Guard("present log");
     static volatile Thread renderThread;
     static volatile long lastSwapEndNs, lastSwapNs;   // render thread writes, others read
+    static volatile long lastPresentedFrameNo = -1;    // the game frame the last swap showed
 
     static LogSink present, threads;
     private static long swapStartNs, lastTickNs, lastGameCpu, lastRenderCpu;
@@ -27,6 +28,7 @@ final class PresentLog {
 
     static void init() {
         if (Settings.enabled && Settings.frameLog) openLogs(new File(System.getProperty("user.home"), "Zomboid/pzbutter"));
+        if (Settings.flag("frameStartGate")) { guard.on = true; FrameStamps.guard.on = true; }   // swap timing without the log
     }
 
     static void openLogs(File dir) {
@@ -65,6 +67,8 @@ final class PresentLog {
         long prev = lastSwapEndNs;
         lastSwapNs = endNs - startNs;
         lastSwapEndNs = endNs;
+        if (FrameStamps.renderFrameNo >= 0) lastPresentedFrameNo = FrameStamps.renderFrameNo;
+        InputLatch.waitShown.wake();
         LogSink s = present;
         if (s == null || !guard.on) return;
         try {
