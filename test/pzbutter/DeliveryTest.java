@@ -29,7 +29,67 @@ final class DeliveryTest {
         latchInputAge();
         gateSwapDone();
         gateBounded();
+        holdFixedHighCap();
+        holdLowCapUsesLearner();
+        holdLateFrameNoWait();
+        holdLearnBounded();
+        holdDecays();
+        holdCapChange();
+        holdUncappedNone();
         adviceOnlyPublic();
+    }
+
+    static final SwapHold.Config HOLD = new SwapHold.Config(260, 260, 100, 60, 1000, 25, 20);
+    static final long P60 = 1_000_000_000L / 60, P240 = 1_000_000_000L / 240;
+
+    // frameQueue at a 240 cap: the fixed 2.6-frame hold, whatever was learned
+    static void holdFixedHighCap() {
+        long h = SwapHold.holdNs(P240, 240, true, 1_000_000L, HOLD);
+        assert Math.abs(h - 10_833_333L) < 1_000 : h;
+    }
+
+    // below 100 fps the learned hold is used, within 60 %..260 % of a frame
+    static void holdLowCapUsesLearner() {
+        assert SwapHold.holdNs(P60, 60, true, 12_000_000L, HOLD) == 12_000_000L;
+        assert SwapHold.holdNs(P60, 60, true, 1_000_000L, HOLD) == P60 * 60 / 100;
+        assert SwapHold.holdNs(P240, 240, false, 3_000_000L, HOLD) == 3_000_000L;   // presentPacing alone: learner
+    }
+
+    static void holdLateFrameNoWait() {
+        assert SwapHold.waitNs(50_000_000L, 10_000_000L, 20_000_000L) == 0;
+        assert SwapHold.waitNs(25_000_000L, 10_000_000L, 20_000_000L) == 5_000_000L;
+    }
+
+    // one 4 s hitch does not push the hold past 260 % of a frame
+    static void holdLearnBounded() {
+        SwapHold.Learner l = new SwapHold.Learner(HOLD);
+        l.observe(4_000_000_000L, 1_000_000_000L, P60);
+        assert l.holdNs() <= P60 * 260 / 100 : l.holdNs();
+    }
+
+    // a late frame raises the hold at once; it falls only after 1 s of calm, by 25 % of a frame a second,
+    // and not below 60 %
+    static void holdDecays() {
+        SwapHold.Learner l = new SwapHold.Learner(HOLD);
+        long t = 1_000_000_000L;
+        l.observe(30_000_000L, t, P60);
+        long raised = l.holdNs();
+        assert Math.abs(raised - (30_000_000L + P60 * 20 / 100)) < 1_000 : raised;
+        for (long dt = P60; dt <= 3_000_000_000L; dt += P60) l.observe(5_000_000L, t + dt, P60);
+        long at3 = l.holdNs();
+        assert at3 > raised - 2 * P60 * 25 / 100 - 1_000_000L && at3 < raised - 2 * P60 * 25 / 100 + 1_000_000L : at3;
+        for (long dt = 3_000_000_000L; dt <= 10_000_000_000L; dt += P60) l.observe(5_000_000L, t + dt, P60);
+        assert Math.abs(l.holdNs() - P60 * 60 / 100) < 1_000 : l.holdNs();
+    }
+
+    // the cap drops from 240 to 60: the next hold uses the 60 cap's frame
+    static void holdCapChange() {
+        long hi = SwapHold.holdNs(P240, 240, true, 0, HOLD), lo = SwapHold.holdNs(P60, 60, true, 0, HOLD);
+        assert Math.abs(hi - P240 * 26 / 10) < 1_000 && lo == P60 * 60 / 100;
+    }
+
+    static void holdUncappedNone() {
+        assert SwapHold.holdNs(0, 0, true, 12_000_000L, HOLD) == 0;
     }
 
     // a key seen down by an earlier poll stays down after a re-poll that sees it up, until the swap

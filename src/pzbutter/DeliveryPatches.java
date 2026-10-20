@@ -179,10 +179,24 @@ public final class DeliveryPatches {
     /** SpriteRenderer / RenderThread notifyRenderStateQueue exit (any thread). */
     public static void onRenderNotify() { RenderIdle.wake(); }
 
-    /** Display.swapBuffers entry (render thread). */
+    /** Display.swapBuffers entry (render thread): the hold, then the swap timing. */
     public static void onSwapStart() {
+        if (SwapHold.guard.on) holdSwap();
         if (!PresentLog.guard.on) return;
         try { PresentLog.swapStart(); } catch (Throwable t) { PresentLog.guard.fail(t); }
+    }
+
+    private static void holdSwap() {
+        try {
+            if (FrameStamps.renderFrameNo < 0 || Thread.currentThread() != PresentLog.renderThread && PresentLog.renderThread != null) return;
+            int fps = PerformanceSettings.getLockFPS();
+            int cap = PerformanceSettings.instance.isFramerateUncapped() ? 0 : fps;
+            if (cap <= 0) return;
+            long period = 1_000_000_000L / cap, start = FrameStamps.renderFrameStartNs, now = System.nanoTime();
+            SwapHold.learner.observe(now - start, now, period);
+            long w = SwapHold.waitNs(now, start, SwapHold.holdNs(period, cap, SwapHold.queue, SwapHold.learner.holdNs(), SwapHold.config));
+            if (w > 0) SwapHold.waitPrecise(w);
+        } catch (Throwable t) { SwapHold.guard.fail(t); }
     }
 
     /** Display.swapBuffers exit (render thread). */
