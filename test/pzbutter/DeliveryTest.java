@@ -44,7 +44,34 @@ final class DeliveryTest {
         vsyncInterval();
         gpuQueueRing();
         monitorAt();
+        reflexEwma();
+        reflexOncePerFrame();
+        reflexBoostParse();
         adviceOnlyPublic();
+    }
+
+    // the smoothed swap wait converges to a steady wait and lets a spike fade
+    static void reflexEwma() {
+        long v = 0;
+        for (int i = 0; i < 100; i++) v = Reflex.ewma(v, 2_000_000L);
+        assert Math.abs(v - 2_000_000L) < 1_000 : v;
+        v = Reflex.ewma(v, 50_000_000L);
+        assert v < 9_000_000L;
+        for (int i = 0; i < 100; i++) v = Reflex.ewma(v, 2_000_000L);
+        assert Math.abs(v - 2_000_000L) < 1_000 : v;
+    }
+
+    // the extra delay is taken once per frame, when the frame is due, not on every limiter pass
+    static void reflexOncePerFrame() {
+        assert Reflex.extraFor(41, 40, 3_000_000L, 0) == 3_000_000L;
+        assert Reflex.extraFor(41, 41, 3_000_000L, 0) == 0;          // already taken for frame 41
+        assert Reflex.extraFor(42, 41, 3_000_000L, 500_000L) == 0;   // not due yet
+        assert Reflex.extraFor(42, 41, 0, 0) == 0;
+    }
+
+    static void reflexBoostParse() {
+        assert Reflex.parseMode("0\n") == 0 && Reflex.parseMode("  2 ") == 2;
+        assert Reflex.parseMode("") == null && Reflex.parseMode("ERROR: Unable to load info") == null && Reflex.parseMode(null) == null;
     }
 
     static void capFormula() {

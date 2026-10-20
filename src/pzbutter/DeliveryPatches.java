@@ -31,7 +31,7 @@ public final class DeliveryPatches {
 
     /** GameWindow.mainThreadStep entry (game thread, between frames too). */
     public static void onMainThreadStep() {
-        if (!LimiterSleep.guard.on) return;
+        if (!LimiterSleep.guard.on && !Reflex.sleepGuard.on) return;
         try {
             if (!bound) {   // GameWindow is loaded by now; binding at mod load would load it early
                 currentTime = Game.staticLong(GameWindow.class, "currentTime");
@@ -41,9 +41,12 @@ public final class DeliveryPatches {
             if (currentTime == null || accumulator == null) { LimiterSleep.guard.on = false; return; }
             int fps = PerformanceSettings.getLockFPS();
             if (!LimiterSleep.active(PerformanceSettings.instance.isFramerateUncapped(), fps)) return;
+            long period = 1_000_000_000L / fps;
             long s = LimiterSleep.sleepNanos(System.nanoTime(), (long) currentTime.get(), (long) accumulator.get(),
-                1_000_000_000L / fps, LimiterSleep.SPIN_NS);
-            if (s > 0) LimiterSleep.park(s + LimiterSleep.extraDelayNs);
+                period, LimiterSleep.SPIN_NS);
+            if (LimiterSleep.guard.on && s > 0) { LimiterSleep.park(s); return; }
+            long extra = Reflex.sleepGuard.on ? Reflex.take(s) : 0;
+            if (extra > 0) LimiterSleep.park(Math.min(extra, period));
         } catch (Throwable t) { LimiterSleep.guard.fail(t); }
     }
 
@@ -161,6 +164,11 @@ public final class DeliveryPatches {
     /** MainThread.invokeOnMainThread / invokeQueryOnMainThread / queueInvokeOnMainThread entry (any thread). */
     public static void onMainQueue() { LimiterSleep.wake(); }
 
+    /** IngameState.enter exit / exit entry (game thread): reflexBoost. */
+    public static void onWorldEnter() { Reflex.enterWorld(); }
+
+    public static void onWorldExit() { Reflex.exitWorld(); }
+
     /** SpriteRenderer.pushFrameDown entry (game thread). */
     public static void onPush() {
         if (!FrameStamps.guard.on) return;
@@ -222,6 +230,7 @@ public final class DeliveryPatches {
     public static void onSwapEnd() {
         if (Thread.currentThread() != PresentLog.renderThread) return;
         if (PresentLog.guard.on) try { PresentLog.swapEnd(); } catch (Throwable t) { PresentLog.guard.fail(t); }
+        if (Reflex.sleepGuard.on) Reflex.onSwap(PresentLog.lastSwapNs);
         if (GpuQueue.guard.on) try { GpuQueue.afterSwap(); } catch (Throwable t) { GpuQueue.guard.fail(t); }
         if (Caps.guard.on) updateRefresh();
     }
@@ -388,6 +397,18 @@ public final class DeliveryPatches {
     public static class ContextWake {
         @Patch.OnEnter
         public static void enter() { onRenderNotify(); }
+    }
+
+    @Patch(className = "zombie.gameStates.IngameState", methodName = "enter")
+    public static class WorldEnter {
+        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
+        public static void exit() { onWorldEnter(); }
+    }
+
+    @Patch(className = "zombie.gameStates.IngameState", methodName = "exit")
+    public static class WorldExit {
+        @Patch.OnEnter
+        public static void enter() { onWorldExit(); }
     }
 
     @Patch(className = "zombie.core.PerformanceSettings", methodName = "getLockFPS")

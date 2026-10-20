@@ -9,7 +9,6 @@ final class LimiterSleep {
     static final Guard guard = new Guard("limiterSleep");
     static final long SPIN_NS = 200_000L;
     static final long MAX_NS = Parker.MAX_NS;
-    static volatile long extraDelayNs;   // reflexSleep adds the measured queue wait here
     private static final Parker parker = new Parker();
 
     private LimiterSleep() {}

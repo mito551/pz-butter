@@ -12,6 +12,7 @@ public class Main {
         GpuTimer.init();
         Caps.init();
         GpuQueue.init();
+        Reflex.init();
         System.out.println("[PZButter] " + Settings.VERSION + ", enabled=" + Settings.enabled);
         if (Settings.enabled) initIfPresent("pzbutter.luabudget.Budget");   // after tools/merge-luabudget.sh
     }
