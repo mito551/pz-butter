@@ -38,7 +38,51 @@ final class DeliveryTest {
         holdUncappedNone();
         gpuRingIndex();
         gpuUnavailableNegative();
+        capFormula();
+        capOnlyWhenAbove();
+        capReflexWithVsync();
+        vsyncInterval();
+        gpuQueueRing();
+        monitorAt();
         adviceOnlyPublic();
+    }
+
+    static void capFormula() {
+        assert Caps.vrrCapFps(240) == 224 && Caps.vrrCapFps(165) == 157 && Caps.vrrCapFps(144) == 138;
+    }
+
+    // vrrCap only lowers a cap above the panel (or uncapped); a 120 cap at 240 Hz stays
+    static void capOnlyWhenAbove() {
+        assert Caps.capFor(120, false, 240, true, false, false, 0) == 0;
+        assert Caps.capFor(300, false, 240, true, false, false, 0) == 224;
+        assert Caps.capFor(60, true, 240, true, false, false, 0) == 224;
+        assert Caps.capFor(300, false, 240, false, false, false, 0) == 0;   // VRR off or unknown
+        assert Caps.capFor(300, false, 0, true, false, false, 0) == 0;      // refresh unknown
+    }
+
+    // reflexCapFps: only with reflexSleep and vsync; 0 is the formula, a number is that cap
+    static void capReflexWithVsync() {
+        assert Caps.capFor(144, false, 144, false, true, true, 0) == 138;
+        assert Caps.capFor(144, false, 144, false, true, true, 100) == 100;
+        assert Caps.capFor(144, false, 144, false, false, true, 0) == 0;
+        assert Caps.capFor(144, false, 144, false, true, false, 0) == 0;
+        assert Caps.capFor(90, false, 144, false, true, true, 0) == 0;      // already under
+    }
+
+    static void vsyncInterval() {
+        assert Caps.swapInterval(true, true, true) == -1 && Caps.swapInterval(true, true, false) == 1;
+        assert Caps.swapInterval(true, false, true) == 1 && Caps.swapInterval(false, true, true) == 0;
+    }
+
+    // gpuMaxFrames = 2: before swap k, wait for the fence of swap k - 2; fences live in k % 3
+    static void gpuQueueRing() {
+        assert GpuQueue.waitIndex(5, 2) == 3 && GpuQueue.waitIndex(1, 2) == -1 && GpuQueue.slot(5, 2) == 2;
+    }
+
+    // which monitor holds the window's centre (x, y, w, h per monitor); none: -1
+    static void monitorAt() {
+        int[][] m = {{0, 0, 2560, 1440}, {2560, 0, 1920, 1080}};
+        assert Caps.monitorAt(m, 3000, 500) == 1 && Caps.monitorAt(m, 100, 100) == 0 && Caps.monitorAt(m, 9000, 0) == -1;
     }
 
     // frame n writes slot n % 4 and reads frame n - 2 (no stall waiting on the GPU)

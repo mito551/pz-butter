@@ -5,6 +5,9 @@ import java.lang.invoke.MethodType;
 import java.lang.invoke.VarHandle;
 
 import me.zed_0xff.zombie_buddy.Patch;
+import org.lwjgl.PointerBuffer;
+import org.lwjgl.glfw.GLFW;
+import org.lwjgl.glfw.GLFWVidMode;
 import org.lwjglx.opengl.Display;
 import zombie.GameWindow;
 import zombie.core.PerformanceSettings;
@@ -190,8 +193,12 @@ public final class DeliveryPatches {
     /** SpriteRenderer / RenderThread notifyRenderStateQueue exit (any thread). */
     public static void onRenderNotify() { RenderIdle.wake(); }
 
-    /** Display.swapBuffers entry (render thread): the hold, then the swap timing. */
+    /** Display.swapBuffers entry (render thread): GPU queue limit, the hold, then the swap timing. */
     public static void onSwapStart() {
+        Thread me = Thread.currentThread();
+        if (PresentLog.renderThread == null) PresentLog.renderThread = me;
+        else if (PresentLog.renderThread != me) return;
+        if (GpuQueue.guard.on) try { GpuQueue.beforeSwap(); } catch (Throwable t) { GpuQueue.guard.fail(t); }
         if (SwapHold.guard.on) holdSwap();
         if (!PresentLog.guard.on) return;
         try { PresentLog.swapStart(); } catch (Throwable t) { PresentLog.guard.fail(t); }
@@ -213,8 +220,77 @@ public final class DeliveryPatches {
 
     /** Display.swapBuffers exit (render thread). */
     public static void onSwapEnd() {
-        if (!PresentLog.guard.on) return;
-        try { PresentLog.swapEnd(); } catch (Throwable t) { PresentLog.guard.fail(t); }
+        if (Thread.currentThread() != PresentLog.renderThread) return;
+        if (PresentLog.guard.on) try { PresentLog.swapEnd(); } catch (Throwable t) { PresentLog.guard.fail(t); }
+        if (GpuQueue.guard.on) try { GpuQueue.afterSwap(); } catch (Throwable t) { GpuQueue.guard.fail(t); }
+        if (Caps.guard.on) updateRefresh();
+    }
+
+    // ---- caps (Caps) ----
+
+    private static VarHandle lockFpsField, uncappedField, vsyncField;
+    private static boolean capsBound;
+    private static long lastRefreshNs;
+
+    private static int capNow() {
+        if (!capsBound) {
+            capsBound = true;
+            lockFpsField = Game.staticField(PerformanceSettings.class, "lockFps", int.class);
+            uncappedField = Game.staticField(PerformanceSettings.class, "uncappedFps", boolean.class);
+            vsyncField = Game.staticField(Display.class, "vsyncEnabled", boolean.class);
+        }
+        if (lockFpsField == null || uncappedField == null || vsyncField == null) { Caps.guard.on = false; return 0; }
+        return Caps.capFor((int) lockFpsField.get(), (boolean) uncappedField.get(), Caps.refreshHz,
+            Caps.vrrCap && Boolean.TRUE.equals(Vrr.active()), (boolean) vsyncField.get(), Caps.reflex, Caps.reflexCapFps);
+    }
+
+    /** PerformanceSettings.getLockFPS exit: the cap the game runs at. */
+    public static int capLockFps(int stock) {
+        if (!Caps.guard.on) return stock;
+        try { int c = capNow(); return c > 0 ? c : stock; }
+        catch (Throwable t) { Caps.guard.fail(t); return stock; }
+    }
+
+    /** PerformanceSettings.isFramerateUncapped exit: a cap applied by Caps means not uncapped. */
+    public static boolean capUncapped(boolean stock) {
+        if (!Caps.guard.on || !stock) return stock;
+        try { return capNow() <= 0; }
+        catch (Throwable t) { Caps.guard.fail(t); return stock; }
+    }
+
+    /** Display.setVSyncEnabled exit (the thread with the GL context): vsyncAdaptive. */
+    public static void onVsyncSet(boolean enabled) {
+        if (!Caps.guard.on || !Caps.adaptive) return;
+        try {
+            boolean tear = GLFW.glfwExtensionSupported("GLX_EXT_swap_control_tear") || GLFW.glfwExtensionSupported("WGL_EXT_swap_control_tear");
+            if (enabled && !tear) System.out.println("[PZButter] vsyncAdaptive: no swap_control_tear, swap interval stays 1");
+            if (Caps.swapInterval(enabled, true, tear) == -1) GLFW.glfwSwapInterval(-1);
+        } catch (Throwable t) { Caps.guard.fail(t); }
+    }
+
+    /** Render thread, at most once a second: the refresh rate and rectangle of the window's monitor. */
+    private static void updateRefresh() {
+        long now = System.nanoTime();
+        if (lastRefreshNs != 0 && now - lastRefreshNs < 1_000_000_000L) return;
+        lastRefreshNs = now;
+        try {
+            PointerBuffer mons = GLFW.glfwGetMonitors();
+            if (mons == null) return;
+            int n = mons.remaining();
+            long[] ids = new long[n];
+            int[][] rects = new int[n][];
+            int[] px = new int[1], py = new int[1];
+            for (int i = 0; i < n; i++) {
+                ids[i] = mons.get(mons.position() + i);
+                GLFW.glfwGetMonitorPos(ids[i], px, py);
+                GLFWVidMode v = GLFW.glfwGetVideoMode(ids[i]);
+                rects[i] = v == null ? new int[4] : new int[] {px[0], py[0], v.width(), v.height()};
+            }
+            int i = Caps.monitorAt(rects, Display.getX() + Display.getWidth() / 2, Display.getY() + Display.getHeight() / 2);
+            GLFWVidMode v = GLFW.glfwGetVideoMode(i >= 0 ? ids[i] : GLFW.glfwGetPrimaryMonitor());
+            if (v != null) Caps.refreshHz = v.refreshRate();
+            Caps.monitorRect = i >= 0 ? rects[i] : null;
+        } catch (Throwable t) { Caps.guard.fail(t); }
     }
 
     @Patch(className = "zombie.GameWindow", methodName = "mainThreadStep")
@@ -312,6 +388,24 @@ public final class DeliveryPatches {
     public static class ContextWake {
         @Patch.OnEnter
         public static void enter() { onRenderNotify(); }
+    }
+
+    @Patch(className = "zombie.core.PerformanceSettings", methodName = "getLockFPS")
+    public static class LockFps {
+        @Patch.OnExit
+        public static void exit(@Patch.Return(readOnly = false) int ret) { ret = capLockFps(ret); }
+    }
+
+    @Patch(className = "zombie.core.PerformanceSettings", methodName = "isFramerateUncapped")
+    public static class Uncapped {
+        @Patch.OnExit
+        public static void exit(@Patch.Return(readOnly = false) boolean ret) { ret = capUncapped(ret); }
+    }
+
+    @Patch(className = "org.lwjglx.opengl.Display", methodName = "setVSyncEnabled")
+    public static class Vsync {
+        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
+        public static void exit(@Patch.Argument(0) boolean enabled) { onVsyncSet(enabled); }
     }
 
     @Patch(className = "org.lwjglx.opengl.Display", methodName = "swapBuffers")
