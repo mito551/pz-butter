@@ -7,7 +7,11 @@ import java.lang.invoke.VarHandle;
 import me.zed_0xff.zombie_buddy.Patch;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.glfw.GLFW;
+import org.lwjgl.glfw.GLFWNativeGLX;
+import org.lwjgl.glfw.GLFWNativeX11;
 import org.lwjgl.glfw.GLFWVidMode;
+import org.lwjgl.opengl.GL;
+import org.lwjgl.opengl.GLXNVDelayBeforeSwap;
 import org.lwjglx.opengl.Display;
 import zombie.GameWindow;
 import zombie.core.Core;
@@ -209,6 +213,7 @@ public final class DeliveryPatches {
         else if (PresentLog.renderThread != me) return;
         if (GpuQueue.guard.on) try { GpuQueue.beforeSwap(); } catch (Throwable t) { GpuQueue.guard.fail(t); }
         if (SwapHold.guard.on) holdSwap();
+        if (VblankLock.guard.on) vblankWait();
         if (!PresentLog.guard.on) return;
         try { PresentLog.swapStart(); } catch (Throwable t) { PresentLog.guard.fail(t); }
     }
@@ -232,8 +237,33 @@ public final class DeliveryPatches {
         if (Thread.currentThread() != PresentLog.renderThread) return;
         if (PresentLog.guard.on) try { PresentLog.swapEnd(); } catch (Throwable t) { PresentLog.guard.fail(t); }
         if (Reflex.sleepGuard.on) Reflex.onSwap(PresentLog.lastSwapNs);
+        if (VblankLock.guard.on) VblankLock.smoothedSwapNs = Reflex.ewma(VblankLock.smoothedSwapNs, PresentLog.lastSwapNs);
         if (GpuQueue.guard.on) try { GpuQueue.afterSwap(); } catch (Throwable t) { GpuQueue.guard.fail(t); }
         if (Caps.guard.on || Vrr.guard.on) updateRefresh();
+    }
+
+    // ---- vblankLock ----
+
+    private static long glxDisplay, glxDrawable;
+    private static boolean vblankChecked;
+
+    private static void vblankWait() {
+        try {
+            if (!vblankChecked) {
+                vblankChecked = true;
+                int platform = GLFW.glfwGetPlatform();
+                long dpy = platform == GLFW.GLFW_PLATFORM_X11 ? GLFWNativeX11.glfwGetX11Display() : 0;
+                boolean ext = dpy != 0 && GL.createCapabilitiesGLX(dpy).GLX_NV_delay_before_swap;
+                if (!VblankLock.available(ext, platform, GLFW.GLFW_PLATFORM_X11)) {
+                    VblankLock.guard.on = false;
+                    System.out.println("[PZButter] vblankLock off: needs GLFW on X11 and GLX_NV_delay_before_swap");
+                    return;
+                }
+                glxDisplay = dpy;
+                glxDrawable = GLFWNativeGLX.glfwGetGLXWindow(Display.getWindow());
+            }
+            if (vsyncOn()) GLXNVDelayBeforeSwap.glXDelayBeforeSwapNV(glxDisplay, glxDrawable, VblankLock.seconds(VblankLock.smoothedSwapNs));
+        } catch (Throwable t) { VblankLock.guard.fail(t); }
     }
 
     // ---- caps (Caps) ----
@@ -242,13 +272,21 @@ public final class DeliveryPatches {
     private static boolean capsBound;
     private static long lastRefreshNs;
 
+    private static void bindCaps() {
+        if (capsBound) return;
+        capsBound = true;
+        lockFpsField = Game.staticField(PerformanceSettings.class, "lockFps", int.class);
+        uncappedField = Game.staticField(PerformanceSettings.class, "uncappedFps", boolean.class);
+        vsyncField = Game.staticField(Display.class, "vsyncEnabled", boolean.class);
+    }
+
+    private static boolean vsyncOn() {
+        bindCaps();
+        return vsyncField != null && (boolean) vsyncField.get();
+    }
+
     private static int capNow() {
-        if (!capsBound) {
-            capsBound = true;
-            lockFpsField = Game.staticField(PerformanceSettings.class, "lockFps", int.class);
-            uncappedField = Game.staticField(PerformanceSettings.class, "uncappedFps", boolean.class);
-            vsyncField = Game.staticField(Display.class, "vsyncEnabled", boolean.class);
-        }
+        bindCaps();
         if (lockFpsField == null || uncappedField == null || vsyncField == null) { Caps.guard.on = false; return 0; }
         return Caps.capFor((int) lockFpsField.get(), (boolean) uncappedField.get(), Caps.refreshHz,
             Caps.vrrCap && Boolean.TRUE.equals(Vrr.active()), (boolean) vsyncField.get(), Caps.reflex, Caps.reflexCapFps);

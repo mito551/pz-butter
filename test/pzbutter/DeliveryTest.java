@@ -51,7 +51,23 @@ final class DeliveryTest {
         vrrProbeNoDrm();
         vrrMode();
         borderlessDecision();
+        probeUnavailableOff();
+        vblankSecondsMargin();
         adviceOnlyPublic();
+    }
+
+    static final int X11 = 0x00060004, WAYLAND = 0x00060003;   // GLFW_PLATFORM_* values
+
+    // vblankLock needs GLFW on X11 and the extension; anything else leaves it off
+    static void probeUnavailableOff() {
+        assert VblankLock.available(true, X11, X11);
+        assert !VblankLock.available(false, X11, X11) && !VblankLock.available(true, WAYLAND, X11);
+    }
+
+    // the wait ends the smoothed swap time plus 0.5 ms before vblank
+    static void vblankSecondsMargin() {
+        assert Math.abs(VblankLock.seconds(2_000_000L) - 0.0025f) < 1e-7f;
+        assert Math.abs(VblankLock.seconds(0) - 0.0005f) < 1e-7f;
     }
 
     // outputs: {w, h, refresh, vrr_capable, VRR_ENABLED}; the window's monitor is matched by mode size and refresh
