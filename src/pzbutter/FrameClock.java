@@ -1,68 +1,153 @@
 package pzbutter;
 
-import java.io.BufferedWriter;
+import java.io.Closeable;
 import java.io.File;
-import java.io.FileWriter;
+import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadMXBean;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 
 /**
- * Timing of each GameWindow.frameStep, and the optional frame log. frameStep runs once per frame; the frame
- * limiter's wait is outside it, so the interval (start to start) is the frame time and the step is the work.
- * Touched from the main thread only; enter/exit return at once on any other thread.
+ * Frame clock. Log lines are formatted digit by digit straight into a byte[] (no String, no Formatter),
+ * and the file is a FileChannel written from that array. The flush deadline rides on the epoch_ms
+ * already read for the line, so the hot path takes no extra clock reading.
  */
 public final class FrameClock {
     public static volatile boolean on;
     public static volatile Thread mainThread;
     public static long frameNo;
-    public static double intervalMs, stepMs, cpuMs;   // last finished frame; interval 0 for the first
+    public static double intervalMs, stepMs, cpuMs;
 
     static long logLimit = 50L << 20;
-    static BufferedWriter log;
-    private static File logFile;
-    private static long logBytes, lastFlushMs;
-    private static final StringBuilder line = new StringBuilder(64);
+    static Sink log;   // nullable; close() declares IOException
 
-    private static ThreadMXBean cpuBean;
-    private static long startWall, startCpu, prevStart, pendingInterval;
+    private static final ThreadMXBean MX = mx();
+    private static final boolean CPU = MX != null && MX.isCurrentThreadCpuTimeSupported() && MX.isThreadCpuTimeEnabled();
+
+    private static long startNs, startCpu, prevStartNs;
+    private static boolean armed, havePrev;
     private static int failures;
 
     private FrameClock() {}
 
-    static void init() {
-        try {
-            ThreadMXBean b = ManagementFactory.getThreadMXBean();
-            if (b.isCurrentThreadCpuTimeSupported()) cpuBean = b;
-        } catch (Throwable t) { cpuBean = null; }
-        on = Settings.enabled;
-        if (on && Settings.frameLog) openLog(new File(System.getProperty("user.home"), "Zomboid/pzbutter/frames.out"));
+    private static ThreadMXBean mx() {
+        try { return ManagementFactory.getThreadMXBean(); } catch (Throwable t) { return null; }
     }
 
-    private static long cpuNow() {
-        try { return cpuBean != null ? cpuBean.getCurrentThreadCpuTime() : System.nanoTime(); }
-        catch (Throwable t) { return System.nanoTime(); }
+    /** Buffered channel sink. Throws once closed so a dead log is counted as a failure. */
+    static final class Sink implements Closeable {
+        final File file;
+        FileChannel ch;
+        final byte[] b = new byte[1 << 16];
+        final ByteBuffer bb = ByteBuffer.wrap(b);
+        int n;
+        long written, lastFlushMs;
+
+        Sink(File f) throws IOException {
+            file = f;
+            ch = FileChannel.open(f.toPath(), StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING);
+        }
+
+        void flushBuf() throws IOException {
+            if (ch == null) throw new IOException("closed");
+            if (n == 0) return;
+            bb.limit(n).position(0);
+            while (bb.hasRemaining()) ch.write(bb);
+            written += n;
+            n = 0;
+        }
+
+        void rotate() throws IOException {
+            flushBuf();
+            ch.close();
+            ch = null;
+            Files.move(file.toPath(), new File(file.getPath() + ".1").toPath(), StandardCopyOption.REPLACE_EXISTING);
+            ch = FileChannel.open(file.toPath(), StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING);
+            written = 0;
+        }
+
+        void line(long epochMs, long frame, long iNs, long sNs, long cNs) throws IOException {
+            if (ch == null) throw new IOException("closed");
+            if (n > b.length - 128) flushBuf();
+            byte[] a = b;
+            int p = n;
+            p = num(a, p, epochMs); a[p++] = ' ';
+            p = num(a, p, frame); a[p++] = ' ';
+            p = ms(a, p, iNs); a[p++] = ' ';
+            p = ms(a, p, sNs); a[p++] = ' ';
+            p = ms(a, p, cNs); a[p++] = '\n';
+            n = p;
+            if (written + p > logLimit) rotate();
+            else if (epochMs - lastFlushMs >= 1000 || epochMs < lastFlushMs) { lastFlushMs = epochMs; flushBuf(); }
+        }
+
+        @Override public void close() throws IOException {
+            FileChannel c = ch;
+            if (c == null) return;
+            try { flushBuf(); } finally { ch = null; c.close(); }
+        }
+    }
+
+    // non-negative decimal, returns new position
+    private static int num(byte[] a, int p, long v) {
+        if (v < 0) { a[p++] = '-'; v = -v; }
+        int len = 1;
+        for (long t = v; t >= 10; t /= 10) len++;
+        for (int i = p + len - 1; i >= p; i--) { a[i] = (byte) ('0' + v % 10); v /= 10; }
+        return p + len;
+    }
+
+    // ns as milliseconds with 3 decimals, rounded half up on microseconds
+    private static int ms(byte[] a, int p, long ns) {
+        long us = Math.floorDiv(ns + 500, 1000L);
+        if (us < 0) { a[p++] = '-'; us = -us; }
+        p = num(a, p, us / 1000);
+        a[p++] = '.';
+        int f = (int) (us % 1000);
+        a[p++] = (byte) ('0' + f / 100);
+        a[p++] = (byte) ('0' + f / 10 % 10);
+        a[p++] = (byte) ('0' + f % 10);
+        return p;
+    }
+
+    static void init() {
+        try {
+            on = Settings.enabled;
+            if (on && Settings.frameLog) openLog(new File(System.getProperty("user.home"), "Zomboid/pzbutter/frames.out"));
+        } catch (Throwable t) { fail(t); }
     }
 
     public static void enter() {
         if (!on) return;
         try {
-            if (mainThread == null) mainThread = Thread.currentThread();
-            else if (Thread.currentThread() != mainThread) return;
-            long now = System.nanoTime();
-            pendingInterval = prevStart == 0 ? 0 : now - prevStart;
-            prevStart = startWall = now;
-            startCpu = cpuNow();
+            Thread t = Thread.currentThread();
+            Thread m = mainThread;
+            if (m == null) mainThread = m = t;
+            if (m != t) return;
+            armed = true;
+            startNs = System.nanoTime();
+            if (CPU) startCpu = MX.getCurrentThreadCpuTime();
         } catch (Throwable t) { fail(t); }
     }
 
     public static void exit() {
-        if (!on || Thread.currentThread() != mainThread || startWall == 0) return;
-        long step = System.nanoTime() - startWall, cpu = cpuNow() - startCpu;
-        startWall = 0;
-        end(pendingInterval, step, cpu);
+        if (!on) return;
+        try {
+            if (!armed || Thread.currentThread() != mainThread) return;
+            armed = false;
+            long step = System.nanoTime() - startNs;
+            long cpu = CPU ? MX.getCurrentThreadCpuTime() - startCpu : step;
+            long interval = havePrev ? startNs - prevStartNs : 0;
+            prevStartNs = startNs;
+            havePrev = true;
+            end(interval, step, cpu);
+        } catch (Throwable t) { fail(t); }
     }
 
-    /** One finished frame: time since the previous frame started, time inside frameStep, its CPU time. */
     static void end(long intervalNs, long stepNs, long cpuNs) {
         if (!on) return;
         try {
@@ -70,65 +155,43 @@ public final class FrameClock {
             intervalMs = intervalNs / 1e6;
             stepMs = stepNs / 1e6;
             cpuMs = cpuNs / 1e6;
-            if (log != null) {
-                long now = System.currentTimeMillis();
-                line.setLength(0);
-                line.append(now).append(' ').append(frameNo).append(' ');
-                ms(line, intervalMs); line.append(' '); ms(line, stepMs); line.append(' ');
-                ms(line, cpuMs); line.append('\n');
-                log.append(line);
-                logBytes += line.length();
-                if (logBytes > logLimit) rotate();
-                else if (now - lastFlushMs >= 1000) { log.flush(); lastFlushMs = now; }
-            }
+            Sink s = log;
+            if (s != null) s.line(System.currentTimeMillis(), frameNo, intervalNs, stepNs, cpuNs);
         } catch (Throwable t) { fail(t); }
     }
 
-    private static void ms(StringBuilder sb, double ms) {
-        long u = Math.round(ms * 1000);
-        sb.append(u / 1000).append('.');
-        long f = u % 1000;
-        if (f < 100) sb.append('0');
-        if (f < 10) sb.append('0');
-        sb.append(f);
-    }
-
     static void openLog(File f) {
-        closeLog();
         try {
-            f.getParentFile().mkdirs();
-            log = new BufferedWriter(new FileWriter(f));
-            logFile = f;
-            logBytes = 0;
+            closeLog();
+            File p = f.getAbsoluteFile().getParentFile();
+            if (p != null) p.mkdirs();
+            log = new Sink(f);
         } catch (Throwable t) {
             log = null;
-            System.out.println("[PZButter] frame log off, can't open " + f + ": " + t);
+            System.out.println("[PZButter] frame log not opened: " + t);
         }
-    }
-
-    private static void rotate() throws java.io.IOException {
-        log.close();
-        File old = new File(logFile.getPath() + ".1");
-        old.delete();
-        logFile.renameTo(old);
-        log = new BufferedWriter(new FileWriter(logFile));
-        logBytes = 0;
     }
 
     static void flush() {
-        try { if (log != null) log.flush(); } catch (Throwable t) { fail(t); }
+        try {
+            Sink s = log;
+            if (s != null) s.flushBuf();
+        } catch (Throwable t) { fail(t); }
     }
 
     private static void closeLog() {
-        try { if (log != null) log.close(); } catch (Throwable ignored) {}
+        Sink s = log;
         log = null;
+        if (s != null) try { s.close(); } catch (Throwable ignored) { }
     }
 
     private static void fail(Throwable t) {
-        if (++failures >= 5) {
-            on = false;
-            closeLog();
-            System.out.println("[PZButter] frame clock off after errors: " + t);
-        }
+        try {
+            if (++failures >= 5) {
+                on = false;
+                closeLog();
+                System.out.println("[PZButter] frame clock off after repeated failures: " + t);
+            }
+        } catch (Throwable ignored) { }
     }
 }
