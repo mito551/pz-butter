@@ -22,6 +22,7 @@ public class Main {
         LuaFast.init();
         LuaTiming.init();
         UiTick.init();
+        TextWidths.init();
         LuaPatches.uiLuaFast = Settings.flag("uiLuaFast");
     }
 

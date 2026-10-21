@@ -13,6 +13,35 @@ final class LuaUiTest {
         internWalksTree();
         staggerEveryWindowWithin100ms();
         staggerForgetsClosedWindows();
+        textWidthCacheHit();
+        textWidthCacheBounded();
+        textWidthCacheClearedOnFontReload();
+    }
+
+    // a width stored for (font object, text) comes back; another font object or text is a miss
+    static void textWidthCacheHit() {
+        TextWidths.clear();
+        Object font = new Object(), other = new Object();
+        assert TextWidths.get(font, "Loot All") == null;
+        TextWidths.put(font, "Loot All", 57);
+        assert TextWidths.get(font, "Loot All") == 57;
+        assert TextWidths.get(other, "Loot All") == null && TextWidths.get(font, "Loot all") == null;
+    }
+
+    // never more than MAX entries: when full it starts over
+    static void textWidthCacheBounded() {
+        TextWidths.clear();
+        Object font = new Object();
+        for (int i = 0; i <= TextWidths.MAX; i++) TextWidths.put(font, "label " + i, i);
+        assert TextWidths.size() <= TextWidths.MAX : TextWidths.size();
+    }
+
+    // fonts reloaded (TextManager.Init): everything is dropped
+    static void textWidthCacheClearedOnFontReload() {
+        Object font = new Object();
+        TextWidths.put(font, "x", 5);
+        TextWidths.clear();
+        assert TextWidths.size() == 0 && TextWidths.get(font, "x") == null;
     }
 
     // six windows over one second at 120 fps: each ticks ~10 times, never twice within 90 ms, and the six don't

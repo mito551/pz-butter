@@ -1,7 +1,9 @@
 package pzbutter;
 
 import me.zed_0xff.zombie_buddy.Patch;
+import zombie.ui.TextManager;
 import zombie.ui.UIElement;
+import zombie.ui.UIFont;
 import zombie.ui.UIManager;
 
 /**
@@ -33,6 +35,56 @@ public final class UiPatches {
             UIManager.doTick = stockTick;
             swapped = false;
         } catch (Throwable t) { tickGuard.fail(t); }
+    }
+
+    // ---- textWidthCache ----
+
+    static final Guard widthGuard = new Guard("textWidthCache");
+
+    /** TextManager.MeasureStringX entry: the cached width, or null to measure. */
+    public static Object cachedWidth(Object textManager, Object font, String text) {
+        if (!TextWidths.on || !widthGuard.on || text == null || Thread.currentThread() != FrameClock.mainThread) return null;
+        try {
+            Object f = ((TextManager) textManager).getFontFromEnum((UIFont) font);
+            return f == null ? null : TextWidths.get(f, text);
+        } catch (Throwable t) { widthGuard.fail(t); return null; }
+    }
+
+    /** TextManager.MeasureStringX exit after a real measurement: keep it, unless a font is still loading. */
+    public static void storeWidth(Object textManager, Object font, String text, int width) {
+        if (!TextWidths.on || !widthGuard.on || text == null || Thread.currentThread() != FrameClock.mainThread) return;
+        try {
+            TextManager tm = (TextManager) textManager;
+            if (tm.isAnyFontLoading()) return;
+            Object f = tm.getFontFromEnum((UIFont) font);
+            if (f != null) TextWidths.put(f, text, width);
+        } catch (Throwable t) { widthGuard.fail(t); }
+    }
+
+    /** TextManager.Init exit: fonts were (re)loaded. */
+    public static void onFontsLoaded() { TextWidths.clear(); }
+
+    @Patch(className = "zombie.ui.TextManager", methodName = "MeasureStringX")
+    public static class MeasureX {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This Object self, @Patch.Argument(0) Object font, @Patch.Argument(1) String text,
+                                    @Patch.Local("w") Object w) {
+            w = cachedWidth(self, font, text);
+            return w != null;
+        }
+
+        @Patch.OnExit
+        public static void exit(@Patch.This Object self, @Patch.Argument(0) Object font, @Patch.Argument(1) String text,
+                                @Patch.Return(readOnly = false) int ret, @Patch.Local("w") Object w) {
+            if (w != null) ret = (Integer) w;
+            else storeWidth(self, font, text, ret);
+        }
+    }
+
+    @Patch(className = "zombie.ui.TextManager", methodName = "Init")
+    public static class FontsInit {
+        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
+        public static void exit() { onFontsLoaded(); }
     }
 
     @Patch(className = "zombie.ui.UIElement", methodName = "update")

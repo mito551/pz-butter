@@ -69,6 +69,8 @@ public final class Settings {
       + "# uiLuaFast: a hidden inventory skips rebuilding its container buttons; the item list skips its second\n"
       + "# drawing pass when nothing is dragged.\n"
       + "uiLuaFast=false\n"
+      + "# textWidthCache: measured text widths are kept (context menus re-measure every option on every opening).\n"
+      + "textWidthCache=false\n"
       + "#\n"
       + "# Input.\n"
       + "# inputLatch: a fresh input poll when the frame starts.\n"
