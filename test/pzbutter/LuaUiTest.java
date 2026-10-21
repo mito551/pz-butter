@@ -9,6 +9,35 @@ final class LuaUiTest {
     static void run() {
         emptyClosureOnlyBareReturn();
         timingTopTen();
+        rawgetFastSame();
+        internWalksTree();
+    }
+
+    // one get(): a stored value is returned; a missing key says MISS, so the caller asks the metatable as stock
+    // does (stock: !containsKey && metatable != null -> metatable.rawget(key)). rawset(k, null) removes the key,
+    // so a null value means missing.
+    static void rawgetFastSame() {
+        java.util.HashMap<Object, Object> m = new java.util.HashMap<>();
+        m.put("a", 1.0);
+        assert LuaFast.rawgetFast(m, "a").equals(1.0);
+        assert LuaFast.rawgetFast(m, "b") == LuaFast.MISS && LuaFast.rawgetFast(m, 2.0) == LuaFast.MISS;
+        assert LuaFast.fastAllowed(false, "k", false);
+        assert !LuaFast.fastAllowed(true, "k", false) && !LuaFast.fastAllowed(false, null, false) && !LuaFast.fastAllowed(false, "k", true);
+        assert !LuaFast.fastAllowed(false, 3, false);   // rawget(int) arrives boxed: leave it to stock (it converts to Double)
+    }
+
+    // every String constant in a compiled chunk's prototype tree becomes the interned instance
+    static void internWalksTree() {
+        Prototype leaf = proto(0x0080001e), mid = proto(0x0080001e), root = proto(0x0080001e);
+        leaf.constants = new Object[] {new String("update"), 1.0};
+        mid.constants = new Object[] {new String("update"), new String("render")};
+        root.constants = new Object[] {new String("render")};
+        mid.prototypes = new Prototype[] {leaf};
+        root.prototypes = new Prototype[] {mid};
+        LuaFast.internConstants(root);
+        assert leaf.constants[0] == "update" && mid.constants[0] == "update" && mid.constants[1] == "render" && root.constants[0] == "render";
+        assert leaf.constants[1].equals(1.0);
+        LuaFast.internConstants(null);   // no throw
     }
 
     static Prototype proto(int... code) {
