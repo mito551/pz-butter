@@ -21,6 +21,14 @@ final class LuaUiTest {
         streetIndexMatchesIndexOf();
         streetCacheReusedWhileViewSame();
         visitedRowsSameBytes();
+        uiLuaFastKeepsBackpacksCurrent();
+    }
+
+    // crafting, building and vehicle code read inventoryPage.backpacks while the page is hidden, so it is never skipped
+    static void uiLuaFastKeepsBackpacksCurrent() {
+        String lua = DeliveryTest.readAll(new java.io.File(System.getProperty("user.dir"), "mod/PZButter/42/media/lua/client/PZButter/UiLuaFast.lua"));
+        assert lua.contains("renderdetails");
+        assert !lua.contains("refreshBackpacks");
     }
 
     // a street's length is kept for the projection's linear part; another zoom or rotation is a miss
