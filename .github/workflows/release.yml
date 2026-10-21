@@ -18,9 +18,9 @@ jobs:
       PZ_SERVER_BETA: unstable
       PZ_SERVER_KEY: 42.21-unstable
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '25'
@@ -30,7 +30,7 @@ jobs:
       # then releases are built locally.
       - name: Cache the dedicated server
         id: server-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/pzserver
           key: pzserver-${{ env.PZ_SERVER_KEY }}
