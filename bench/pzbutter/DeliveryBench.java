@@ -18,7 +18,8 @@ public final class DeliveryBench {
             case "parker" -> parker();
             case "stamps" -> stamps();
             case "learner" -> learner();
-            default -> throw new IllegalArgumentException("parker | stamps | learner");
+            case "widths" -> widths();
+            default -> throw new IllegalArgumentException("parker | stamps | learner | widths");
         }
     }
 
@@ -107,5 +108,33 @@ public final class DeliveryBench {
         }
         Arrays.sort(ns);
         System.out.printf("learner: %6.1f ns/observe (min %.1f, max %.1f), checksum %d%n", ns[3], ns[0], ns[6], check);
+    }
+
+    /** TextWidths: get, and put on a miss, over 2000 labels in 4 fonts; about 90 % hits after the first pass. */
+    static void widths() {
+        Object[] fonts = {new Object(), new Object(), new Object(), new Object()};
+        String[] labels = new String[2200];
+        for (int i = 0; i < labels.length; i++) labels[i] = "Context option " + i;
+        int n = 2_000_000;
+        double[] ns = new double[7], bytes = new double[7];
+        long check = 0;
+        for (int r = -1; r < 7; r++) {
+            TextWidths.clear();
+            long seed = 7, sum = 0;
+            long a0 = MX.getCurrentThreadAllocatedBytes(), t0 = System.nanoTime();
+            for (int i = 0; i < n; i++) {
+                seed = seed * 6364136223846793005L + 1442695040888963407L;
+                int li = (int) ((seed >>> 33) % (((seed >>> 20) & 15) == 0 ? labels.length : 2000));
+                Object f = fonts[(int) (seed >>> 60) & 3];
+                Integer w = TextWidths.get(f, labels[li]);
+                if (w == null) { w = li * 3 + 7; TextWidths.put(f, labels[li], w); }
+                sum += w;
+            }
+            long t1 = System.nanoTime(), a1 = MX.getCurrentThreadAllocatedBytes();
+            if (r >= 0) { ns[r] = (t1 - t0) / (double) n; bytes[r] = (a1 - a0) / (double) n; }
+            check = sum;
+        }
+        Arrays.sort(ns); Arrays.sort(bytes);
+        System.out.printf("widths: %6.2f ns/op (min %.2f, max %.2f), %5.2f B/op, checksum %d%n", ns[3], ns[0], ns[6], bytes[3], check);
     }
 }
