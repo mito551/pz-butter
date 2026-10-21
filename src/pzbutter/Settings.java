@@ -57,30 +57,30 @@ public final class Settings {
       + "# luaBudget: the merged LuaBudget mod. Its rules stay in Zomboid/LuaBudget.properties; no rules, no effect.\n"
       + "luaBudget=true\n"
       + "# luaSkipEmpty: Lua functions with an empty body (function() end) are not called.\n"
-      + "luaSkipEmpty=false\n"
+      + "luaSkipEmpty=true\n"
       + "# luaTiming: once a minute, the ten slowest Lua event handlers to the console (and lua.out with frameLog).\n"
       + "luaTiming=false\n"
       + "# luaRawgetFast: Lua table reads do one hash lookup instead of two.\n"
-      + "luaRawgetFast=false\n"
+      + "luaRawgetFast=true\n"
       + "# luaInternConstants: string constants of loaded Lua are interned, so table lookups match by identity first.\n"
-      + "luaInternConstants=false\n"
+      + "luaInternConstants=true\n"
       + "#\n"
       + "# UI.\n"
       + "# uiTickStagger: each window runs its 10-per-second Lua update in its own slot instead of all in one frame.\n"
-      + "uiTickStagger=false\n"
+      + "uiTickStagger=true\n"
       + "# uiLuaFast: a hidden inventory skips rebuilding its container buttons; the item list skips its second\n"
       + "# drawing pass when nothing is dragged.\n"
-      + "uiLuaFast=false\n"
+      + "uiLuaFast=true\n"
       + "# textWidthCache: measured text widths are kept (context menus re-measure every option on every opening).\n"
-      + "textWidthCache=false\n"
+      + "textWidthCache=true\n"
       + "#\n"
       + "# World map.\n"
       + "# mapStreetMemo: street lengths and names kept per view and language; one index map per label sort.\n"
-      + "mapStreetMemo=false\n"
+      + "mapStreetMemo=true\n"
       + "# mapStreetCache: the street-label layout is reused while the map view is unchanged.\n"
-      + "mapStreetCache=false\n"
+      + "mapStreetCache=true\n"
       + "# mapVisitedFast: the explored-area texture is built a row at a time.\n"
-      + "mapVisitedFast=false\n"
+      + "mapVisitedFast=true\n"
       + "#\n"
       + "# Input.\n"
       + "# inputLatch: a fresh input poll when the frame starts.\n"
@@ -163,7 +163,8 @@ public final class Settings {
     /** A feature switch: never on without the master switch; a missing key takes its default. */
     /** Features that passed their in-game check and default to on (still only with the master switch). */
     static final java.util.Set<String> ON_BY_DEFAULT = java.util.Set.of("limiterSleep", "inputLatch", "keyboardFresh", "frameStartGate",
-        "reflexSleep", "vsyncAdaptive", "luaBudget");   // these two only act with vsync on
+        "reflexSleep", "vsyncAdaptive", "luaBudget",
+        "luaRawgetFast", "luaInternConstants", "luaSkipEmpty", "uiTickStagger", "textWidthCache", "uiLuaFast", "mapStreetMemo", "mapStreetCache", "mapVisitedFast");   // these two only act with vsync on
 
     public static boolean flag(String key) { return enabled && bool(props, key, ON_BY_DEFAULT.contains(key)); }
 

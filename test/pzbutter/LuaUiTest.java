@@ -7,6 +7,7 @@ final class LuaUiTest {
     private LuaUiTest() {}
 
     static void run() {
+        luaUiDefaultsOn();
         emptyClosureOnlyBareReturn();
         timingTopTen();
         rawgetFastSame();
@@ -160,6 +161,20 @@ final class LuaUiTest {
         assert leaf.constants[0] == "update" && mid.constants[0] == "update" && mid.constants[1] == "render" && root.constants[0] == "render";
         assert leaf.constants[1].equals(1.0);
         LuaFast.internConstants(null);   // no throw
+    }
+
+    // passed in game (Task 9, user 2026-10-21): on by default under the master switch; luaTiming stays off
+    static void luaUiDefaultsOn() {
+        java.io.File f = SelfTest.tmp("defaults3a.properties");
+        f.delete();
+        Settings.load(f);
+        Settings.load(SelfTest.write(DeliveryTest.readAll(f).replace("enabled=false", "enabled=true")));
+        for (String k : new String[] {"luaRawgetFast", "luaInternConstants", "luaSkipEmpty", "uiTickStagger", "textWidthCache",
+                                      "uiLuaFast", "mapStreetMemo", "mapStreetCache", "mapVisitedFast"})
+            assert Settings.flag(k) : k;
+        assert !Settings.flag("luaTiming");
+        Settings.load(SelfTest.write("enabled=false\n"));
+        assert !Settings.flag("luaRawgetFast");
     }
 
     static Prototype proto(int... code) {
