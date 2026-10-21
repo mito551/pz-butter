@@ -62,6 +62,19 @@ final class Vrr {
         return found;
     }
 
+    /** What the driver reported, for the log line. */
+    static String describe(int[][] outputs, int w, int h, int refreshHz) {
+        StringBuilder b = new StringBuilder("window ").append(w).append('x').append(h).append('@').append(refreshHz).append("; ");
+        if (outputs == null) return b.append("libdrm not readable").toString();
+        b.append("outputs");
+        for (int i = 0; i < outputs.length; i++) {
+            int[] o = outputs[i];
+            b.append(i == 0 ? " " : ", ").append(o[0]).append('x').append(o[1]).append('@').append(o[2])
+                .append(" capable=").append(o[3]).append(" enabled=").append(o[4]);
+        }
+        return b.toString();
+    }
+
     static boolean wantFullscreenWindow(String mode, Boolean vrr, boolean borderless, boolean fullscreen) {
         if (!borderless || fullscreen) return false;
         return mode.equals("on") || mode.equals("auto") && Boolean.TRUE.equals(vrr);
@@ -80,7 +93,8 @@ final class Vrr {
             try {
                 int[][] o = prober.get();
                 Boolean v = o == null ? null : pick(o, monitorRect[2], monitorRect[3], refreshHz);
-                if (v != probed) System.out.println("[PZButter] vrr: " + (v == null ? "unknown" : v ? "active" : "not active"));
+                if (v != probed) System.out.println("[PZButter] vrr: " + (v == null ? "unknown" : v ? "active" : "not active")
+                    + " (" + describe(o, monitorRect[2], monitorRect[3], refreshHz) + ")");
                 probed = v;
             } catch (Throwable e) {
                 probed = null;

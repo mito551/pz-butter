@@ -48,6 +48,7 @@ final class DeliveryTest {
         reflexBoostParse();
         vrrMatchOutput();
         vrrProbeNoDrm();
+        vrrDescribe();
         vrrMode();
         borderlessDecision();
         probeUnavailableOff();
@@ -185,6 +186,14 @@ final class DeliveryTest {
         int[][] twins = {{2560, 1440, 165, 1, 1}, {2560, 1440, 165, 1, 0}};
         assert Vrr.pick(twins, 2560, 1440, 165) == null;                  // ambiguous and they disagree
         assert Vrr.pick(new int[][] {{2560, 1440, 165, 1, 1}, {2560, 1440, 165, 1, 1}}, 2560, 1440, 165) == Boolean.TRUE;
+    }
+
+    // the log line says what the driver reported for the window's monitor, so a change can be explained
+    static void vrrDescribe() {
+        int[][] o = {{1920, 1080, 60, 0, 0}, {2560, 1440, 120, 1, 0}};
+        assert Vrr.describe(o, 2560, 1440, 120).equals("window 2560x1440@120; outputs 1920x1080@60 capable=0 enabled=0, 2560x1440@120 capable=1 enabled=0")
+            : Vrr.describe(o, 2560, 1440, 120);
+        assert Vrr.describe(null, 2560, 1440, 120).equals("window 2560x1440@120; libdrm not readable");
     }
 
     static void vrrProbeNoDrm() {
