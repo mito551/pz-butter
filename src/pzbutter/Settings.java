@@ -9,7 +9,7 @@ import java.util.Properties;
 
 /** Zomboid/PZButter.properties. Read once at mod load; any failure leaves every feature off. */
 public final class Settings {
-    static final String VERSION = "0.1";
+    static final String VERSION = "0.2";
 
     private static final String DEFAULTS =
         "# PZ Butter. Read at game start.\n"
