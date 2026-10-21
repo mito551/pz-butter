@@ -19,6 +19,8 @@ public class Main {
         AimHold.init();
         System.out.println("[PZButter] " + Settings.VERSION + ", enabled=" + Settings.enabled);
         pzbutter.luabudget.Budget.init();
+        LuaFast.init();
+        LuaTiming.init();
     }
 
     /** True when the system class loader can load the class (not initialised). */

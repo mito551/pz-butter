@@ -31,6 +31,7 @@ public final class SelfTest {
         frameFailureDisables();   // last: it switches the clock off
         DeliveryTest.run();
         pzbutter.luabudget.BudgetTest.run();
+        LuaUiTest.run();
         delete(DIR);
         System.out.println("ok");
     }
