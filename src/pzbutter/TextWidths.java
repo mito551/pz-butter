@@ -13,7 +13,7 @@ final class TextWidths {
 
     private TextWidths() {}
 
-    static void init() { on = Settings.flag("textWidthCache"); }
+    static void init() { on = Settings.flag("textWidthCache"); UiPatches.widthGuard.on = on; }
 
     private static final int CAP = MAX * 2, MASK = CAP - 1;
     private static final Object[] fonts = new Object[CAP];

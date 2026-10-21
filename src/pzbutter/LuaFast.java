@@ -21,6 +21,7 @@ final class LuaFast {
     static void init() {
         skipEmpty = Settings.flag("luaSkipEmpty");
         rawgetFast = Settings.flag("luaRawgetFast");
+        LuaPatches.rawgetGuard.on = rawgetFast;
         internConstants = Settings.flag("luaInternConstants");
     }
 

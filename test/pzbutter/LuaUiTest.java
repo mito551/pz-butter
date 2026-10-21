@@ -173,6 +173,8 @@ final class LuaUiTest {
                                       "uiLuaFast", "mapStreetMemo", "mapStreetCache", "mapVisitedFast"})
             assert Settings.flag(k) : k;
         assert !Settings.flag("luaTiming");
+        LuaFast.init(); UiTick.init(); TextWidths.init(); MapFast.init();   // the hooks' guards are live, not only the flags
+        assert LuaPatches.rawgetGuard.on && UiPatches.tickGuard.on && UiPatches.widthGuard.on && MapPatches.guard.on;
         Settings.load(SelfTest.write("enabled=false\n"));
         assert !Settings.flag("luaRawgetFast");
     }

@@ -31,6 +31,7 @@ final class MapFast {
         memo = Settings.flag("mapStreetMemo");
         cache = Settings.flag("mapStreetCache");
         visited = Settings.flag("mapVisitedFast");
+        MapPatches.guard.on = memo || cache || visited;
     }
 
     static void clear() {

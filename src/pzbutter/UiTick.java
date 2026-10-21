@@ -17,7 +17,7 @@ final class UiTick {
 
     private UiTick() {}
 
-    static void init() { on = Settings.flag("uiTickStagger"); }
+    static void init() { on = Settings.flag("uiTickStagger"); UiPatches.tickGuard.on = on; }
 
     /** Should this window run its 10 Hz update now? */
     static boolean decide(Object window, long nowMs) {
