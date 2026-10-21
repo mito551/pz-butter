@@ -11,6 +11,40 @@ final class LuaUiTest {
         timingTopTen();
         rawgetFastSame();
         internWalksTree();
+        staggerEveryWindowWithin100ms();
+        staggerForgetsClosedWindows();
+    }
+
+    // six windows over one second at 120 fps: each ticks ~10 times, never twice within 90 ms, and the six don't
+    // all tick in the same frame (stock: all six in one frame every 100 ms)
+    static void staggerEveryWindowWithin100ms() {
+        UiTick.reset();
+        Object[] w = new Object[6];
+        for (int i = 0; i < w.length; i++) w[i] = new Object();
+        int[] ticks = new int[w.length];
+        long[] last = new long[w.length];
+        java.util.Arrays.fill(last, -1_000_000);
+        java.util.Set<Integer> framesWithTicks = new java.util.HashSet<>();
+        for (int f = 0; f < 120; f++) {
+            long now = 10_000 + f * 1000L / 120;
+            for (int i = 0; i < w.length; i++) {
+                if (!UiTick.decide(w[i], now)) continue;
+                assert now - last[i] >= 90 || ticks[i] == 0 : "window " + i + " ticked twice within 90 ms";
+                last[i] = now;
+                ticks[i]++;
+                framesWithTicks.add(f);
+            }
+        }
+        for (int t : ticks) assert t >= 9 && t <= 11 : t;
+        assert framesWithTicks.size() >= 50 : framesWithTicks.size();   // spread over frames, not bunched
+    }
+
+    // closed windows (unreachable) leave the stagger state
+    static void staggerForgetsClosedWindows() {
+        UiTick.reset();
+        for (int i = 0; i < 50; i++) UiTick.decide(new Object(), 1000);
+        for (int i = 0; i < 20 && UiTick.size() > 0; i++) { System.gc(); SelfTest.sleep(10); }
+        assert UiTick.size() == 0 : UiTick.size();
     }
 
     // one get(): a stored value is returned; a missing key says MISS, so the caller asks the metatable as stock

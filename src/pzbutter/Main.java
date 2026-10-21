@@ -21,6 +21,7 @@ public class Main {
         pzbutter.luabudget.Budget.init();
         LuaFast.init();
         LuaTiming.init();
+        UiTick.init();
     }
 
     /** True when the system class loader can load the class (not initialised). */
