@@ -9,6 +9,7 @@ final class DeliveryTest {
     static void run() {
         settingsKeysOffByDefault();
         settingsDefaultsOn();
+        gpuQueueDefault();
         settingsNumClamped();
         settingsModeMasterOff();
         gameStaticLongMissing();
@@ -529,12 +530,25 @@ final class DeliveryTest {
         for (String k : FLAGS) assert Settings.flag(k) == ON_BY_DEFAULT.contains(k) : k;
         for (String k : MODES) assert Settings.mode(k).equals("off") : k;
         assert Settings.num("presentPacingMaxPct", -1, 0, 1000) == 100 && Settings.num("aimHoldMs", -1, 0, 5000) == 150;
-        assert readAll(f).contains("frameStartGate=true") && readAll(f).contains("vrrCap=false") && readAll(f).contains("gpuMaxFrames=0");
+        assert readAll(f).contains("frameStartGate=true") && readAll(f).contains("vrrCap=false") && readAll(f).contains("gpuMaxFrames=2");
     }
 
     // passed in game (Task 13) and switched on by the user: on when the key is missing, but never without the master
     static final java.util.Set<String> ON_BY_DEFAULT = java.util.Set.of("limiterSleep", "inputLatch", "keyboardFresh", "frameStartGate",
         "reflexSleep", "vsyncAdaptive");
+
+    // gpuMaxFrames defaults to 2 (user, 2026-10-21), and like every feature never acts without the master switch
+    static void gpuQueueDefault() {
+        Settings.load(write("enabled=true\n"));
+        GpuQueue.init();
+        assert GpuQueue.maxFrames == 2 && GpuQueue.guard.on;
+        Settings.load(write("enabled=false\n"));
+        GpuQueue.init();
+        assert !GpuQueue.guard.on;
+        Settings.load(write("enabled=true\ngpuMaxFrames=0\n"));
+        GpuQueue.init();
+        assert !GpuQueue.guard.on;
+    }
 
     static void settingsDefaultsOn() {
         Settings.load(write("enabled=true\n"));
