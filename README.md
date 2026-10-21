@@ -33,7 +33,7 @@ This builds the mod, runs the self-tests, and copies the mod to `~/Zomboid/mods/
 
 ## Settings
 
-The mod creates `~/Zomboid/PZButter.properties` on first start and reads it once at game start. Every key is off by default. At every start the file is brought up to date: new keys appear with their comments, your values are kept, and keys the mod no longer uses are kept at the end. The first such update saves the old file as `PZButter.properties.bak`.
+The mod creates `~/Zomboid/PZButter.properties` on first start and reads it once at game start. The master switch `enabled` is off by default, so the mod does nothing until you turn it on; each key is described in the file itself. At every start the file is brought up to date: new keys appear with their comments, your values are kept, and keys the mod no longer uses are kept at the end. The first such update saves the old file as `PZButter.properties.bak`.
 
 | Key | What it does |
 |---|---|
