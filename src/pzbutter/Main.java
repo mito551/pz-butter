@@ -21,6 +21,7 @@ public class Main {
         pzbutter.luabudget.Budget.init();
         LuaFast.init();
         LuaTiming.init();
+        UiTiming.init();
         UiTick.init();
         TextWidths.init();
         MapFast.init();

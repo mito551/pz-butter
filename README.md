@@ -39,6 +39,7 @@ The mod creates `~/Zomboid/PZButter.properties` on first start and reads it once
 |---|---|
 | `enabled` | Master switch. While it is `false`, the mod does nothing and the game runs stock. |
 | `frameLog` | Writes one line per frame to `~/Zomboid/pzbutter/frames.out`. |
+| `uiTiming` | Diagnostic: once a minute, the UI's time per frame and the 15 slowest windows to the console (and `~/Zomboid/pzbutter/ui.out` with `frameLog`). |
 
 Each line of `frames.out` has five fields:
 

@@ -23,6 +23,14 @@ final class LuaUiTest {
         streetCacheReusedWhileViewSame();
         visitedRowsSameBytes();
         uiLuaFastKeepsBackpacksCurrent();
+        uiTimingSelfExcludesChildren();
+        uiTimingBalancedAfterThrow();
+        uiTimingDeepNesting();
+        uiTimingDrawsNeverNegative();
+        uiTimingGroupsByName();
+        uiTimingNameWithoutLuaTable();
+        uiTimingReport();
+        uiTimingOffByDefault();
     }
 
     // crafting, building and vehicle code read inventoryPage.backpacks while the page is hidden, so it is never skipped
@@ -249,5 +257,74 @@ final class LuaUiTest {
         assert lines.size() == 10 : lines.size();
         assert lines.get(0).equals("[PZButter] lua:   0.200 ms/s  OnTick               60 calls  media/lua/client/H11.lua:21") : lines.get(0);
         assert lines.get(9).contains("H2.lua:12");
+    }
+
+    // a window's self time excludes its children; children count only inside their window
+    static void uiTimingSelfExcludesChildren() {
+        long[] t = {0};
+        UiTiming.clock = () -> t[0];
+        UiTiming.resetForTest();
+        Object win = new Object(), child = new Object();
+        UiTiming.elementEnterNamed(win, "W", 100);
+        t[0] = 10; UiTiming.elementEnterNamed(child, "C", 104);
+        t[0] = 30; UiTiming.elementExit(110);
+        t[0] = 50; UiTiming.elementExit(120);
+        UiTiming.Stat s = UiTiming.statForTest("W");
+        assert s.inclNs == 50 && s.selfNs == 30 && s.renders == 1 && s.draws == 20 : s.inclNs + " " + s.selfNs;
+        assert UiTiming.statForTest("C") == null;
+    }
+
+    // an exception unwinding through render runs the exit advice; the stack is balanced afterwards
+    static void uiTimingBalancedAfterThrow() {
+        UiTiming.resetForTest();
+        UiTiming.elementEnterNamed(new Object(), "W", 0);
+        UiTiming.elementEnterNamed(new Object(), "C", 0);
+        UiTiming.elementExit(0);   // onThrowable exit of the child
+        UiTiming.elementExit(0);   // onThrowable exit of the window
+        UiTiming.elementExit(0);   // one exit too many: ignored
+        assert UiTiming.depthForTest() == 0;
+    }
+
+    static void uiTimingDeepNesting() {
+        UiTiming.resetForTest();
+        for (int i = 0; i < 100; i++) UiTiming.elementEnterNamed(new Object(), i == 0 ? "W" : "C" + i, 0);
+        for (int i = 0; i < 100; i++) UiTiming.elementExit(0);
+        assert UiTiming.depthForTest() == 0 && UiTiming.statForTest("W").renders == 1;
+    }
+
+    static void uiTimingDrawsNeverNegative() {
+        UiTiming.resetForTest();
+        UiTiming.elementEnterNamed(new Object(), "W", 500);
+        UiTiming.elementExit(3);   // the state was swapped mid-render
+        assert UiTiming.statForTest("W").draws == 0;
+        UiTiming.elementEnterNamed(new Object(), "W", -1);   // unreadable
+        UiTiming.elementExit(40);
+        assert UiTiming.statForTest("W").draws == 0 && UiTiming.statForTest("W").renders == 2;
+    }
+
+    static void uiTimingGroupsByName() {
+        UiTiming.resetForTest();
+        for (int i = 0; i < 3; i++) { UiTiming.elementEnterNamed(new Object(), "ISInventoryPage", 0); UiTiming.elementExit(0); }
+        assert UiTiming.statForTest("ISInventoryPage").renders == 3;
+    }
+
+    static void uiTimingNameWithoutLuaTable() {
+        assert UiTiming.windowName("ISInventoryPage", "UIElement", "media/lua/client/ISUI/ISInventoryPage.lua")
+            .equals("ISInventoryPage (media/lua/client/ISUI/ISInventoryPage.lua)");
+        assert UiTiming.windowName(null, "ActionProgressBar", null).equals("ActionProgressBar (java)");
+    }
+
+    static void uiTimingReport() {
+        java.util.List<UiTiming.Stat> all = new java.util.ArrayList<>();
+        for (int i = 0; i < 20; i++) { UiTiming.Stat s = new UiTiming.Stat("w" + i); s.inclNs = i * 1_000_000L; s.selfNs = s.inclNs / 2; s.renders = 60; s.draws = 600; all.add(s); }
+        java.util.List<String> l = UiTiming.reportLines(all, 1_000_000_000L, 5_000_000L, 120);
+        assert l.size() == 16 && l.get(0).startsWith("[PZButter] ui: total") && l.get(0).contains("5.000 ms/s") && l.get(0).contains("0.042 ms/frame");
+        assert l.get(1).contains("w19") && l.get(1).contains("19.000 ms/s") && l.get(1).contains("10 draws/render");
+    }
+
+    static void uiTimingOffByDefault() {
+        Settings.load(SelfTest.write("enabled=true\n"));
+        UiTiming.init();
+        assert !UiTiming.guard.on;
     }
 }

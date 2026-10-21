@@ -59,6 +59,8 @@ public final class Settings {
       + "luaSkipEmpty=true\n"
       + "# luaTiming: once a minute, the ten slowest Lua event handlers to the console (and lua.out with frameLog).\n"
       + "luaTiming=false\n"
+      + "# uiTiming: once a minute, the UI's time per frame and the 15 slowest windows go to the console and ui.out (diagnostic).\n"
+      + "uiTiming=false\n"
       + "# luaRawgetFast: Lua table reads do one hash lookup instead of two (measured slower than stock; off).\n"
       + "luaRawgetFast=false\n"
       + "# luaInternConstants: string constants of loaded Lua are interned, so table lookups match by identity first.\n"

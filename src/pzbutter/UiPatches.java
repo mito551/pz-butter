@@ -1,6 +1,7 @@
 package pzbutter;
 
 import me.zed_0xff.zombie_buddy.Patch;
+import zombie.core.SpriteRenderer;
 import zombie.ui.TextManager;
 import zombie.ui.UIElement;
 import zombie.ui.UIFont;
@@ -97,5 +98,55 @@ public final class UiPatches {
 
         @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
         public static void exit(@Patch.This Object element) { onUpdateExit(element); }
+    }
+
+    // ---- uiTiming ----
+
+    /** UIManager.render entry: one UI frame starts. */
+    public static void onUiRenderEnter() {
+        if (!UiTiming.guard.on) return;
+        try { UiTiming.uiEnter(); } catch (Throwable t) { UiTiming.guard.fail(t); }
+    }
+
+    /** UIManager.render exit, also when it threw. */
+    public static void onUiRenderExit() {
+        if (!UiTiming.guard.on) return;
+        try { UiTiming.uiExit(); } catch (Throwable t) { UiTiming.guard.fail(t); }
+    }
+
+    /** UIElement.render entry: the element's window starts, or it is nested in one. */
+    public static void onElementRenderEnter(Object element) {
+        if (!UiTiming.guard.on) return;
+        try { UiTiming.elementEnter(element, drawCount()); } catch (Throwable t) { UiTiming.guard.fail(t); }
+    }
+
+    /** UIElement.render exit, also when it threw. */
+    public static void onElementRenderExit(Object element) {
+        if (!UiTiming.guard.on) return;
+        try { UiTiming.elementExit(drawCount()); } catch (Throwable t) { UiTiming.guard.fail(t); }
+    }
+
+    /** Sprites queued so far in the populating render state, or -1 when unreadable. */
+    private static int drawCount() {
+        try { return SpriteRenderer.instance.states.getPopulatingActiveState().numSprites; }
+        catch (Throwable t) { return -1; }
+    }
+
+    @Patch(className = "zombie.ui.UIManager", methodName = "render")
+    public static class UiRender {
+        @Patch.OnEnter
+        public static void enter() { onUiRenderEnter(); }
+
+        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
+        public static void exit() { onUiRenderExit(); }
+    }
+
+    @Patch(className = "zombie.ui.UIElement", methodName = "render")
+    public static class ElementRender {
+        @Patch.OnEnter
+        public static void enter(@Patch.This Object element) { onElementRenderEnter(element); }
+
+        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
+        public static void exit(@Patch.This Object element) { onElementRenderExit(element); }
     }
 }
