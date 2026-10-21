@@ -23,6 +23,7 @@ public class Main {
         LuaTiming.init();
         UiTick.init();
         TextWidths.init();
+        MapFast.init();
         LuaPatches.uiLuaFast = Settings.flag("uiLuaFast");
     }
 

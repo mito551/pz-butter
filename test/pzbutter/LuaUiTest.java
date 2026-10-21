@@ -16,6 +16,65 @@ final class LuaUiTest {
         textWidthCacheHit();
         textWidthCacheBounded();
         textWidthCacheClearedOnFontReload();
+        streetMemoClearedOnViewChange();
+        streetIndexMatchesIndexOf();
+        streetCacheReusedWhileViewSame();
+        visitedRowsSameBytes();
+    }
+
+    // a street's length is kept for the projection's linear part; another zoom or rotation is a miss
+    static void streetMemoClearedOnViewChange() {
+        MapFast.clear();
+        Object street = new Object();
+        double[] view = {2, 0, 0, 2};
+        assert MapFast.length(street, view) == null;
+        MapFast.putLength(street, view, 123.5f);
+        assert MapFast.length(street, view) == 123.5f;
+        assert MapFast.length(street, new double[] {3, 0, 0, 3}) == null;
+        assert MapFast.length(street, new double[] {2, 1, 0, 2}) == null;   // rotated / isometric
+    }
+
+    // the index map answers what ArrayList.indexOf answers, and is rebuilt for a changed list
+    static void streetIndexMatchesIndexOf() {
+        MapFast.clear();
+        java.util.ArrayList<Object> list = new java.util.ArrayList<>();
+        for (int i = 0; i < 50; i++) list.add(new Object());
+        for (Object o : list) assert MapFast.indexOf(list, o) == list.indexOf(o);
+        assert MapFast.indexOf(list, new Object()) == -1;
+        Object added = new Object();
+        list.add(0, added);
+        MapFast.newSort();
+        assert MapFast.indexOf(list, added) == 0 && MapFast.indexOf(list, list.get(10)) == 10;
+    }
+
+    // a label layout is rebuilt only when its view key changes or the street data is dirty
+    static void streetCacheReusedWhileViewSame() {
+        MapFast.clear();
+        Object data = new Object();
+        MapFast.ViewKey k = new MapFast.ViewKey(new double[] {1, 2, 3, 4, 5, 6, 7, 8, 9, 10}, new Object[] {"en", null});
+        assert MapFast.shouldInit(data, k, false);
+        assert !MapFast.shouldInit(data, new MapFast.ViewKey(new double[] {1, 2, 3, 4, 5, 6, 7, 8, 9, 10}, new Object[] {"en", null}), false);
+        assert MapFast.shouldInit(data, k, true);   // dirty data always rebuilds
+        assert MapFast.shouldInit(data, new MapFast.ViewKey(new double[] {1, 2, 3, 4, 5, 6, 7, 8, 9, 11}, new Object[] {"en", null}), false);
+        assert MapFast.shouldInit(new Object(), k, false);   // another render-data object has its own layout
+    }
+
+    // explored-area texture: the row-at-a-time fill writes exactly the bytes the per-byte fill writes
+    static void visitedRowsSameBytes() {
+        int w = 40, h = 30;
+        java.util.function.IntBinaryOperator flags = (x, y) -> (x * 7 + y * 3) % 4;
+        java.nio.ByteBuffer a = java.nio.ByteBuffer.allocate(w * h * 4), b = java.nio.ByteBuffer.allocate(w * h * 4);
+        int x1 = 3, x2 = 20, y1 = 2, y2 = 17;
+        for (int y = y1; y <= y2; y++) {   // reference: per byte, as described in the plan's hook table
+            a.position((1 + x1) * 4 + (1 + y) * w * 4);
+            for (int x = x1; x <= x2; x++) {
+                int f = flags.applyAsInt(x, y);
+                a.put((byte) ((f & 2) != 0 ? 0 : -1)); a.put((byte) ((f & 1) != 0 ? 0 : -1)); a.put((byte) -1); a.put((byte) -1);
+            }
+        }
+        a.position(0);
+        MapFast.fillRows(b, w, x1, x2, y1, y2, flags);
+        assert b.position() == 0 && java.util.Arrays.equals(a.array(), b.array());
     }
 
     // a width stored for (font object, text) comes back; another font object or text is a miss

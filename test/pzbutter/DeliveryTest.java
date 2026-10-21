@@ -405,7 +405,7 @@ final class DeliveryTest {
      */
     static void adviceOnlyPublic() {
         java.util.List<String> bad = new java.util.ArrayList<>();
-        for (Class<?> outer : new Class<?>[] {Patches.class, DeliveryPatches.class, LuaPatches.class, UiPatches.class})
+        for (Class<?> outer : new Class<?>[] {Patches.class, DeliveryPatches.class, LuaPatches.class, UiPatches.class, MapPatches.class})
             for (Class<?> c : outer.getDeclaredClasses())
                 if (c.isAnnotationPresent(me.zed_0xff.zombie_buddy.Patch.class)) checkAdvice(c, bad);
         assert bad.isEmpty() : bad;
