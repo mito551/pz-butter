@@ -3,6 +3,8 @@ package pzbutter;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileWriter;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.Locale;
 import java.util.Properties;
 
@@ -108,6 +110,7 @@ public final class Settings {
             Properties p = new Properties();
             try (FileInputStream in = new FileInputStream(f)) { p.load(in); }
             props = p;
+            upgrade(f, p);
             enabled = bool(p, "enabled", false);
             frameLog = bool(p, "frameLog", false);
         } catch (Throwable t) {
@@ -115,6 +118,46 @@ public final class Settings {
             props = new Properties();
             System.out.println("[PZButter] settings failed, all features off: " + t);
         }
+    }
+
+    /**
+     * Brings the file up to the current template: every known key with its comment and the user's value (or the
+     * default), then any keys this version doesn't know, as they were. A one-time .bak keeps the original.
+     * Nothing is written when the file is already current. A failure here leaves the file and the loaded values alone.
+     */
+    static void upgrade(File f, Properties p) {
+        try {
+            String text = render(p);
+            String old = new String(Files.readAllBytes(f.toPath()), StandardCharsets.ISO_8859_1);
+            if (text.equals(old)) return;
+            File bak = new File(f.getPath() + ".bak");
+            if (!bak.exists()) Files.copy(f.toPath(), bak.toPath());
+            Files.write(f.toPath(), text.getBytes(StandardCharsets.ISO_8859_1));
+        } catch (Throwable t) {
+            System.out.println("[PZButter] settings file not upgraded: " + t);
+        }
+    }
+
+    /** The template with p's values in place, then p's unknown keys. */
+    static String render(Properties p) {
+        StringBuilder b = new StringBuilder();
+        java.util.Set<String> known = new java.util.HashSet<>();
+        for (String line : DEFAULTS.split("\n")) {
+            int eq = line.indexOf('=');
+            if (line.startsWith("#") || eq < 0) { b.append(line).append('\n'); continue; }
+            String key = line.substring(0, eq);
+            known.add(key);
+            String v = p.getProperty(key);
+            b.append(key).append('=').append(v != null ? v : line.substring(eq + 1)).append('\n');
+        }
+        java.util.List<String> unknown = new java.util.ArrayList<>();
+        for (String k : p.stringPropertyNames()) if (!known.contains(k)) unknown.add(k);
+        if (!unknown.isEmpty()) {
+            java.util.Collections.sort(unknown);
+            b.append("#\n# Keys this version of PZ Butter doesn't use (kept as they were):\n");
+            for (String k : unknown) b.append(k).append('=').append(p.getProperty(k)).append('\n');
+        }
+        return b.toString();
     }
 
     /** A feature switch: never on without the master switch; a missing key takes its default. */

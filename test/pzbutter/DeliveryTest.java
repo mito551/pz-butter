@@ -8,6 +8,11 @@ final class DeliveryTest {
 
     static void run() {
         settingsKeysOffByDefault();
+        settingsUpgradeAddsMissingKeys();
+        settingsUpgradeKeepsValues();
+        settingsUpgradeKeepsUnknownKeys();
+        settingsUpgradeBackupOnce();
+        settingsUpgradeNoRewriteWhenCurrent();
         settingsDefaultsOn();
         gpuQueueDefault();
         settingsNumClamped();
@@ -566,6 +571,56 @@ final class DeliveryTest {
         assert !Settings.flag("limiterSleep");
         Settings.load(write("enabled=true\nlimiterSleep=false\n"));
         assert !Settings.flag("limiterSleep") && Settings.flag("inputLatch");
+    }
+
+    // an old file (only enabled/frameLog): every current key appears with its comment; the values load
+    static void settingsUpgradeAddsMissingKeys() {
+        java.io.File f = write("enabled=true\nframeLog=true\n");
+        Settings.load(f);
+        String t = readAll(f);
+        assert t.contains("enabled=true") && t.contains("frameLog=true") : t;
+        assert t.contains("# limiterSleep:") && t.contains("limiterSleep=true") && t.contains("gpuMaxFrames=2") && t.contains("vrr=off");
+        assert Settings.enabled && Settings.frameLog && Settings.flag("limiterSleep");
+    }
+
+    // the user's values (including non-default spellings) survive the upgrade
+    static void settingsUpgradeKeepsValues() {
+        java.io.File f = write("enabled=true\nlimiterSleep=false\nvrr=auto\ngpuMaxFrames=4\n");
+        Settings.load(f);
+        String t = readAll(f);
+        assert t.contains("limiterSleep=false") && t.contains("vrr=auto") && t.contains("gpuMaxFrames=4") : t;
+        assert !t.contains("limiterSleep=true") && !t.contains("gpuMaxFrames=2");
+        assert !Settings.flag("limiterSleep") && Settings.mode("vrr").equals("auto");
+    }
+
+    // keys this version doesn't know (removed features, typos) are kept at the end
+    static void settingsUpgradeKeepsUnknownKeys() {
+        java.io.File f = write("enabled=true\nframeQueue=true\n");
+        Settings.load(f);
+        String t = readAll(f);
+        assert t.contains("frameQueue=true") && t.indexOf("frameQueue=true") > t.indexOf("frameLog=") : t;
+    }
+
+    // the first rewrite keeps a copy of the original; later rewrites don't overwrite it
+    static void settingsUpgradeBackupOnce() {
+        java.io.File f = write("enabled=true\n");
+        java.io.File bak = new java.io.File(f.getPath() + ".bak");
+        bak.delete();
+        Settings.load(f);
+        assert bak.exists() && readAll(bak).equals("enabled=true\n");
+        try (java.io.FileWriter w = new java.io.FileWriter(f, true)) { w.write("someNewThing=1\n"); }
+        catch (java.io.IOException e) { throw new RuntimeException(e); }
+        Settings.load(f);
+        assert readAll(bak).equals("enabled=true\n");
+    }
+
+    // a file that is already current is not written again
+    static void settingsUpgradeNoRewriteWhenCurrent() {
+        java.io.File f = write("enabled=true\n");
+        Settings.load(f);
+        assert f.setLastModified(1_000_000_000_000L);
+        Settings.load(f);
+        assert f.lastModified() == 1_000_000_000_000L;
     }
 
     static void settingsNumClamped() {
