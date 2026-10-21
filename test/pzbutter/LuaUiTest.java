@@ -30,6 +30,9 @@ final class LuaUiTest {
         uiTimingGroupsByName();
         uiTimingNameWithoutLuaTable();
         uiTimingReport();
+        uiTimingReportRest();
+        uiTimingFirstWindowStartsClean();
+        uiTimingPickFile();
         uiTimingOffByDefault();
     }
 
@@ -318,8 +321,41 @@ final class LuaUiTest {
         java.util.List<UiTiming.Stat> all = new java.util.ArrayList<>();
         for (int i = 0; i < 20; i++) { UiTiming.Stat s = new UiTiming.Stat("w" + i); s.inclNs = i * 1_000_000L; s.selfNs = s.inclNs / 2; s.renders = 60; s.draws = 600; all.add(s); }
         java.util.List<String> l = UiTiming.reportLines(all, 1_000_000_000L, 5_000_000L, 120);
-        assert l.size() == 16 && l.get(0).startsWith("[PZButter] ui: total") && l.get(0).contains("5.000 ms/s") && l.get(0).contains("0.042 ms/frame");
-        assert l.get(1).contains("w19") && l.get(1).contains("19.000 ms/s") && l.get(1).contains("10 draws/render");
+        assert l.size() == 17 && l.get(0).startsWith("[PZButter] ui: total") && l.get(0).contains("5.000 ms/s") && l.get(0).contains("0.042 ms/frame");
+        assert l.get(2).contains("w19") && l.get(2).contains("19.000 ms/s") && l.get(2).contains("10 draws/render");
+    }
+
+    // the time no window line covers: the total minus every window, floored at zero
+    static void uiTimingReportRest() {
+        UiTiming.Stat a = new UiTiming.Stat("a"), b = new UiTiming.Stat("b");
+        a.inclNs = 10_000_000L; b.inclNs = 20_000_000L;
+        java.util.List<UiTiming.Stat> all = java.util.Arrays.asList(a, b);
+        java.util.List<String> l = UiTiming.reportLines(all, 1_000_000_000L, 50_000_000L, 10);
+        assert l.get(1).contains("rest") && l.get(1).contains("20.000 ms/s") : l.get(1);
+        l = UiTiming.reportLines(all, 1_000_000_000L, 25_000_000L, 10);
+        assert l.get(1).contains("rest") && l.get(1).contains("0.000 ms/s") : l.get(1);
+    }
+
+    // the menu and loading frames before the first window are not in the first report
+    static void uiTimingFirstWindowStartsClean() {
+        long[] t = {0};
+        UiTiming.clock = () -> t[0];
+        UiTiming.resetForTest();
+        for (int i = 0; i < 3; i++) { UiTiming.uiEnter(); t[0] += 5_000_000; UiTiming.uiExit(); }
+        assert UiTiming.uiNsForTest() == 15_000_000 && UiTiming.framesForTest() == 3;
+        UiTiming.elementEnterNamed(new Object(), "W", 0);
+        t[0] += 1_000_000;
+        UiTiming.elementExit(0);
+        assert UiTiming.uiNsForTest() == 0 && UiTiming.framesForTest() == 0;
+    }
+
+    // a window is named after the file that defines it; the base UI files it derives from are passed over
+    static void uiTimingPickFile() {
+        String base = "media/lua/client/ISUI/ISUIElement.lua", base2 = "media/lua/client/ISUI/ISPanel.lua";
+        assert UiTiming.pickFile(base, "mods/x/media/lua/client/MyWin.lua").endsWith("MyWin.lua");
+        assert UiTiming.pickFile(base, base2).equals(base);
+        assert UiTiming.pickFile(null, null) == null;
+        assert UiTiming.pickFile(null, "a/MyWin.lua").endsWith("MyWin.lua");
     }
 
     static void uiTimingOffByDefault() {

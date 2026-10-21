@@ -18,8 +18,10 @@ import zombie.ui.UIManager;
 
 /**
  * uiTiming: time spent in UIManager.render per frame, and in each top-level UI window (a UIElement rendered outside
- * another element), inclusive and self, with the sprites queued while it drew. Once a minute the total and the 15
- * slowest windows go to the console and, with frameLog, to Zomboid/pzbutter/ui.out.
+ * another element), inclusive and self, with the sprites queued while it drew. Once a minute the total, the rest and
+ * the 15 slowest windows go to the console and, with frameLog, to Zomboid/pzbutter/ui.out. The rest is the total
+ * minus every window: OnPreUIDraw / OnPostUIDraw, fades, tooltips and modals, and Java windows whose render() never
+ * calls super.render().
  */
 final class UiTiming {
     static final Guard guard = new Guard("uiTiming");
@@ -112,8 +114,8 @@ final class UiTiming {
             KahluaTable t = e.getTable();
             if (t != null) {
                 if (UIManager.tableget(t, "Type") instanceof String s) type = s;
-                file = fileOf(UIManager.tableget(t, "render"));
-                if (file == null) file = fileOf(UIManager.tableget(t, "prerender"));
+                file = pickFile(fileOf(UIManager.tableget(t, "render")), fileOf(UIManager.tableget(t, "prerender")),
+                    fileOf(UIManager.tableget(t, "createChildren")), fileOf(UIManager.tableget(t, "new")));
             }
             names.put(element, name = windowName(type, e.getClass().getSimpleName(), file));
         }
@@ -132,7 +134,7 @@ final class UiTiming {
     }
 
     private static void windowDone(long now) {
-        if (!windowSet) { windowStartNs = now; windowSet = true; }
+        if (!windowSet) { windowStartNs = now; windowSet = true; uiNs = 0; frames = 0; }
         else if (now - windowStartNs >= WINDOW_NS) report(now);
     }
 
@@ -159,6 +161,10 @@ final class UiTiming {
         double seconds = Math.max(1e-9, elapsedNs / 1e9);
         out.add(String.format(Locale.ROOT, "[PZButter] ui: total %7.3f ms/s  %6.3f ms/frame  %d frames",
             uiNs / 1e6 / seconds, uiNs / 1e6 / Math.max(1, frames), frames));
+        long windowNs = 0;
+        for (Stat s : all) windowNs += s.inclNs;
+        out.add(String.format(Locale.ROOT, "[PZButter] ui: rest  %7.3f ms/s  (total minus every window, incl. Java windows that skip super.render)",
+            Math.max(0, uiNs - windowNs) / 1e6 / seconds));
         for (int i = 0; i < Math.min(15, sorted.size()); i++) {
             Stat s = sorted.get(i);
             out.add(String.format(Locale.ROOT, "[PZButter] ui: %7.3f ms/s  self %7.3f  %5d renders  %4d draws/render  %s",
@@ -182,4 +188,25 @@ final class UiTiming {
     static Stat statForTest(String name) { return stats.get(name); }
 
     static int depthForTest() { return depth; }
+
+    static long uiNsForTest() { return uiNs; }
+
+    static long framesForTest() { return frames; }
+
+    /**
+     * The file that defines a window: the first non-null one that is not a base UI file it derives from (an empty
+     * ISUIElement.render says nothing about the window); else the first non-null one; else null.
+     */
+    static String pickFile(String... files) {
+        String first = null;
+        for (String f : files) {
+            if (f == null) continue;
+            if (first == null) first = f;
+            if (!BASE_FILES.contains(f.substring(f.lastIndexOf('/') + 1))) return f;
+        }
+        return first;
+    }
+
+    private static final java.util.Set<String> BASE_FILES = java.util.Set.of("ISUIElement.lua", "ISPanel.lua",
+        "ISPanelJoypad.lua", "ISCollapsableWindow.lua", "ISCollapsableWindowJoypad.lua", "ISBaseObject.lua");
 }
