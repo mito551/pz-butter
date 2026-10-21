@@ -112,14 +112,16 @@ public final class MapPatches {
             UIWorldMap m = (UIWorldMap) map;
             WorldMapRenderer r = (WorldMapRenderer) renderer;
             WorldMap wm = m.getWorldMap();
-            if (wm == null || wm.combinedStreets == null || !view(m)) return false;
-            WorldMapStreetsV1 api = m.getAPI().getStreetsAPI();
+            if (m.isMapEditor() || wm == null || wm.combinedStreets == null || !view(m)) return false;   // editor: init checks edits
+            UIWorldMapV3 v3 = m.getAPI();
+            WorldMapStreetsV1 api = v3.getStreetsAPI();
             float zoom = r.getDisplayZoomF();
             MapFast.ViewKey key = new MapFast.ViewKey(new double[] {
                 r.getCenterWorldX(), r.getCenterWorldY(), zoom, r.getWorldScale(zoom), view[0], view[1], view[2], view[3],
                 m.getWidth(), m.getHeight(), r.getBoolean("ShowStreetNames") ? 1 : 0, r.getBoolean("HighlightStreet") ? 1 : 0,
-                m.isMapEditor() ? 1 : 0, api.getStreetDataCount(), api.getMouseOverStreetWorldX(), api.getMouseOverStreetWorldY()},
-                new Object[] {api.getMouseOverStreet(), Translator.getLanguage(), wm});
+                v3.getBoolean("OutlineStreets") ? 1 : 0, api.getStreetDataCount(), api.getMouseOverStreetWorldX(),
+                api.getMouseOverStreetWorldY(), UiPatches.fontsLoaded},
+                new Object[] {api.getMouseOverStreet(), Translator.getLanguage(), wm, v3.getStyle()});
             return !MapFast.shouldInit(renderData, key, wm.combinedStreets.isDirty());
         } catch (Throwable t) { guard.fail(t); return false; }
     }

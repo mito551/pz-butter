@@ -77,6 +77,7 @@ final class MapFast {
     static final class ViewKey {
         final double[] nums;
         final Object[] refs;   // compared by identity
+        long streetsGen;
 
         ViewKey(double[] nums, Object[] refs) { this.nums = nums; this.refs = refs; }
 
@@ -87,9 +88,15 @@ final class MapFast {
         }
     }
 
+    /** Street data changes seen (the game clears its dirty flag in the first init; each render-data object has its own). */
+    private static long streetsGen;
+
     /** Should this render-data object rebuild its label layout? Remembers the key when it does. */
     static boolean shouldInit(Object renderData, ViewKey key, boolean dirty) {
-        if (!dirty && key.same(layouts.get(renderData))) return false;
+        if (dirty) streetsGen++;
+        ViewKey old = layouts.get(renderData);
+        if (old != null && old.streetsGen == streetsGen && key.same(old)) return false;
+        key.streetsGen = streetsGen;
         layouts.put(renderData, key);
         return true;
     }

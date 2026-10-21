@@ -61,8 +61,11 @@ public final class UiPatches {
         } catch (Throwable t) { widthGuard.fail(t); }
     }
 
+    /** Font loads so far: map street labels laid out with older fonts are rebuilt. */
+    static volatile int fontsLoaded;
+
     /** TextManager.Init exit: fonts were (re)loaded. */
-    public static void onFontsLoaded() { TextWidths.clear(); }
+    public static void onFontsLoaded() { fontsLoaded++; TextWidths.clear(); }
 
     @Patch(className = "zombie.ui.TextManager", methodName = "MeasureStringX")
     public static class MeasureX {

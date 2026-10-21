@@ -66,7 +66,17 @@ final class LuaUiTest {
         assert MapFast.shouldInit(data, k, true);   // dirty data always rebuilds
         assert MapFast.shouldInit(data, new MapFast.ViewKey(new double[] {1, 2, 3, 4, 5, 6, 7, 8, 9, 11}, new Object[] {"en", null}), false);
         assert MapFast.shouldInit(new Object(), k, false);   // another render-data object has its own layout
+
+        // the game clears the shared dirty flag in the first init; the other render-data objects still rebuild
+        Object a = new Object(), b = new Object();
+        assert MapFast.shouldInit(a, key(1), false) && MapFast.shouldInit(b, key(1), false);
+        assert !MapFast.shouldInit(a, key(1), false) && !MapFast.shouldInit(b, key(1), false);
+        assert MapFast.shouldInit(a, key(1), true);
+        assert MapFast.shouldInit(b, key(1), false);
+        assert !MapFast.shouldInit(a, key(1), false) && !MapFast.shouldInit(b, key(1), false);
     }
+
+    static MapFast.ViewKey key(double v) { return new MapFast.ViewKey(new double[] {v}, new Object[] {"en"}); }
 
     // explored-area texture: the row-at-a-time fill writes exactly the bytes the per-byte fill writes
     static void visitedRowsSameBytes() {
