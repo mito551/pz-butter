@@ -52,6 +52,9 @@ public final class Settings {
       + "# vblankLock: with vsync, frames start a measured time before vblank (X11 + NVIDIA).\n"
       + "vblankLock=false\n"
       + "#\n"
+      + "# luaBudget: the merged LuaBudget mod. Its rules stay in Zomboid/LuaBudget.properties; no rules, no effect.\n"
+      + "luaBudget=true\n"
+      + "#\n"
       + "# Input.\n"
       + "# inputLatch: a fresh input poll when the frame starts.\n"
       + "inputLatch=true\n"
@@ -92,7 +95,7 @@ public final class Settings {
     /** A feature switch: never on without the master switch; a missing key takes its default. */
     /** Features that passed their in-game check and default to on (still only with the master switch). */
     static final java.util.Set<String> ON_BY_DEFAULT = java.util.Set.of("limiterSleep", "inputLatch", "keyboardFresh", "frameStartGate",
-        "reflexSleep", "vsyncAdaptive");   // these two only act with vsync on
+        "reflexSleep", "vsyncAdaptive", "luaBudget");   // these two only act with vsync on
 
     public static boolean flag(String key) { return enabled && bool(props, key, ON_BY_DEFAULT.contains(key)); }
 

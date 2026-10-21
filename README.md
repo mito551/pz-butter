@@ -56,7 +56,6 @@ Values can be `true`/`false`, `yes`/`no`, `on`/`off` or `1`/`0`. If the file can
 |---|---|
 | `./build.sh` | Compiles, runs the self-tests (`test/pzbutter/SelfTest.java`) and builds `build/PZButter.jar`. |
 | `./bench.sh` | Microbenchmark of the frame clock's per-frame cost. |
-| `tools/merge-luabudget.sh` | Folds the LuaBudget mod's sources into `pzbutter.luabudget`. `--check` tries the merge in a temporary copy and builds it. |
 
 **CI.** Every push builds the mod and runs the self-tests on GitHub Actions; it can also be started by hand (Actions → Build → Run workflow). **Releases.** Bump `modversion` in `mod/PZButter/42/mod.info`, then push a commit to `main` whose message contains `[build]`. GitHub Actions downloads the free Project Zomboid dedicated server (cached) to compile against, builds the mod, runs the self-tests, and publishes a release `v<modversion>` with `PZButter-<modversion>.zip`. Only the newest commit of a push is checked. If that version already has a release, the run fails.
 
@@ -75,7 +74,7 @@ PZ Butter is inspired by the mods below and aims to cover what they do, in one m
 | Viewpoint PZO Shader Compatibility | Hesin | [3815225881](https://steamcommunity.com/sharedfiles/filedetails/?id=3815225881) |
 | VRAM Steady | VRAM Steady authors | [3819844505](https://steamcommunity.com/sharedfiles/filedetails/?id=3819844505) |
 | Character Texture VRAM Leak Fix [ZombieBuddy] | syeon | [3821525282](https://steamcommunity.com/sharedfiles/filedetails/?id=3821525282) |
-| Lua Budget | mito551 | not on the Workshop; PZ Butter takes it in whole |
+| Lua Budget | mito551 | not on the Workshop; merged into PZ Butter (its rules stay in `Zomboid/LuaBudget.properties`; remove the LuaBudget mod from the mod list) |
 
 Version 0.1 covers none of them yet; the table lists what the project aims to cover. The Viewpoint add-ons above need the Viewpoint mod itself ([3809306528](https://steamcommunity.com/sharedfiles/filedetails/?id=3809306528)). PZ Butter covers what the add-ons do, not Viewpoint.
 

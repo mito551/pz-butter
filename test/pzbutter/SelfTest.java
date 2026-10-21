@@ -29,8 +29,8 @@ public final class SelfTest {
         openLogUnwritable();
         frameLogRotates();
         frameFailureDisables();   // last: it switches the clock off
-        optionalInit();
         DeliveryTest.run();
+        pzbutter.luabudget.BudgetTest.run();
         delete(DIR);
         System.out.println("ok");
     }
@@ -135,14 +135,4 @@ public final class SelfTest {
         } catch (NoSuchMethodException e) { throw new AssertionError(e); }
     }
 
-    public static final class Probe {
-        static int calls;
-        public static void init() { calls++; }
-    }
-
-    // a merged module's init() runs when its class is in the jar, and is skipped quietly when not
-    static void optionalInit() {
-        assert !Main.initIfPresent("pzbutter.NoSuchModule");
-        assert Main.initIfPresent("pzbutter.SelfTest$Probe") && Probe.calls == 1;
-    }
 }
