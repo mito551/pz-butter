@@ -21,8 +21,8 @@ public final class Settings {
       + "# and per presented frame in present.out, per second in threads.out.\n"
       + "frameLog=false\n"
       + "#\n"
-      + "# Frame delivery. Modes take off, on or auto. limiterSleep and the three input keys are on by default:\n"
-      + "# they passed in-game checks. Everything else stays off until you switch it on.\n"
+      + "# Frame delivery. Modes take off, on or auto. limiterSleep, the three input keys, reflexSleep and\n"
+      + "# vsyncAdaptive are on by default: they passed in-game checks. Everything else stays off until you switch it on.\n"
       + "# limiterSleep: the frame limiter sleeps until 0.2 ms before the frame instead of spinning.\n"
       + "limiterSleep=true\n"
       + "# renderIdleWait: the render thread waits for the next frame instead of spinning.\n"
@@ -40,11 +40,11 @@ public final class Settings {
       + "# borderlessFullscreen: the borderless window becomes a fullscreen window at the desktop mode (auto: with VRR).\n"
       + "borderlessFullscreen=off\n"
       + "# vsyncAdaptive: swap interval -1, a late frame tears instead of waiting a refresh.\n"
-      + "vsyncAdaptive=false\n"
+      + "vsyncAdaptive=true\n"
       + "# gpuMaxFrames: at most this many frames queued for the GPU (0: off).\n"
       + "gpuMaxFrames=0\n"
       + "# reflexSleep: each frame measures its queue wait and the next starts that much later.\n"
-      + "reflexSleep=false\n"
+      + "reflexSleep=true\n"
       + "# reflexBoost: NVIDIA's prefer-maximum-performance while in a world.\n"
       + "reflexBoost=false\n"
       + "# reflexCapFps: with vsync, the cap (0: auto, refresh - refresh^2/3600).\n"
@@ -91,7 +91,8 @@ public final class Settings {
 
     /** A feature switch: never on without the master switch; a missing key takes its default. */
     /** Features that passed their in-game check and default to on (still only with the master switch). */
-    static final java.util.Set<String> ON_BY_DEFAULT = java.util.Set.of("limiterSleep", "inputLatch", "keyboardFresh", "frameStartGate");
+    static final java.util.Set<String> ON_BY_DEFAULT = java.util.Set.of("limiterSleep", "inputLatch", "keyboardFresh", "frameStartGate",
+        "reflexSleep", "vsyncAdaptive");   // these two only act with vsync on
 
     public static boolean flag(String key) { return enabled && bool(props, key, ON_BY_DEFAULT.contains(key)); }
 

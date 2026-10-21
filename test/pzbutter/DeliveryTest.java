@@ -533,7 +533,8 @@ final class DeliveryTest {
     }
 
     // passed in game (Task 13) and switched on by the user: on when the key is missing, but never without the master
-    static final java.util.Set<String> ON_BY_DEFAULT = java.util.Set.of("limiterSleep", "inputLatch", "keyboardFresh", "frameStartGate");
+    static final java.util.Set<String> ON_BY_DEFAULT = java.util.Set.of("limiterSleep", "inputLatch", "keyboardFresh", "frameStartGate",
+        "reflexSleep", "vsyncAdaptive");
 
     static void settingsDefaultsOn() {
         Settings.load(write("enabled=true\n"));
