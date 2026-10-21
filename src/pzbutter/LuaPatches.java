@@ -110,6 +110,25 @@ public final class LuaPatches {
         public static void exit(@Patch.Return Object closure) { onCompiled(closure); }
     }
 
+    // ---- the PZButter global for pz-butter's own Lua ----
+
+    static volatile boolean uiLuaFast;
+
+    /** LuaManager.LoadDirBase entry (the Lua environment exists, the Lua files are about to load). */
+    public static void onLuaLoad() {
+        try {
+            KahluaTableImpl t = new KahluaTableImpl(new java.util.HashMap<>());
+            t.rawset("uiLuaFast", uiLuaFast);
+            zombie.Lua.LuaManager.env.rawset("PZButter", t);
+        } catch (Throwable x) { System.out.println("[PZButter] Lua settings table not set: " + x); }
+    }
+
+    @Patch(className = "zombie.Lua.LuaManager", methodName = "LoadDirBase")
+    public static class LuaLoad {
+        @Patch.OnEnter
+        public static void enter() { onLuaLoad(); }
+    }
+
     @Patch(className = "zombie.Lua.Event", methodName = "trigger")
     public static class Trigger {
         @Patch.OnEnter

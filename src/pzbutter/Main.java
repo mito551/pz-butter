@@ -22,6 +22,7 @@ public class Main {
         LuaFast.init();
         LuaTiming.init();
         UiTick.init();
+        LuaPatches.uiLuaFast = Settings.flag("uiLuaFast");
     }
 
     /** True when the system class loader can load the class (not initialised). */
