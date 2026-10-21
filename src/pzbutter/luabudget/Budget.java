@@ -74,6 +74,10 @@ public final class Budget {
       + "# rule.2=ViewpointExtendedSupport.lua|2|OnTick|30\n";
 
     private static volatile boolean enabled;
+    /** The old LuaBudget mod's class; two copies would compound their skips. */
+    static String oldMod = "luabudget.Budget";
+    /** ZombieBuddy may add the old mod's jar after init; Lua events only start once every mod's Java is in. */
+    private static volatile boolean oldModChecked;
     private static volatile Thread mainThread;
     private static List<Rule> rules = new ArrayList<>();
     private static final WeakHashMap<Object, State> states = new WeakHashMap<>();
@@ -89,16 +93,21 @@ public final class Budget {
 
     static boolean isEnabled() { return enabled; }
 
+    /** True (and luaBudget off, with one log line) when the old LuaBudget mod is on the class path. */
+    private static boolean oldModPresent() {
+        if (!Main.classPresent(oldMod)) return false;
+        enabled = false;
+        System.out.println("[PZButter] luaBudget off: the LuaBudget mod is also loaded; remove it from the mod list");
+        return true;
+    }
+
     public static void init() { init(new File(System.getProperty("user.home"), "Zomboid/LuaBudget.properties")); }
 
     static void init(File f) {
         enabled = false;
         if (!Settings.flag("luaBudget")) return;
-        // the old LuaBudget mod hooks the same calls; two copies would compound their skips
-        if (Main.classPresent("luabudget.Budget")) {
-            System.out.println("[PZButter] luaBudget off: the LuaBudget mod is also loaded; remove it from the mod list");
-            return;
-        }
+        oldModChecked = false;
+        if (oldModPresent()) return;
         try {
             if (!f.exists()) try (FileWriter w = new FileWriter(f)) { w.write(DEFAULTS); }
             Properties p = new Properties();
@@ -190,7 +199,9 @@ public final class Budget {
 
     /** True when this Lua call should be skipped. */
     public static boolean shouldSkip(Object fn, Object[] args) {
-        if (!enabled || depth == 0 || Thread.currentThread() != mainThread) return false;
+        if (!enabled) return false;
+        if (!oldModChecked) { oldModChecked = true; if (oldModPresent()) return false; }
+        if (depth == 0 || Thread.currentThread() != mainThread) return false;
         try {
             State s = states.get(fn);
             if (s == null) { s = new State(lookup(fn), frameNo); states.put(fn, s); }

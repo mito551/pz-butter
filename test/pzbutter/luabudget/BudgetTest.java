@@ -15,6 +15,7 @@ public final class BudgetTest {
     public static void run() {
         luaBudgetParse();
         duplicateLuaBudgetRefused();
+        duplicateLuaBudgetSeenLate();
     }
 
     static File file(String text) {
@@ -44,5 +45,19 @@ public final class BudgetTest {
         Settings.load(file("enabled=true\n"));
         Budget.init(file("targetFps=40\nrule.1=x.lua|3|OnTick\n"));
         assert !Budget.isEnabled();
+    }
+
+    // ZombieBuddy adds the old mod's jar after pz-butter's init (seen in game): the first skip decision checks again
+    static void duplicateLuaBudgetSeenLate() {
+        Settings.load(file("enabled=true\n"));
+        String was = Budget.oldMod;
+        try {
+            Budget.oldMod = "luabudget.NoSuchClass";
+            Budget.init(file("targetFps=40\nrule.1=x.lua|3|OnTick\n"));
+            assert Budget.isEnabled();
+            Budget.oldMod = was;
+            assert !Budget.shouldSkip(new Object(), new Object[0]);
+            assert !Budget.isEnabled();
+        } finally { Budget.oldMod = was; }
     }
 }
