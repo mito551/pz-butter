@@ -11,6 +11,7 @@ final class LuaUiTest {
         emptyClosureOnlyBareReturn();
         timingTopTen();
         rawgetFastSame();
+        rawgetHookMatchesStock();
         internWalksTree();
         staggerEveryWindowWithin100ms();
         staggerForgetsClosedWindows();
@@ -167,6 +168,27 @@ final class LuaUiTest {
         assert !LuaFast.fastAllowed(false, 3, false);   // rawget(int) arrives boxed: leave it to stock (it converts to Double)
     }
 
+    // the hook's answer is the unpatched rawget's: present, missing, missing with a metatable, numeric and boxed-int keys
+    static void rawgetHookMatchesStock() {
+        se.krka.kahlua.j2se.KahluaTableImpl meta = new se.krka.kahlua.j2se.KahluaTableImpl(new java.util.HashMap<>());
+        meta.rawset("inherited", "m");
+        se.krka.kahlua.j2se.KahluaTableImpl t = new se.krka.kahlua.j2se.KahluaTableImpl(new java.util.HashMap<>());
+        t.rawset("a", 1.0);
+        t.rawset(2.0, "two");
+        boolean was = LuaFast.rawgetFast, guard = LuaPatches.rawgetGuard.on;
+        LuaFast.rawgetFast = LuaPatches.rawgetGuard.on = true;
+        try {
+            for (int round = 0; round < 2; round++) {
+                for (Object k : new Object[] {"a", "b", 2.0, 3.0, "inherited", 2}) {
+                    Object fast = LuaPatches.rawgetFast(t, k);
+                    assert fast == LuaPatches.NOT_FAST || java.util.Objects.equals(fast, t.rawget(k)) : k + " " + fast;
+                }
+                t.setMetatable(meta);
+            }
+            assert LuaPatches.rawgetFast(t, "inherited").equals("m") && LuaPatches.rawgetGuard.on;
+        } finally { LuaFast.rawgetFast = was; LuaPatches.rawgetGuard.on = guard; }
+    }
+
     // every String constant in a compiled chunk's prototype tree becomes the interned instance
     static void internWalksTree() {
         Prototype leaf = proto(0x0080001e), mid = proto(0x0080001e), root = proto(0x0080001e);
@@ -187,14 +209,17 @@ final class LuaUiTest {
         f.delete();
         Settings.load(f);
         Settings.load(SelfTest.write(DeliveryTest.readAll(f).replace("enabled=false", "enabled=true")));
-        for (String k : new String[] {"luaRawgetFast", "luaInternConstants", "luaSkipEmpty", "uiTickStagger", "textWidthCache",
+        for (String k : new String[] {"luaInternConstants", "luaSkipEmpty", "uiTickStagger", "textWidthCache",
                                       "uiLuaFast", "mapStreetMemo", "mapStreetCache", "mapVisitedFast"})
             assert Settings.flag(k) : k;
-        assert !Settings.flag("luaTiming");
-        LuaFast.init(); UiTick.init(); TextWidths.init(); MapFast.init();   // the hooks' guards are live, not only the flags
-        assert LuaPatches.rawgetGuard.on && UiPatches.tickGuard.on && UiPatches.widthGuard.on && MapPatches.guard.on;
+        assert !Settings.flag("luaTiming") && !Settings.flag("luaRawgetFast");   // rawget: slower than stock (bench.sh . rawget)
+        UiTick.init(); TextWidths.init(); MapFast.init();   // the hooks' guards are live, not only the flags
+        assert UiPatches.tickGuard.on && UiPatches.widthGuard.on && MapPatches.guard.on;
+        Settings.load(SelfTest.write("enabled=true\nluaRawgetFast=true\n"));
+        LuaFast.init();
+        assert LuaPatches.rawgetGuard.on;
         Settings.load(SelfTest.write("enabled=false\n"));
-        assert !Settings.flag("luaRawgetFast");
+        assert !Settings.flag("luaInternConstants");
     }
 
     static Prototype proto(int... code) {

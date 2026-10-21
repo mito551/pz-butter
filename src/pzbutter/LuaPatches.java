@@ -55,24 +55,22 @@ public final class LuaPatches {
     /** rawget's answer is stock's: run the original. */
     public static final Object NOT_FAST = new Object();
     static final Guard rawgetGuard = new Guard("luaRawgetFast");
-    private static VarHandle reloadReplace, metatable;
-    private static boolean tableBound;
+    /** Bound once by class initialisation (thread-safe; rawget runs on more than the main thread), final so the JIT folds them. */
+    private static final class Table {
+        static final VarHandle RELOAD_REPLACE = Game.field(KahluaTableImpl.class, "reloadReplace", KahluaTable.class);
+        static final VarHandle METATABLE = Game.field(KahluaTableImpl.class, "metatable", KahluaTable.class);
+    }
 
     /** KahluaTableImpl.rawget entry: the value (possibly null), or NOT_FAST to run stock. */
     public static Object rawgetFast(Object self, Object key) {
         if (!LuaFast.rawgetFast || !rawgetGuard.on) return NOT_FAST;
         try {
-            if (!tableBound) {
-                tableBound = true;
-                reloadReplace = Game.field(KahluaTableImpl.class, "reloadReplace", KahluaTable.class);
-                metatable = Game.field(KahluaTableImpl.class, "metatable", KahluaTable.class);
-            }
-            if (reloadReplace == null || metatable == null) { rawgetGuard.on = false; return NOT_FAST; }
+            if (Table.RELOAD_REPLACE == null || Table.METATABLE == null) { rawgetGuard.on = false; return NOT_FAST; }
             KahluaTableImpl t = (KahluaTableImpl) self;
-            if (!LuaFast.fastAllowed(reloadReplace.get(t) != null, key, Core.debug)) return NOT_FAST;
+            if (!LuaFast.fastAllowed((KahluaTable) Table.RELOAD_REPLACE.get(t) != null, key, Core.debug)) return NOT_FAST;
             Object v = LuaFast.rawgetFast(t.delegate, key);
             if (v != LuaFast.MISS) return v;
-            KahluaTable meta = (KahluaTable) metatable.get(t);
+            KahluaTable meta = (KahluaTable) Table.METATABLE.get(t);
             return meta == null ? null : meta.rawget(key);   // stock: a missing key asks the metatable
         } catch (Throwable x) { rawgetGuard.fail(x); return NOT_FAST; }
     }

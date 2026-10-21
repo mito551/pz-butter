@@ -59,8 +59,8 @@ public final class Settings {
       + "luaSkipEmpty=true\n"
       + "# luaTiming: once a minute, the ten slowest Lua event handlers to the console (and lua.out with frameLog).\n"
       + "luaTiming=false\n"
-      + "# luaRawgetFast: Lua table reads do one hash lookup instead of two.\n"
-      + "luaRawgetFast=true\n"
+      + "# luaRawgetFast: Lua table reads do one hash lookup instead of two (measured slower than stock; off).\n"
+      + "luaRawgetFast=false\n"
       + "# luaInternConstants: string constants of loaded Lua are interned, so table lookups match by identity first.\n"
       + "luaInternConstants=true\n"
       + "#\n"
@@ -178,7 +178,7 @@ public final class Settings {
     /** Features that passed their in-game check and default to on (still only with the master switch). */
     static final java.util.Set<String> ON_BY_DEFAULT = java.util.Set.of("limiterSleep", "inputLatch", "keyboardFresh", "frameStartGate",
         "reflexSleep", "vsyncAdaptive", "luaBudget",
-        "luaRawgetFast", "luaInternConstants", "luaSkipEmpty", "uiTickStagger", "textWidthCache", "uiLuaFast", "mapStreetMemo", "mapStreetCache", "mapVisitedFast");   // these two only act with vsync on
+        "luaInternConstants", "luaSkipEmpty", "uiTickStagger", "textWidthCache", "uiLuaFast", "mapStreetMemo", "mapStreetCache", "mapVisitedFast");   // these two only act with vsync on
 
     public static boolean flag(String key) { return enabled && bool(props, key, ON_BY_DEFAULT.contains(key)); }
 

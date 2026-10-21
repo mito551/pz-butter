@@ -9,6 +9,7 @@ import java.util.Arrays;
  *          parked thread CPU per park(4 ms). Lower is better for all.
  * stamps:  ns and bytes per onPush + onAcquire pair, three states in rotation.
  * learner: ns per observe() over a fixed 240 fps trace; prints a checksum of every hold, which must not change.
+ * rawget:  ns per lookup, stock KahluaTableImpl.rawget against the luaRawgetFast hook; hits, then misses that ask a metatable.
  */
 public final class DeliveryBench {
     static final com.sun.management.ThreadMXBean MX = (com.sun.management.ThreadMXBean) ManagementFactory.getThreadMXBean();
@@ -19,7 +20,8 @@ public final class DeliveryBench {
             case "stamps" -> stamps();
             case "learner" -> learner();
             case "widths" -> widths();
-            default -> throw new IllegalArgumentException("parker | stamps | learner | widths");
+            case "rawget" -> rawget();
+            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget");
         }
     }
 
@@ -136,5 +138,33 @@ public final class DeliveryBench {
         }
         Arrays.sort(ns); Arrays.sort(bytes);
         System.out.printf("widths: %6.2f ns/op (min %.2f, max %.2f), %5.2f B/op, checksum %d%n", ns[3], ns[0], ns[6], bytes[3], check);
+    }
+
+    static void rawget() {
+        se.krka.kahlua.j2se.KahluaTableImpl meta = new se.krka.kahlua.j2se.KahluaTableImpl(new java.util.HashMap<>());
+        se.krka.kahlua.j2se.KahluaTableImpl t = new se.krka.kahlua.j2se.KahluaTableImpl(new java.util.HashMap<>());
+        String[] hit = new String[64], miss = new String[64];
+        for (int i = 0; i < 64; i++) { hit[i] = "field" + i; miss[i] = "method" + i; t.rawset(hit[i], (double) i); meta.rawset(miss[i], (double) i); }
+        t.setMetatable(meta);
+        LuaFast.rawgetFast = LuaPatches.rawgetGuard.on = true;
+        for (String[] keys : new String[][] {hit, miss}) {
+            for (boolean hook : new boolean[] {false, true}) {
+                int n = 20_000_000;
+                double[] ns = new double[7];
+                long check = 0;
+                for (int r = -1; r < 7; r++) {
+                    long sum = 0, t0 = System.nanoTime();
+                    for (int i = 0; i < n; i++) {
+                        Object v = hook ? LuaPatches.rawgetFast(t, keys[i & 63]) : t.rawget(keys[i & 63]);
+                        sum += ((Double) v).longValue();
+                    }
+                    if (r >= 0) ns[r] = (System.nanoTime() - t0) / (double) n;
+                    check = sum;
+                }
+                Arrays.sort(ns);
+                System.out.printf("rawget %s %s: %6.2f ns/op (min %.2f, max %.2f), checksum %d%n",
+                    keys == hit ? "hit " : "miss", hook ? "hook " : "stock", ns[3], ns[0], ns[6], check);
+            }
+        }
     }
 }
