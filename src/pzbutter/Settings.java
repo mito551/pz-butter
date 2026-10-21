@@ -1,7 +1,6 @@
 package pzbutter;
 
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -107,7 +106,9 @@ public final class Settings {
         try {
             if (!f.exists()) try (FileWriter w = new FileWriter(f)) { w.write(DEFAULTS); }
             Properties p = new Properties();
-            try (FileInputStream in = new FileInputStream(f)) { p.load(in); }
+            byte[] bytes = Files.readAllBytes(f.toPath());
+            int bom = bytes.length >= 3 && bytes[0] == (byte) 0xEF && bytes[1] == (byte) 0xBB && bytes[2] == (byte) 0xBF ? 3 : 0;
+            p.load(new java.io.ByteArrayInputStream(bytes, bom, bytes.length - bom));   // a UTF-8 mark (Notepad) is not a key
             props = p;
             upgrade(f, p);
             enabled = bool(p, "enabled", false);
@@ -131,7 +132,9 @@ public final class Settings {
             if (text.equals(old)) return;
             File bak = new File(f.getPath() + ".bak");
             if (!bak.exists()) Files.copy(f.toPath(), bak.toPath());
-            Files.write(f.toPath(), text.getBytes(StandardCharsets.ISO_8859_1));
+            java.nio.file.Path tmp = f.toPath().resolveSibling(f.getName() + ".tmp");   // a failed write never truncates the file
+            Files.write(tmp, text.getBytes(StandardCharsets.ISO_8859_1));
+            Files.move(tmp, f.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
         } catch (Throwable t) {
             System.out.println("[PZButter] settings file not upgraded: " + t);
         }
@@ -147,16 +150,28 @@ public final class Settings {
             String key = line.substring(0, eq);
             known.add(key);
             String v = p.getProperty(key);
-            b.append(key).append('=').append(v != null ? v : line.substring(eq + 1)).append('\n');
+            b.append(v != null ? entry(key, v) : line).append('\n');
         }
         java.util.List<String> unknown = new java.util.ArrayList<>();
         for (String k : p.stringPropertyNames()) if (!known.contains(k)) unknown.add(k);
         if (!unknown.isEmpty()) {
             java.util.Collections.sort(unknown);
             b.append("#\n# Keys this version of PZ Butter doesn't use (kept as they were):\n");
-            for (String k : unknown) b.append(k).append('=').append(p.getProperty(k)).append('\n');
+            for (String k : unknown) b.append(entry(k, p.getProperty(k))).append('\n');
         }
         return b.toString();
+    }
+
+    /** key=value escaped the way Properties.store writes it (backslashes, line breaks, \\uXXXX past Latin-1). */
+    static String entry(String key, String value) {
+        try {
+            Properties one = new Properties();
+            one.setProperty(key, value);
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            one.store(out, null);
+            String s = out.toString(StandardCharsets.ISO_8859_1);   // a date comment line, then the entry
+            return s.substring(s.indexOf('\n') + 1, s.length() - System.lineSeparator().length());
+        } catch (java.io.IOException e) { throw new java.io.UncheckedIOException(e); }
     }
 
     /** A feature switch: never on without the master switch; a missing key takes its default. */

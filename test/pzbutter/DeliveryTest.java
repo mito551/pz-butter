@@ -13,6 +13,8 @@ final class DeliveryTest {
         settingsUpgradeKeepsUnknownKeys();
         settingsUpgradeBackupOnce();
         settingsUpgradeNoRewriteWhenCurrent();
+        settingsUpgradeKeepsEscapes();
+        settingsBomIgnored();
         settingsDefaultsOn();
         gpuQueueDefault();
         settingsNumClamped();
@@ -615,6 +617,30 @@ final class DeliveryTest {
     }
 
     // a file that is already current is not written again
+    // backslashes, escaped characters and non-Latin-1 text read back the same after the rewrite, and after a second one
+    static void settingsUpgradeKeepsEscapes() {
+        java.io.File f = write("enabled=true\nmyPath=C:\\\\games\\\\pz\nmulti=a\\u00e9\\u4e2d\\nb\n#x=1\n");
+        for (int i = 0; i < 2; i++) {
+            Settings.load(f);
+            java.util.Properties p = new java.util.Properties();
+            try (java.io.FileInputStream in = new java.io.FileInputStream(f)) { p.load(in); }
+            catch (java.io.IOException e) { throw new RuntimeException(e); }
+            assert "C:\\games\\pz".equals(p.getProperty("myPath")) : p;
+            assert "a\u00e9\u4e2d\nb".equals(p.getProperty("multi")) : p;
+        }
+    }
+
+    // a file saved with a UTF-8 byte order mark (Windows Notepad) still reads its first key
+    static void settingsBomIgnored() {
+        java.io.File f = write("");
+        try {
+            java.nio.file.Files.write(f.toPath(), new byte[] {(byte) 0xEF, (byte) 0xBB, (byte) 0xBF, 'e', 'n', 'a', 'b', 'l', 'e', 'd', '=', 't', 'r', 'u', 'e', '\n'});
+            Settings.load(f);
+            assert Settings.enabled;
+            assert java.nio.file.Files.readAllBytes(f.toPath())[0] != (byte) 0xEF;
+        } catch (java.io.IOException e) { throw new RuntimeException(e); }
+    }
+
     static void settingsUpgradeNoRewriteWhenCurrent() {
         java.io.File f = write("enabled=true\n");
         Settings.load(f);
