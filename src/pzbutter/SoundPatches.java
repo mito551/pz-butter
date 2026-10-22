@@ -21,9 +21,13 @@ public final class SoundPatches {
 
     /** The ambience and parameter update entries: true skips this call (the shared gate is closed this frame). */
     public static boolean skipTick() {
-        if (!SoundTick.on || !tickGuard.on) return false;
-        try { return !SoundTick.gateOpen(FrameClock.frameNo, System.currentTimeMillis()); }
-        catch (Throwable t) { tickGuard.fail(t); return false; }
+        if (!tickGuard.on || !SoundTick.on) return false;
+        try {
+            long f = FrameClock.frameNo;
+            int m = SoundTick.memo(f);
+            if (m >= 0) return m == 0;
+            return !SoundTick.gateOpen(f, SoundTick.nowMs());
+        } catch (Throwable t) { tickGuard.fail(t); return false; }
     }
 
     /**
