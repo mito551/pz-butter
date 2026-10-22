@@ -52,6 +52,20 @@ The mod creates `~/Zomboid/PZButter.properties` on first start and reads it once
 | `audioLimiter` | Changes what you hear: loud peaks are held under the ceiling, using FMOD's own limiter on the master output. |
 | `audioLimiterCeilingDb` | The highest level the limiter lets through, in dB (-12 to 0; default -2). |
 | `audioLimiterStereoFold` | With a stereo output, the limiter works on the stereo mix. Only acts together with `audioLimiter`. |
+| `occlusionSkipLightingOnly` | The wall occlusion grid is rebuilt only when something other than light changed. Light updates cost less. |
+| `lightInfoOncePerFrame` | A clean square's light is read once per lighting update, so the light lookups cost less. |
+| `lightSwitchCheckFrames` | `0` is stock. `15` lets a light switch reuse its power answer for 15 frames (0.25 s at 60 fps). |
+| `lightingFps` | `0` leaves the game's lighting rate. `1` to `120` sets the lighting thread's rate; it changes lighting smoothness, not main-frame time. |
+| `gridStackInterval` | `0` is stock. `8` runs the buildings-in-front scan every 8 frames while you stay put. |
+| `roofHideDebounceFrames` | `0` is stock. `8` holds a carport roof's hide or show for 8 frames, so it doesn't flicker. |
+| `cutawayInvalidateChanged` | Only chunks where a wall's cutaway actually changed are redrawn. |
+| `cutawayVisitPrefilter` | Walls that cannot cut away are skipped before the cutaway walk, so it costs less. |
+| `cutawayRadius` | `0` is stock. `6` limits cutaway wall checks to chunks near you; only far zoomed-out views change. |
+| `cutawayFast` | Clean chunks reuse their stored cutaway occluder masks instead of testing every square again. |
+| `rainSplashesFast` | Rain splashes start with fewer random-number calls. The same odds. |
+| `weatherMaskIdleSkip` | Without clouds, fog or rain the weather mask is not scanned or drawn. Indoors only your building is scanned. |
+| `puddleEarlyZ` | Hidden puddles are rejected before the costly shader. The look is the same. |
+| `fogEarlyZ` | Hidden fog is rejected before the costly shader. The look is the same. |
 
 Each line of `frames.out` has five fields:
 
