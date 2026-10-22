@@ -27,8 +27,9 @@ public final class SoundPatches {
 
     /** The ambience and parameter update entries: true skips this call (the shared gate is closed this frame). */
     public static boolean skipTick() {
-        if (!tickGuard.on || !SoundTick.on) return false;
+        if (!tickGuard.on || !SoundTick.on || !FrameClock.on) return false;   // a stopped frame counter can't freeze the memo
         try {
+            if (SoundTick.forcing()) return false;
             long f = FrameClock.frameNo;
             int m = SoundTick.memo(f);
             if (m >= 0) return m == 0;
@@ -41,15 +42,23 @@ public final class SoundPatches {
      * The emitter is still positioned, so a later file-based clip starts where the zombie is.
      */
     public static boolean skipEmitter(Object character) {
-        if (!SoundTick.idle || !idleGuard.on) return false;
+        boolean idleOn = SoundTick.idle && idleGuard.on, tickOn = SoundTick.on && tickGuard.on;
+        if (!idleOn && !tickOn) return false;
         try {
             IsoGameCharacter c = (IsoGameCharacter) character;
             boolean zombie = c instanceof IsoZombie;
             BaseCharacterSoundEmitter e = c.emitter;
-            if (!SoundTick.skipEmitter(zombie, zombie && e.isClear())) return false;
+            if (SoundTick.forceParams(tickOn, zombie, zombie && e.hasSoundsToStart())) {
+                // a sound is queued and the gate may skip the parameter list: update it for real before the stock path starts the sound
+                SoundTick.forceBegin();
+                try { c.getFMODParameters().update(); }
+                finally { SoundTick.forceEnd(); }
+                return false;
+            }
+            if (!idleOn || !SoundTick.skipEmitter(zombie, zombie && e.isClear())) return false;
             e.set(c.getX(), c.getY(), c.getZ());
             return true;
-        } catch (Throwable t) { idleGuard.fail(t); return false; }
+        } catch (Throwable t) { (idleOn ? idleGuard : tickGuard).fail(t); return false; }
     }
 
     /**
@@ -121,7 +130,6 @@ public final class SoundPatches {
 
     /** ChunkLevelData.update exit (also on a throwable): clears the square whose clear was deferred, for real. */
     public static void onFliesExit() {
-        if (!fliesGuard.on) return;
         try { SoundFixes.clearPendingFlies(); }
         catch (Throwable t) { fliesGuard.fail(t); }
     }

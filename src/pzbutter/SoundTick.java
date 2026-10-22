@@ -46,10 +46,28 @@ final class SoundTick {
     static boolean gateOpen(long frameNo, long nowMs) {
         int m = memo(frameNo);
         if (m >= 0) return m != 0;
-        boolean open = hz <= 0 || G[1] == NEVER || nowMs - G[1] >= 1000 / hz - 1;
+        boolean open = hz <= 0 || G[1] == NEVER || nowMs < G[1] || nowMs - G[1] >= 1000 / hz - 1;   // a clock step back reopens
         if (open) G[1] = nowMs;
         G[0] = (frameNo << 1) | (open ? 1L : 0L);
         return open;
+    }
+
+    /** The thread inside a forced parameter update (I1): its own calls to the tick gate pass, other threads still skip. */
+    private static volatile Thread forcer;
+
+    /** A zombie with a sound queued takes its parameter update for real when the tick gate is on. */
+    static boolean forceParams(boolean tickOn, boolean isZombie, boolean hasSoundsToStart) {
+        return tickOn && isZombie && hasSoundsToStart;
+    }
+
+    static void forceBegin() { forcer = Thread.currentThread(); }
+
+    static void forceEnd() { forcer = null; }
+
+    /** True inside this thread's forced update (one volatile read when no update is forced). */
+    static boolean forcing() {
+        Thread f = forcer;
+        return f != null && f == Thread.currentThread();
     }
 
     /** Skip a character's sound work this update? Only silent zombies: a queued or playing sound takes the full path. */

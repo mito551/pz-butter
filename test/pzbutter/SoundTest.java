@@ -24,6 +24,67 @@ final class SoundTest {
         limiterFindsLibraryOnPath();
         limiterCeilingClamped();
         stereoFoldOnByDefault();
+        forceParamsOnlyForStartingSound();
+        skipTickHonoursForce();
+        gateOpensAfterClockStepsBack();
+        skipTickOffWhenFrameClockOff();
+        fliesPendingClearRunsWhenGuardOff();
+    }
+
+    static void forceParamsOnlyForStartingSound() {
+        boolean[] b = {false, true};
+        for (boolean tick : b) for (boolean zombie : b) for (boolean starting : b)
+            assert SoundTick.forceParams(tick, zombie, starting) == (tick && zombie && starting) : tick + " " + zombie + " " + starting;
+    }
+
+    static void skipTickHonoursForce() {
+        SoundTick.resetForTest(60);
+        SoundTick.on = true;
+        SoundPatches.tickGuard.on = true;
+        FrameClock.on = true;
+        FrameClock.frameNo = 7;
+        assert SoundTick.gateOpen(6, 1000);
+        assert !SoundTick.gateOpen(7, 1001);       // the gate is closed for frame 7
+        assert SoundPatches.skipTick();
+        SoundTick.forceBegin();
+        try { assert !SoundPatches.skipTick(); }   // inside the force window the parameters update for real
+        finally { SoundTick.forceEnd(); }
+        assert SoundPatches.skipTick();
+        SoundTick.on = false;
+        SoundPatches.tickGuard.on = false;
+        FrameClock.on = false;
+    }
+
+    static void gateOpensAfterClockStepsBack() {
+        SoundTick.resetForTest(60);
+        assert SoundTick.gateOpen(1, 10_000);
+        assert SoundTick.gateOpen(2, 5_000);       // the wall clock went back: open, not closed for good
+    }
+
+    static void skipTickOffWhenFrameClockOff() {
+        SoundTick.resetForTest(60);
+        SoundTick.on = true;
+        SoundPatches.tickGuard.on = true;
+        FrameClock.frameNo = 7;
+        assert SoundTick.gateOpen(6, 1000);
+        assert !SoundTick.gateOpen(7, 1001);       // closed for frame 7
+        FrameClock.on = false;
+        assert !SoundPatches.skipTick();           // a stopped frame counter never freezes a closed memo
+        FrameClock.on = true;
+        assert SoundPatches.skipTick();
+        SoundTick.on = false;
+        SoundPatches.tickGuard.on = false;
+        FrameClock.on = false;
+    }
+
+    static void fliesPendingClearRunsWhenGuardOff() {
+        SoundFixes.resetForTest();
+        SoundPatches.fliesGuard.on = false;
+        Object sq = new Object();
+        SoundFixes.fliesEnter();
+        assert SoundFixes.fliesSet(sq, false);     // a deferred clear is pending
+        SoundPatches.onFliesExit();                // runs the clear (the non-square here fails inside, and is caught)
+        assert SoundFixes.fliesExit() == null : "a pending clear survived the update's exit";
     }
 
     static void limiterFindsLibraryOnPath() throws Exception {

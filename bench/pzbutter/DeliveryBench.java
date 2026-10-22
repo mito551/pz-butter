@@ -177,6 +177,7 @@ public final class DeliveryBench {
         try (java.io.FileWriter w = new java.io.FileWriter(f)) { w.write("enabled=true\nsoundTickHz=60\n"); }
         Settings.load(f);
         SoundTick.init();
+        FrameClock.on = true;   // the gate reads a frame counter only while it runs
         for (int perFrame : new int[] {2000, 3}) {
             int n = 30_000_000;
             double[] ns = new double[7];
