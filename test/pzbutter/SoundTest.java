@@ -4,7 +4,7 @@ package pzbutter;
 final class SoundTest {
     private SoundTest() {}
 
-    static void run() {
+    static void run() throws Exception {
         gateOpensAtSixtyHz();
         gateNeverSkipsAtSixtyFps();
         gateOffIsAlwaysOpen();
@@ -21,6 +21,27 @@ final class SoundTest {
         fliesDeferSameSquareIsNoToggle();
         fliesDeferClearsOldSquare();
         nullHandleOnlyInsideAddSound();
+        limiterFindsLibraryOnPath();
+        limiterCeilingClamped();
+        stereoFoldOnByDefault();
+    }
+
+    static void limiterFindsLibraryOnPath() throws Exception {
+        java.nio.file.Path d = java.nio.file.Files.createTempDirectory("pzb-natives");
+        java.nio.file.Files.createFile(d.resolve("libfmod.so"));
+        assert AudioLimiter.findLibrary("/nope:" + d, "Linux").equals(d.resolve("libfmod.so"));
+        assert AudioLimiter.findLibrary("/nope", "Linux") == null;
+        java.nio.file.Files.createFile(d.resolve("fmod.dll"));
+        assert AudioLimiter.findLibrary(d.toString(), "Windows 11").equals(d.resolve("fmod.dll"));
+    }
+
+    static void limiterCeilingClamped() {
+        assert AudioLimiter.ceiling(-2) == -2f && AudioLimiter.ceiling(5) == 0f && AudioLimiter.ceiling(-40) == -12f;
+    }
+
+    static void stereoFoldOnByDefault() {
+        Settings.load(SelfTest.write("enabled=true\n"));
+        assert Settings.flag("audioLimiterStereoFold");
     }
 
     static void gateOpensAtSixtyHz() {

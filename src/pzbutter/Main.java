@@ -27,6 +27,7 @@ public class Main {
         SoundTick.init();
         WorldSounds.init();
         SoundFixes.init();
+        AudioLimiter.init();
         LuaPatches.uiLuaFast = Settings.flag("uiLuaFast");
     }
 

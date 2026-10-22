@@ -101,11 +101,11 @@ public final class Settings {
       + "fmodNullHandleFix=false\n"
       + "# corpseFliesCap: flies around corpse piles are counted up to 12, which also lowers corpse sickness next to piles above 12.\n"
       + "corpseFliesCap=false\n"
-      + "# audioLimiter: a limiter on the FMOD master output through FMOD's own library (Plan 4; off until its in-game check).\n"
+      + "# audioLimiter: changes what you hear. Loud peaks are held under the ceiling below, using FMOD's own limiter on the master output.\n"
       + "audioLimiter=false\n"
-      + "# audioLimiterCeilingDb: the limiter's ceiling in dB.\n"
+      + "# audioLimiterCeilingDb: the highest level the limiter lets through, in dB (-12 to 0; -2 leaves some headroom).\n"
       + "audioLimiterCeilingDb=-2\n"
-      + "# audioLimiterStereoFold: with a stereo output, the limiter folds channels by FMOD channel format.\n"
+      + "# audioLimiterStereoFold: with a stereo output, the limiter works on the stereo mix. Only acts together with audioLimiter.\n"
       + "audioLimiterStereoFold=true\n"
       + "#\n"
       + "# Input.\n"
@@ -206,7 +206,8 @@ public final class Settings {
     /** Features that passed their in-game check and default to on (still only with the master switch). */
     static final java.util.Set<String> ON_BY_DEFAULT = java.util.Set.of("limiterSleep", "inputLatch", "keyboardFresh", "frameStartGate",
         "reflexSleep", "vsyncAdaptive", "luaBudget",
-        "luaInternConstants", "luaSkipEmpty", "uiTickStagger", "textWidthCache", "uiLuaFast", "mapStreetMemo", "mapStreetCache", "mapVisitedFast");   // these two only act with vsync on
+        "luaInternConstants", "luaSkipEmpty", "uiTickStagger", "textWidthCache", "uiLuaFast", "mapStreetMemo", "mapStreetCache", "mapVisitedFast",
+        "audioLimiterStereoFold");   // these two only act with vsync on
 
     public static boolean flag(String key) { return enabled && bool(props, key, ON_BY_DEFAULT.contains(key)); }
 

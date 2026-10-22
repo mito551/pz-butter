@@ -49,6 +49,9 @@ The mod creates `~/Zomboid/PZButter.properties` on first start and reads it once
 | `fliesToggleFix` | Moving between chunks next to an unchanged corpse pile no longer redraws that chunk, which removes a hitch. |
 | `fmodNullHandleFix` | When FMOD is out of event slots, the emitter sound is dropped instead of crashing the game. |
 | `corpseFliesCap` | Flies around corpse piles are counted up to 12, which also lowers corpse sickness next to piles above 12. |
+| `audioLimiter` | Changes what you hear: loud peaks are held under the ceiling, using FMOD's own limiter on the master output. |
+| `audioLimiterCeilingDb` | The highest level the limiter lets through, in dB (-12 to 0; default -2). |
+| `audioLimiterStereoFold` | With a stereo output, the limiter works on the stereo mix. Only acts together with `audioLimiter`. |
 
 Each line of `frames.out` has five fields:
 
