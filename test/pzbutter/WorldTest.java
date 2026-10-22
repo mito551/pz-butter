@@ -14,6 +14,34 @@ final class WorldTest {
         debounceFlipsAfterN();
         debounceIgnoresShortFlicker();
         debounceSparseScansUseFrames();
+        changedChunksOnlyWhereFlagsDiffer();
+        prefilterKeepsPossibleCuts();
+        radiusInChunks();
+        cutawayHandlesResolve();
+    }
+
+    // squares in chunks 0,0,1,2: chunk 0 same flags, chunk 1 north->west, chunk 2 new cut square
+    static void changedChunksOnlyWhereFlagsDiffer() {
+        boolean[] c = Cutaways.changedChunks(new int[] {0, 0, 1, 2}, new int[] {1, 2, 1, 0}, new int[] {1, 2, 2, 1}, 3);
+        assert !c[0] && c[1] && c[2];
+    }
+
+    // a wall is visited unless it cannot cut: outdoors with nothing to collapse, in a room with no occluding room and no peeking
+    static void prefilterKeepsPossibleCuts() {
+        assert !Cutaways.mayCut(true, false, false, false);
+        assert Cutaways.mayCut(true, true, false, false);
+        assert !Cutaways.mayCut(false, false, false, false);
+        assert Cutaways.mayCut(false, false, true, false);
+        assert Cutaways.mayCut(false, false, false, true);
+    }
+
+    static void radiusInChunks() {
+        assert Cutaways.inRadius(10, 10, 16, 10, 6) && !Cutaways.inRadius(10, 10, 17, 10, 6) && Cutaways.inRadius(10, 10, 99, 99, 0);
+    }
+
+    // the private helpers and fields the rewrite reaches exist in the game jar (needs the game classes on the classpath)
+    static void cutawayHandlesResolve() {
+        assert Cutaways.resolveHandles();
     }
 
     // dirt that is only lighting (32) does not count; any other flag on an on-screen level does

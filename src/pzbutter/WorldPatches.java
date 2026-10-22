@@ -1,5 +1,6 @@
 package pzbutter;
 
+import java.util.ArrayList;
 import me.zed_0xff.zombie_buddy.Patch;
 
 /**
@@ -15,6 +16,7 @@ public final class WorldPatches {
     static final Guard fpsGuard = new Guard("lightingFps");
     static final Guard gridGuard = new Guard("gridStackInterval");
     static final Guard roofGuard = new Guard("roofHideDebounceFrames");
+    static final Guard cutawayGuard = new Guard("cutawayVisit");
 
     /** FBORenderCell.hasAnyDirtyChunkTextures entry: the answer when occlusionSkipLightingOnly is on; null runs stock. */
     public static Boolean onDirtyEnter(Object cell, int p) {
@@ -112,6 +114,22 @@ public final class WorldPatches {
         public static void exit(@Patch.This Object self, @Patch.Return(readOnly = false) boolean ret, @Patch.Local("v") Object v) {
             if (v != null) ret = (Boolean) v;
             else onSwitchExit(self, ret);
+        }
+    }
+
+    /** FBORenderCutaways.doCutawayVisitSquares(int, ArrayList) entry: true when the rewrite ran (stock skipped); false runs stock. */
+    public static boolean onCutawayEnter(Object cutaways, int p, ArrayList<?> chunks) {
+        if (!cutawayGuard.on) return false;
+        try { return Cutaways.visit(cutaways, p, chunks); }
+        catch (Throwable t) { cutawayGuard.fail(t); return false; }
+    }
+
+    /** Public overload only: the private (IsoGridSquare, long, ArrayList) overload fails the int/ArrayList argument filter. */
+    @Patch(className = "zombie.iso.fboRenderChunk.FBORenderCutaways", methodName = "doCutawayVisitSquares")
+    public static class CutawayVisit {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This Object self, @Patch.Argument(0) int p, @Patch.Argument(1) ArrayList<?> chunks) {
+            return onCutawayEnter(self, p, chunks);
         }
     }
 
