@@ -16,6 +16,7 @@ final class SoundTest {
         hearingAttenuationExactValues();
         fishMemoOncePerMinute();
         zoneCacheHitsOnSameSquare();
+        zoneCacheDoesNotHoldListener();
         levelRangeOverLoadedChunks();
         fliesDeferSameSquareIsNoToggle();
         fliesDeferClearsOldSquare();
@@ -101,6 +102,23 @@ final class SoundTest {
         assert SoundFixes.zoneCached(p, l, 11, 20, 0) == null;          // listener moved a square
         assert SoundFixes.zoneCached(p, new Object(), 10, 20, 0) == null; // another listener
         assert SoundFixes.zoneCached(p, l, 10, 20, 1) == null;          // a zone was added or removed
+    }
+
+    static void zoneCacheDoesNotHoldListener() {
+        SoundFixes.resetForTest();
+        Object p = new Object();
+        Object l = new Object();
+        SoundFixes.zoneStore(p, l, 10, 20, 0, 7f);
+        java.lang.ref.WeakReference<Object> ref = new java.lang.ref.WeakReference<>(l);
+        l = null;
+        long end = System.currentTimeMillis() + 2000;
+        while (ref.get() != null && System.currentTimeMillis() < end) {
+            System.gc();
+            try { Thread.sleep(20); }
+            catch (InterruptedException e) { Thread.currentThread().interrupt(); break; }
+        }
+        assert ref.get() == null : "the zone cache keeps the listener alive";
+        assert p != null;   // the parameter key is still in use here
     }
 
     static void levelRangeOverLoadedChunks() {

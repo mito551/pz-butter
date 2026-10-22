@@ -1,7 +1,8 @@
 package pzbutter;
 
+import java.lang.ref.WeakReference;
 import java.util.Arrays;
-import java.util.IdentityHashMap;
+import java.util.WeakHashMap;
 import zombie.characters.IsoPlayer;
 import zombie.iso.CorpseCount;
 import zombie.iso.IsoCell;
@@ -21,9 +22,11 @@ final class SoundFixes {
 
     // soundZoneCache: one entry per zone parameter instance, keyed by listener, its square and the zone version
 
-    private record ZoneEntry(Object listener, int sqX, int sqY, long version, float value) {}
+    // The listener is held weakly, so a dead or unloaded player is not kept alive by the cache. The parameter is the
+    // weak key; the entry never refers to it, so the key is not kept alive either.
+    private record ZoneEntry(WeakReference<Object> listener, int sqX, int sqY, long version, float value) {}
 
-    private static final IdentityHashMap<Object, ZoneEntry> zoneCache = new IdentityHashMap<>();
+    private static final WeakHashMap<Object, ZoneEntry> zoneCache = new WeakHashMap<>();
     private static volatile long zoneVersion;
 
     /** A zone was added or removed: every cached value is stale. */
@@ -34,12 +37,12 @@ final class SoundFixes {
     /** The cached value for this parameter, or null when the key differs. */
     static synchronized Float zoneCached(Object param, Object listener, int sqX, int sqY, long zoneVersion) {
         ZoneEntry e = zoneCache.get(param);
-        if (e == null || e.listener != listener || e.sqX != sqX || e.sqY != sqY || e.version != zoneVersion) return null;
+        if (e == null || e.listener.get() != listener || e.sqX != sqX || e.sqY != sqY || e.version != zoneVersion) return null;
         return e.value;
     }
 
     static synchronized void zoneStore(Object param, Object listener, int sqX, int sqY, long zoneVersion, float value) {
-        zoneCache.put(param, new ZoneEntry(listener, sqX, sqY, zoneVersion, value));
+        zoneCache.put(param, new ZoneEntry(new WeakReference<>(listener), sqX, sqY, zoneVersion, value));
     }
 
     /** The square a float position falls in, as the zone scan floors it. */
