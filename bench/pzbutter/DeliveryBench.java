@@ -10,6 +10,8 @@ import java.util.Arrays;
  * stamps:  ns and bytes per onPush + onAcquire pair, three states in rotation.
  * learner: ns per observe() over a fixed 240 fps trace; prints a checksum of every hold, which must not change.
  * rawget:  ns per lookup, stock KahluaTableImpl.rawget against the luaRawgetFast hook; hits, then misses that ask a metatable.
+ * soundgate: ns per SoundPatches.skipTick() call with soundTickHz=60, at 2000 calls a frame (a horde's sound parameters)
+ *          and at 3 calls a frame (ambience only); frames advance every N calls.
  */
 public final class DeliveryBench {
     static final com.sun.management.ThreadMXBean MX = (com.sun.management.ThreadMXBean) ManagementFactory.getThreadMXBean();
@@ -21,7 +23,8 @@ public final class DeliveryBench {
             case "learner" -> learner();
             case "widths" -> widths();
             case "rawget" -> rawget();
-            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget");
+            case "soundgate" -> soundgate();
+            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | soundgate");
         }
     }
 
@@ -165,6 +168,30 @@ public final class DeliveryBench {
                 System.out.printf("rawget %s %s: %6.2f ns/op (min %.2f, max %.2f), checksum %d%n",
                     keys == hit ? "hit " : "miss", hook ? "hook " : "stock", ns[3], ns[0], ns[6], check);
             }
+        }
+    }
+
+    static void soundgate() throws Exception {
+        java.io.File f = java.io.File.createTempFile("pzb-bench", ".properties");
+        f.deleteOnExit();
+        try (java.io.FileWriter w = new java.io.FileWriter(f)) { w.write("enabled=true\nsoundTickHz=60\n"); }
+        Settings.load(f);
+        SoundTick.init();
+        for (int perFrame : new int[] {2000, 3}) {
+            int n = 30_000_000;
+            double[] ns = new double[7];
+            long skipped = 0;
+            for (int r = -1; r < 7; r++) {
+                long sk = 0, t0 = System.nanoTime();
+                for (int i = 0; i < n; i++) {
+                    if (i % perFrame == 0) FrameClock.frameNo++;
+                    if (SoundPatches.skipTick()) sk++;
+                }
+                if (r >= 0) ns[r] = (System.nanoTime() - t0) / (double) n;
+                skipped = sk;
+            }
+            Arrays.sort(ns);
+            System.out.printf("soundgate %4d/frame: %6.3f ns/call (min %.3f, max %.3f), skipped %d%n", perFrame, ns[3], ns[0], ns[6], skipped);
         }
     }
 }
