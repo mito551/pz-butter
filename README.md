@@ -88,6 +88,7 @@ PZ Butter is inspired by the mods below and aims to cover what they do, in one m
 | VRAM Steady | VRAM Steady authors | [3819844505](https://steamcommunity.com/sharedfiles/filedetails/?id=3819844505) |
 | Character Texture VRAM Leak Fix [ZombieBuddy] | syeon | [3821525282](https://steamcommunity.com/sharedfiles/filedetails/?id=3821525282) |
 | Project Zomboid Optimiser (PZO) | prop11 | [3787481250](https://steamcommunity.com/sharedfiles/filedetails/?id=3787481250) |
+| Tempo - A Performance & FPS Optimizer | Vyper | [3736629791](https://steamcommunity.com/sharedfiles/filedetails/?id=3736629791) |
 | Lua Budget | mito551 | not on the Workshop; merged into PZ Butter (its rules stay in `Zomboid/LuaBudget.properties`; remove the LuaBudget mod from the mod list) |
 
 The table lists what the project aims to cover; not everything each mod does is covered yet. The Viewpoint add-ons above need the Viewpoint mod itself ([3809306528](https://steamcommunity.com/sharedfiles/filedetails/?id=3809306528)). PZ Butter covers what the add-ons do, not Viewpoint.
