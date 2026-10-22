@@ -28,6 +28,7 @@ public class Main {
         WorldSounds.init();
         SoundFixes.init();
         LightChecks.init();
+        GridGate.init();
         AudioLimiter.init();
         LuaPatches.uiLuaFast = Settings.flag("uiLuaFast");
     }

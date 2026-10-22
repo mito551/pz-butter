@@ -10,6 +10,9 @@ final class WorldTest {
         fpsAppliedOnlyAboveZero();
         switchMemoExpires();
         plan5aKeysOffByDefault();
+        gridGateRunsOnDirtyOrMove();
+        debounceFlipsAfterN();
+        debounceIgnoresShortFlicker();
     }
 
     // dirt that is only lighting (32) does not count; any other flag on an on-screen level does
@@ -49,5 +52,36 @@ final class WorldTest {
             assert !Settings.flag(k) : k;
         for (String k : new String[] {"lightSwitchCheckFrames", "lightingFps", "gridStackInterval", "roofHideDebounceFrames", "cutawayRadius"})
             assert Settings.num(k, 0, 0, 1000) == 0 : k;
+    }
+
+    // the buildings-in-front scan runs on the first frame, after interval frames, or when the camera square, facing or dirty flag changes
+    static void gridGateRunsOnDirtyOrMove() {
+        GridGate.resetForTest();
+        assert GridGate.shouldRun(0, 1, 10, 10, 0, 2, false, 8);       // first frame
+        assert !GridGate.shouldRun(0, 2, 10, 10, 0, 2, false, 8);
+        assert GridGate.shouldRun(0, 3, 11, 10, 0, 2, false, 8);       // camera square moved
+        assert GridGate.shouldRun(0, 4, 11, 10, 0, 2, true, 8);        // dirtyRecalcGridStack
+        assert GridGate.shouldRun(0, 5, 11, 10, 0, 3, false, 8);       // facing changed
+        assert !GridGate.shouldRun(0, 12, 11, 10, 0, 3, false, 8);
+        assert GridGate.shouldRun(0, 13, 11, 10, 0, 3, false, 8);      // 8 frames since the last run
+        assert GridGate.shouldRun(1, 13, 11, 10, 0, 3, false, 8);      // other player: own state
+    }
+
+    // the roof flag flips only after frames raw readings in a row that differ from the held value
+    static void debounceFlipsAfterN() {
+        GridGate.resetForTest();
+        assert !GridGate.debounce(false, 3);
+        assert !GridGate.debounce(true, 3) && !GridGate.debounce(true, 3);
+        assert GridGate.debounce(true, 3);                              // third frame in a row: flips
+        assert GridGate.debounce(true, 3);
+    }
+
+    // a reading that agrees with the held value resets the count, so a short flicker never flips the flag
+    static void debounceIgnoresShortFlicker() {
+        GridGate.resetForTest();
+        GridGate.debounce(false, 3);
+        GridGate.debounce(true, 3); GridGate.debounce(true, 3);
+        assert !GridGate.debounce(false, 3);                            // agreement resets the count
+        assert !GridGate.debounce(true, 3);
     }
 }
