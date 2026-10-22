@@ -1,6 +1,7 @@
 package pzbutter;
 
 import java.util.ArrayList;
+import zombie.iso.IsoChunk;
 import me.zed_0xff.zombie_buddy.Patch;
 
 /**
@@ -17,6 +18,7 @@ public final class WorldPatches {
     static final Guard gridGuard = new Guard("gridStackInterval");
     static final Guard roofGuard = new Guard("roofHideDebounceFrames");
     static final Guard cutawayGuard = new Guard("cutawayVisit");
+    static final Guard fastGuard = new Guard("cutawayFast");
 
     /** FBORenderCell.hasAnyDirtyChunkTextures entry: the answer when occlusionSkipLightingOnly is on; null runs stock. */
     public static Boolean onDirtyEnter(Object cell, int p) {
@@ -131,6 +133,53 @@ public final class WorldPatches {
         public static boolean enter(@Patch.This Object self, @Patch.Argument(0) int p, @Patch.Argument(1) ArrayList<?> chunks) {
             return onCutawayEnter(self, p, chunks);
         }
+    }
+
+    /** ChunkLevelData.calculateOccludingSquares entry: TRUE when a current stored mask was replayed (stock skipped); null runs stock. */
+    public static Boolean onOccludingEnter(Object level, int p, int gx1, int gy1, int gx2, int gy2, int[] grid) {
+        if (!fastGuard.on) return null;
+        try { return Cutaways.occludingEnter(level, p, gx1, gy1, gx2, gy2, grid); }
+        catch (Throwable t) { fastGuard.fail(t); return null; }
+    }
+
+    /** calculateOccludingSquares exit after a stock compute: marks the stored mask current for its box. */
+    public static void onOccludingExit(Object level, int p) {
+        if (!fastGuard.on) return;
+        try { Cutaways.occludingExit(level, p); }
+        catch (Throwable t) { fastGuard.fail(t); }
+    }
+
+    /** prepareChunkForUpdating exit: the chunk's stored masks for player p are stale. */
+    public static void onChunkPrepared(int p, IsoChunk chunk) {
+        if (!fastGuard.on || chunk == null) return;
+        try { Cutaways.markChunkStale(p, chunk); }
+        catch (Throwable t) { fastGuard.fail(t); }
+    }
+
+    /** ChunkLevelData.calculateOccludingSquares: a replayed mask skips stock (returns false); a stock compute marks its box. */
+    @Patch(className = "zombie.iso.fboRenderChunk.FBORenderCutaways$ChunkLevelData", methodName = "calculateOccludingSquares")
+    public static class OccluderReplay {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This Object self, @Patch.Argument(0) int p, @Patch.Argument(1) int gx1,
+                                    @Patch.Argument(2) int gy1, @Patch.Argument(3) int gx2, @Patch.Argument(4) int gy2,
+                                    @Patch.Argument(5) int[] grid, @Patch.Local("v") Object v) {
+            v = onOccludingEnter(self, p, gx1, gy1, gx2, gy2, grid);
+            return v != null;
+        }
+
+        @Patch.OnExit
+        public static void exit(@Patch.This Object self, @Patch.Argument(0) int p, @Patch.Return(readOnly = false) boolean ret,
+                                @Patch.Local("v") Object v) {
+            if (v != null) ret = false;   // replayed: the mask did not change
+            else onOccludingExit(self, p);
+        }
+    }
+
+    /** FBORenderCell.prepareChunkForUpdating exit: every level of the chunk is stale for that player. */
+    @Patch(className = "zombie.iso.fboRenderChunk.FBORenderCell", methodName = "prepareChunkForUpdating")
+    public static class ChunkPrepared {
+        @Patch.OnExit
+        public static void exit(@Patch.Argument(0) int p, @Patch.Argument(1) IsoChunk chunk) { onChunkPrepared(p, chunk); }
     }
 
     @Patch(className = "zombie.gameStates.IngameState", methodName = "enter")

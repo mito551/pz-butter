@@ -10,6 +10,7 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.WeakHashMap;
 import zombie.iso.BuildingDef;
 import zombie.iso.IsoCamera;
 import zombie.iso.IsoCell;
@@ -53,6 +54,7 @@ final class Cutaways {
         prefilter = Settings.flag("cutawayVisitPrefilter");
         radius = Settings.num("cutawayRadius", 0, 0, 64);
         WorldPatches.cutawayGuard.on = Settings.enabled && (changedOnly || prefilter || radius > 0) && resolveHandles();
+        WorldPatches.fastGuard.on = Settings.flag("cutawayFast");
     }
 
     /** Resolves every game member the visit reaches. False when one is missing, so stock runs. */
@@ -360,5 +362,101 @@ final class Cutaways {
         index.put(sq, sqs.size());
         sqs.add(sq);
         starts.add(sq.getPlayerCutawayFlag(p, now));
+    }
+
+    /** Players the fast path keeps state for (PZ has four). */
+    static final int MAX_PLAYERS = 4;
+
+    /**
+     * Per ChunkLevelData (cutawayFast): bit p of fresh is set when occludingSquares[p] is current, and box holds the box
+     * (gx1, gy1, gx2, gy2 at 4p) it was computed for. Stock keeps only the squares inside its box, so a stored mask
+     * replays only for that same box.
+     */
+    static final class Fast {
+        int fresh;
+        final int[] box = new int[4 * MAX_PLAYERS];
+    }
+
+    /** Identity-keyed and weak: ChunkLevelData does not override equals or hashCode. Game thread only. */
+    static final WeakHashMap<Object, Fast> fastTable = new WeakHashMap<>();
+
+    /**
+     * Stock's grid writes for a stored occluder mask: each set bit i is the square (wx*8 + i%8, wy*8 + i/8) at level z,
+     * passed through stock's box check and cell index (x - 3z - gx1, y - 3z - gy1, index dx + dy*w) and raised to z.
+     * w is the grid width, gx2 - gx1 + 1.
+     */
+    static void replay(long mask, int wx, int wy, int z, int gx1, int gy1, int gx2, int gy2, int w, int[] grid) {
+        for (int i = 0; i < CHUNK * CHUNK; i++) {
+            if ((mask & (1L << i)) == 0) continue;
+            int dx = wx * CHUNK + i % CHUNK - 3 * z - gx1, dy = wy * CHUNK + i / CHUNK - 3 * z - gy1;
+            if (dx < 0 || dy < 0 || dx > gx2 - gx1 || dy > gy2 - gy1) continue;
+            int idx = dx + dy * w;
+            if (grid[idx] < z) grid[idx] = z;
+        }
+    }
+
+    /** Stock is about to compute player p's mask for this box: the mask is not current until endCompute. */
+    static void beginCompute(Fast f, int p, int gx1, int gy1, int gx2, int gy2) {
+        f.fresh &= ~(1 << p);
+        int k = 4 * p;
+        f.box[k] = gx1;
+        f.box[k + 1] = gy1;
+        f.box[k + 2] = gx2;
+        f.box[k + 3] = gy2;
+    }
+
+    /** Stock finished its compute for player p without throwing: the mask is current. */
+    static void endCompute(Fast f, int p) {
+        f.fresh |= 1 << p;
+    }
+
+    /** A chunk level was prepared for player p: its stored mask may no longer match the squares. */
+    static void markStale(Fast f, int p) {
+        f.fresh &= ~(1 << p);
+    }
+
+    /** Whether player p's stored mask is current and was computed for exactly this box. */
+    static boolean canReplay(Fast f, int p, int gx1, int gy1, int gx2, int gy2) {
+        if (f == null || (f.fresh & (1 << p)) == 0) return false;
+        int k = 4 * p;
+        return f.box[k] == gx1 && f.box[k + 1] == gy1 && f.box[k + 2] == gx2 && f.box[k + 3] == gy2;
+    }
+
+    /**
+     * ChunkLevelData.calculateOccludingSquares entry: TRUE when the stored mask was replayed (stock is skipped and
+     * returns false); null runs stock, which then records its box and marks the mask current at exit.
+     */
+    static Boolean occludingEnter(Object level, int p, int gx1, int gy1, int gx2, int gy2, int[] grid) {
+        if (p < 0 || p >= MAX_PLAYERS) return null;
+        FBORenderCutaways.ChunkLevelData d = (FBORenderCutaways.ChunkLevelData) level;
+        Fast f = fastTable.get(d);
+        if (canReplay(f, p, gx1, gy1, gx2, gy2)) {
+            IsoChunk chunk = d.levelsData.chunk;
+            replay(d.occludingSquares[p], chunk.wx, chunk.wy, d.level, gx1, gy1, gx2, gy2, gx2 - gx1 + 1, grid);
+            return Boolean.TRUE;
+        }
+        if (f == null) {
+            f = new Fast();
+            fastTable.put(d, f);
+        }
+        beginCompute(f, p, gx1, gy1, gx2, gy2);
+        return null;
+    }
+
+    /** ChunkLevelData.calculateOccludingSquares exit after a stock compute: the mask is current for its box. */
+    static void occludingExit(Object level, int p) {
+        if (p < 0 || p >= MAX_PLAYERS) return;
+        Fast f = fastTable.get(level);
+        if (f != null) endCompute(f, p);
+    }
+
+    /** FBORenderCell.prepareChunkForUpdating exit: every level of the chunk is stale for player p, as stock rewrites its squares. */
+    static void markChunkStale(int p, IsoChunk chunk) {
+        if (p < 0 || p >= MAX_PLAYERS || fastTable.isEmpty()) return;
+        for (int lv = chunk.minLevel; lv <= chunk.maxLevel; lv++) {
+            FBORenderCutaways.ChunkLevelData d = chunk.getCutawayDataForLevel(lv);
+            Fast f = d == null ? null : fastTable.get(d);
+            if (f != null) markStale(f, p);
+        }
     }
 }

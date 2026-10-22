@@ -19,6 +19,43 @@ final class WorldTest {
         radiusInChunks();
         cutawayHandlesResolve();
         restoreOnFailureKeepsSets();
+        replayWritesSameCellsAsStock();
+        replayBoxDecidesSquares();
+        replayNeedsFreshSameBox();
+    }
+
+    // the replay writes the stock cells of each set bit and only raises a cell (max), at a lower level it never lowers one
+    static void replayWritesSameCellsAsStock() {
+        int w = 40; int[] grid = new int[w * 40]; java.util.Arrays.fill(grid, -32);
+        long mask = (1L << 0) | (1L << 9) | (1L << 63);     // squares (0,0), (1,1), (7,7) of chunk (2,3), level 1
+        Cutaways.replay(mask, 2, 3, 1, 0, 0, 39, 39, w, grid);
+        assert grid[(16 - 3) + (24 - 3) * w] == 1 && grid[(17 - 3) + (25 - 3) * w] == 1 && grid[(23 - 3) + (31 - 3) * w] == 1;
+        int set = 0; for (int v : grid) if (v != -32) set++;
+        assert set == 3;
+        Cutaways.replay(1L, 2, 3, 0, 0, 0, 39, 39, w, grid);  // a lower level never lowers a cell
+        assert grid[(16) + (24) * w] == 0 && grid[(16 - 3) + (24 - 3) * w] == 1;
+    }
+
+    // a square outside the box (stock's check on x - 3z - gx1 and y - 3z - gy1) writes nothing
+    static void replayBoxDecidesSquares() {
+        int w = 22; int[] grid = new int[w * 22]; java.util.Arrays.fill(grid, -32);
+        Cutaways.replay(1L, 2, 3, 1, 17, 0, 38, 21, w, grid);   // square (16,24) at z=1 maps to x-3-17 = -4: outside
+        int set = 0; for (int v : grid) if (v != -32) set++;
+        assert set == 0;
+    }
+
+    // a stored mask replays only while its player's bit is fresh and only for the box it was computed with
+    static void replayNeedsFreshSameBox() {
+        Cutaways.Fast f = new Cutaways.Fast();
+        assert !Cutaways.canReplay(f, 1, 0, 0, 39, 39);       // never computed
+        Cutaways.beginCompute(f, 1, 0, 0, 39, 39);
+        assert !Cutaways.canReplay(f, 1, 0, 0, 39, 39);       // still computing
+        Cutaways.endCompute(f, 1);
+        assert Cutaways.canReplay(f, 1, 0, 0, 39, 39);
+        assert !Cutaways.canReplay(f, 1, 1, 0, 39, 39);       // other box
+        assert !Cutaways.canReplay(f, 0, 0, 0, 39, 39);       // other player
+        Cutaways.markStale(f, 1);
+        assert !Cutaways.canReplay(f, 1, 0, 0, 39, 39);
     }
 
     // squares in chunks 0,0,1,2: chunk 0 same flags, chunk 1 north->west, chunk 2 new cut square
