@@ -23,9 +23,9 @@ final class GridGate {
     private static final long[] lastRun = new long[PLAYERS];
     private static final int[] lastX = new int[PLAYERS], lastY = new int[PLAYERS], lastZ = new int[PLAYERS], lastFacing = new int[PLAYERS];
 
-    // one debounce for the cell: the held roof flag, the readings that differ from it, and the last raw reading
-    private static boolean held, lastRaw;
-    private static int count;
+    // one debounce for the cell: the held roof flag, and the frame a differing reading first appeared (if pending)
+    private static boolean held, pending;
+    private static long firstDiff;
 
     static void init() {
         interval = Settings.num("gridStackInterval", 0, 0, 600);
@@ -50,11 +50,14 @@ final class GridGate {
         return run;
     }
 
-    /** The held roof flag after one more reading. A reading that differs from the held value flips it after frames readings in a row. */
-    static boolean debounce(boolean raw, int frames) {
-        lastRaw = raw;
-        if (raw == held) { count = 0; return held; }
-        if (++count >= frames) { held = raw; count = 0; }
+    /**
+     * The held roof flag after one real scan. A reading that differs from the held value flips it once it has differed
+     * for n frames; time is counted in frames, so several calls in one frame count once.
+     */
+    static boolean debounce(boolean raw, long frame, int n) {
+        if (raw == held) { pending = false; return held; }
+        if (!pending) { pending = true; firstDiff = frame; return held; }
+        if (frame - firstDiff >= n) { held = raw; pending = false; }
         return held;
     }
 
@@ -70,20 +73,15 @@ final class GridGate {
         return shouldRun(p, frame, sq.getX(), sq.getY(), sq.getZ(), facing, dirty, interval) ? null : Boolean.FALSE;
     }
 
-    /** A skipped scan: the debounce counts the frame with the last reading; the cell flag stays as it is. */
-    static void skipped() {
-        debounce(lastRaw, roofFrames);
-    }
-
     /** Exit of a real scan: the stock reading is in the cell flag; write the held value back. */
-    static void scanned(Object cutaways) {
+    static void scanned(Object cutaways, long frame) {
         IsoCell cell = ((FBORenderCutaways) cutaways).cell;
-        if (cell != null) cell.occludedByOrphanStructureFlag = debounce(cell.occludedByOrphanStructureFlag, roofFrames);
+        if (cell != null) cell.occludedByOrphanStructureFlag = debounce(cell.occludedByOrphanStructureFlag, frame, roofFrames);
     }
 
     static void resetForTest() {
         seen[0] = seen[1] = seen[2] = seen[3] = false;
-        held = lastRaw = false;
-        count = 0;
+        held = pending = false;
+        firstDiff = 0;
     }
 }

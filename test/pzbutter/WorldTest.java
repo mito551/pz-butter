@@ -13,6 +13,7 @@ final class WorldTest {
         gridGateRunsOnDirtyOrMove();
         debounceFlipsAfterN();
         debounceIgnoresShortFlicker();
+        debounceSparseScansUseFrames();
     }
 
     // dirt that is only lighting (32) does not count; any other flag on an on-screen level does
@@ -67,21 +68,32 @@ final class WorldTest {
         assert GridGate.shouldRun(1, 13, 11, 10, 0, 3, false, 8);      // other player: own state
     }
 
-    // the roof flag flips only after frames raw readings in a row that differ from the held value
+    // the roof flag flips once a reading has differed from the held value for n frames (time counts frames, not calls)
     static void debounceFlipsAfterN() {
         GridGate.resetForTest();
-        assert !GridGate.debounce(false, 3);
-        assert !GridGate.debounce(true, 3) && !GridGate.debounce(true, 3);
-        assert GridGate.debounce(true, 3);                              // third frame in a row: flips
-        assert GridGate.debounce(true, 3);
+        assert !GridGate.debounce(false, 1, 3);
+        assert !GridGate.debounce(true, 2, 3);       // first differing reading at frame 2
+        assert !GridGate.debounce(true, 4, 3);       // 2 frames: not yet
+        assert GridGate.debounce(true, 5, 3);        // 3 frames since it first differed: flips
+        assert GridGate.debounce(true, 6, 3);
     }
 
-    // a reading that agrees with the held value resets the count, so a short flicker never flips the flag
+    // a reading that agrees with the held value clears the pending difference, so a short flicker never flips the flag
     static void debounceIgnoresShortFlicker() {
         GridGate.resetForTest();
-        GridGate.debounce(false, 3);
-        GridGate.debounce(true, 3); GridGate.debounce(true, 3);
-        assert !GridGate.debounce(false, 3);                            // agreement resets the count
-        assert !GridGate.debounce(true, 3);
+        GridGate.debounce(false, 1, 3);
+        GridGate.debounce(true, 2, 3);
+        assert !GridGate.debounce(false, 3, 3);      // agreement clears it
+        assert !GridGate.debounce(true, 4, 3);       // starts again from frame 4
+        assert !GridGate.debounce(true, 6, 3);
+        assert GridGate.debounce(true, 7, 3);
+    }
+
+    // skipped frames make no call, so one real scan after 8 skipped frames is a first difference, not 8 readings
+    static void debounceSparseScansUseFrames() {
+        GridGate.resetForTest();
+        GridGate.debounce(false, 0, 8);
+        assert !GridGate.debounce(true, 8, 8);       // one real scan after 8 skipped frames: first differ, no flip
+        assert GridGate.debounce(true, 16, 8);       // still differs 8 frames later: flips
     }
 }

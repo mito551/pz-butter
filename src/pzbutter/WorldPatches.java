@@ -72,17 +72,10 @@ public final class WorldPatches {
         catch (Throwable t) { gridGuard.fail(t); return null; }
     }
 
-    /** CalculateBuildingsToCollapse exit after a skipped scan: the roof debounce counts the frame. */
-    public static void onGridSkipExit() {
-        if (!roofGuard.on) return;
-        try { GridGate.skipped(); }
-        catch (Throwable t) { roofGuard.fail(t); }
-    }
-
     /** CalculateBuildingsToCollapse exit after a real scan: the cell's roof flag takes the debounced value. */
     public static void onGridScanExit(Object cutaways) {
-        if (!roofGuard.on) return;
-        try { GridGate.scanned(cutaways); }
+        if (!roofGuard.on || !FrameClock.on) return;
+        try { GridGate.scanned(cutaways, FrameClock.frameNo); }
         catch (Throwable t) { roofGuard.fail(t); }
     }
 
@@ -96,7 +89,7 @@ public final class WorldPatches {
 
         @Patch.OnExit
         public static void exit(@Patch.This Object self, @Patch.Return(readOnly = false) boolean ret, @Patch.Local("v") Object v) {
-            if (v != null) { ret = (Boolean) v; onGridSkipExit(); }
+            if (v != null) ret = (Boolean) v;   // skipped scan: the roof flag and its debounce stay as they are
             else onGridScanExit(self);
         }
     }
