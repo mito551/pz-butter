@@ -24,6 +24,7 @@ public class Main {
         UiTick.init();
         TextWidths.init();
         MapFast.init();
+        SoundTick.init();
         LuaPatches.uiLuaFast = Settings.flag("uiLuaFast");
     }
 

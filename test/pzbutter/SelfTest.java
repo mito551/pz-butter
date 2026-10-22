@@ -32,6 +32,7 @@ public final class SelfTest {
         DeliveryTest.run();
         pzbutter.luabudget.BudgetTest.run();
         LuaUiTest.run();
+        SoundTest.run();
         delete(DIR);
         System.out.println("ok");
     }

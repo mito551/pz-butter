@@ -39,6 +39,8 @@ The mod creates `~/Zomboid/PZButter.properties` on first start and reads it once
 |---|---|
 | `enabled` | Master switch. While it is `false`, the mod does nothing and the game runs stock. |
 | `frameLog` | Writes one line per frame to `~/Zomboid/pzbutter/frames.out`. |
+| `soundTickHz` | `0` is stock. `60` refreshes ambience and zombie sound parameters at 60 Hz. |
+| `emitterIdleSkip` | A silent zombie skips its sound parameters and emitter ticks. |
 
 Each line of `frames.out` has five fields:
 
