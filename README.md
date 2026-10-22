@@ -41,6 +41,9 @@ The mod creates `~/Zomboid/PZButter.properties` on first start and reads it once
 | `frameLog` | Writes one line per frame to `~/Zomboid/pzbutter/frames.out`. |
 | `soundTickHz` | `0` is stock. `60` refreshes ambience and zombie sound parameters at 60 Hz. |
 | `emitterIdleSkip` | A silent zombie skips its sound parameters and emitter ticks. |
+| `worldSoundCleanupFast` | World sounds are cleaned up with fewer chunk scans per frame. The same sounds are heard. |
+| `hearingHoist` | Zombies pick the loudest sound they hear with less repeated work. The same sound is picked. |
+| `worldSoundFast` | Fish scaring is worked out once per game minute for each sound position, so repeated sounds cost less. |
 
 Each line of `frames.out` has five fields:
 

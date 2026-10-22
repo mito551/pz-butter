@@ -11,6 +11,10 @@ final class SoundTest {
         idleSkipNeverSkipsQueuedSound();
         idleSkipOnlyZombies();
         soundKeysOffByDefault();
+        cleanupSweepsBeforeRelease();
+        hearingAttenuationMatchesStockConstants();
+        hearingAttenuationExactValues();
+        fishMemoOncePerMinute();
     }
 
     static void gateOpensAtSixtyHz() {
@@ -47,5 +51,39 @@ final class SoundTest {
                                       "electricityLevelRange", "fliesToggleFix", "fmodNullHandleFix", "corpseFliesCap", "audioLimiter"})
             assert !Settings.flag(k) : k;
         assert Settings.num("soundTickHz", 0, 0, 240) == 0;
+    }
+
+    static void cleanupSweepsBeforeRelease() {
+        WorldSounds.resetForTest();
+        assert !WorldSounds.needsChunkSweep();
+        WorldSounds.afterCountdown(true);            // frame N: a sound reached life 0
+        assert WorldSounds.needsChunkSweep();        // frame N+1 sweeps chunks before its countdown releases it
+        WorldSounds.afterCountdown(false);
+        assert !WorldSounds.needsChunkSweep();
+    }
+
+    static void hearingAttenuationMatchesStockConstants() {
+        // same room, both indoors: plain distance falloff; z counts three times
+        float a = WorldSounds.attenuation(10, 0, 0, 0, 0, 1, 50f, true, true, false);
+        float b = WorldSounds.attenuation(10, 0, 0, 0, 0, 0, 50f, true, true, false);
+        assert a < b;
+        float sameRoom = WorldSounds.attenuation(10, 0, 0, 0, 0, 0, 50f, true, true, false);
+        float otherRoom = WorldSounds.attenuation(10, 0, 0, 0, 0, 0, 50f, true, false, false);
+        float oneOutdoors = WorldSounds.attenuation(10, 0, 0, 0, 0, 0, 50f, true, false, true);
+        assert otherRoom < sameRoom && oneOutdoors < otherRoom;
+    }
+
+    static void hearingAttenuationExactValues() {
+        // hand-computed from stock: ratio = 100 / 50^2 = 0.04; other room x1.2; one outdoors x1.2 x1.4
+        assert Math.abs(WorldSounds.attenuation(10, 0, 0, 0, 0, 0, 50f, true, true, false) - 0.96f) < 1e-4f;
+        assert Math.abs(WorldSounds.attenuation(10, 0, 0, 0, 0, 0, 50f, true, false, true) - 0.9328f) < 1e-4f;
+    }
+
+    static void fishMemoOncePerMinute() {
+        WorldSounds.resetForTest();
+        assert !WorldSounds.fishSeen(100, 200, 16, 5);
+        assert WorldSounds.fishSeen(100, 200, 16, 5);
+        assert !WorldSounds.fishSeen(100, 200, 16, 6);
+        assert !WorldSounds.fishSeen(101, 200, 16, 6);
     }
 }
