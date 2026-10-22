@@ -44,6 +44,11 @@ The mod creates `~/Zomboid/PZButter.properties` on first start and reads it once
 | `worldSoundCleanupFast` | World sounds are cleaned up with fewer chunk scans per frame. The same sounds are heard. |
 | `hearingHoist` | Zombies pick the loudest sound they hear with less repeated work. The same sound is picked. |
 | `worldSoundFast` | Fish scaring is worked out once per game minute for each sound position, so repeated sounds cost less. |
+| `soundZoneCache` | Ambient zone sound levels are reused while you stay on one square, so the zone lookup costs less each frame. |
+| `electricityLevelRange` | The power check scans only the height range of loaded chunks, so the same result comes back with less work. |
+| `fliesToggleFix` | Moving between chunks next to an unchanged corpse pile no longer redraws that chunk, which removes a hitch. |
+| `fmodNullHandleFix` | When FMOD is out of event slots, the emitter sound is dropped instead of crashing the game. |
+| `corpseFliesCap` | Flies around corpse piles are counted up to 12, which also lowers corpse sickness next to piles above 12. |
 
 Each line of `frames.out` has five fields:
 

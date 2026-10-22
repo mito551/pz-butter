@@ -2,6 +2,7 @@ package pzbutter;
 
 import me.zed_0xff.zombie_buddy.Patch;
 import zombie.characters.BaseCharacterSoundEmitter;
+import zombie.audio.FMODParameterUtils;
 import zombie.characters.IsoGameCharacter;
 import zombie.WorldSoundManager.ResultBiggestSound;
 import zombie.characters.IsoZombie;
@@ -18,6 +19,10 @@ public final class SoundPatches {
     static final Guard cleanupGuard = new Guard("worldSoundCleanupFast");
     static final Guard hearingGuard = new Guard("hearingHoist");
     static final Guard fishGuard = new Guard("worldSoundFast");
+    static final Guard zoneGuard = new Guard("soundZoneCache");
+    static final Guard electricityGuard = new Guard("electricityLevelRange");
+    static final Guard fliesGuard = new Guard("fliesToggleFix");
+    static final Guard nullGuard = new Guard("fmodNullHandleFix");
 
     /** The ambience and parameter update entries: true skips this call (the shared gate is closed this frame). */
     public static boolean skipTick() {
@@ -68,6 +73,83 @@ public final class SoundPatches {
         if (!fishGuard.on) return false;
         try { return WorldSounds.fishSeen(x, y, r, WorldSounds.gameMinute()); }
         catch (Throwable t) { fishGuard.fail(t); return false; }
+    }
+
+    /** ParameterZone.calculateCurrentValue entry: the cached value on a hit, null on a miss (the stock body then runs). */
+    public static Float onZoneEnter(Object param) {
+        if (!zoneGuard.on) return null;
+        try {
+            IsoGameCharacter l = FMODParameterUtils.getFirstListener();
+            if (l == null) return null;
+            return SoundFixes.zoneCached(param, l, SoundFixes.square(l.getX()), SoundFixes.square(l.getY()),
+                                         SoundFixes.zoneVersion());
+        } catch (Throwable t) { zoneGuard.fail(t); return null; }
+    }
+
+    /** ParameterZone.calculateCurrentValue exit on a miss: stores the value the stock body just computed. */
+    public static void onZoneExit(Object param, float value) {
+        if (!zoneGuard.on) return;
+        try {
+            IsoGameCharacter l = FMODParameterUtils.getFirstListener();
+            if (l == null) return;
+            SoundFixes.zoneStore(param, l, SoundFixes.square(l.getX()), SoundFixes.square(l.getY()),
+                                 SoundFixes.zoneVersion(), value);
+        } catch (Throwable t) { zoneGuard.fail(t); }
+    }
+
+    /** IsoMetaGrid.addZone / removeZone exit: the zone set changed, so cached zone values are stale. */
+    public static void onZonesChanged() {
+        if (!zoneGuard.on) return;
+        try { SoundFixes.zonesChanged(); }
+        catch (Throwable t) { zoneGuard.fail(t); }
+    }
+
+    /** AmbientStreamManager.checkHaveElectricity entry: true skips stock after the re-implemented scan (also on failure). */
+    public static boolean onCheckHaveElectricity() {
+        if (!electricityGuard.on) return false;
+        try { SoundFixes.checkHaveElectricity(); return true; }
+        catch (Throwable t) { electricityGuard.fail(t); return true; }
+    }
+
+    /** ChunkLevelData.update entry: opens the update's deferred-clear state. */
+    public static void onFliesEnter() {
+        if (!fliesGuard.on) return;
+        try { SoundFixes.fliesEnter(); }
+        catch (Throwable t) { fliesGuard.fail(t); }
+    }
+
+    /** ChunkLevelData.update exit (also on a throwable): clears the square whose clear was deferred, for real. */
+    public static void onFliesExit() {
+        if (!fliesGuard.on) return;
+        try { SoundFixes.clearPendingFlies(); }
+        catch (Throwable t) { fliesGuard.fail(t); }
+    }
+
+    /** IsoGridSquare.setHasFlies entry: true skips a clear deferred by the current update. */
+    public static boolean onFliesSet(Object square, boolean value) {
+        if (!fliesGuard.on) return false;
+        try { return SoundFixes.fliesSet(square, value); }
+        catch (Throwable t) { fliesGuard.fail(t); return false; }
+    }
+
+    /** FMODSoundEmitter.addSound entry and exit: the NULL-handle depth counter. */
+    public static void onAddSoundEnter() {
+        if (!nullGuard.on) return;
+        try { SoundFixes.addSoundEnter(); }
+        catch (Throwable t) { nullGuard.fail(t); }
+    }
+
+    public static void onAddSoundExit() {
+        if (!nullGuard.on) return;
+        try { SoundFixes.addSoundExit(); }
+        catch (Throwable t) { nullGuard.fail(t); }
+    }
+
+    /** FMOD_Studio_System_CreateEventInstance exit: a 0 handle becomes -1 inside addSound only. */
+    public static long onEventInstance(long handle) {
+        if (!nullGuard.on) return handle;
+        try { return SoundFixes.nullHandle(handle, SoundFixes.addSoundDepth()); }
+        catch (Throwable t) { nullGuard.fail(t); return handle; }
     }
 
     @Patch(className = "zombie.audio.FMODParameter", methodName = "update")
@@ -122,5 +204,71 @@ public final class SoundPatches {
         public static boolean enter(@Patch.Argument(0) int x, @Patch.Argument(1) int y, @Patch.Argument(2) int r) {
             return onFishNoise(x, y, r);
         }
+    }
+
+    @Patch(className = "zombie.audio.parameters.ParameterZone", methodName = "calculateCurrentValue")
+    public static class ZoneValue {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This Object self, @Patch.Local("v") Object v) {
+            v = onZoneEnter(self);
+            return v != null;
+        }
+
+        @Patch.OnExit
+        public static void exit(@Patch.This Object self, @Patch.Return(readOnly = false) float ret,
+                                @Patch.Local("v") Object v) {
+            if (v != null) ret = (Float) v;
+            else onZoneExit(self, ret);
+        }
+    }
+
+    @Patch(className = "zombie.iso.IsoMetaGrid", methodName = "addZone")
+    public static class ZoneAdded {
+        @Patch.OnExit
+        public static void exit() { onZonesChanged(); }
+    }
+
+    @Patch(className = "zombie.iso.IsoMetaGrid", methodName = "removeZone")
+    public static class ZoneRemoved {
+        @Patch.OnExit
+        public static void exit() { onZonesChanged(); }
+    }
+
+    @Patch(className = "zombie.AmbientStreamManager", methodName = "checkHaveElectricity")
+    public static class Electricity {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter() { return onCheckHaveElectricity(); }
+    }
+
+    @Patch(className = "zombie.FliesSound$ChunkLevelData", methodName = "update")
+    public static class FliesUpdate {
+        @Patch.OnEnter
+        public static void enter() { onFliesEnter(); }
+
+        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
+        public static void exit() { onFliesExit(); }
+    }
+
+    @Patch(className = "zombie.iso.IsoGridSquare", methodName = "setHasFlies")
+    public static class FliesSet {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This Object self, @Patch.Argument(0) boolean value) {
+            return onFliesSet(self, value);
+        }
+    }
+
+    @Patch(className = "fmod.fmod.FMODSoundEmitter", methodName = "addSound")
+    public static class AddSound {
+        @Patch.OnEnter
+        public static void enter() { onAddSoundEnter(); }
+
+        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
+        public static void exit() { onAddSoundExit(); }
+    }
+
+    @Patch(className = "fmod.javafmod", methodName = "FMOD_Studio_System_CreateEventInstance")
+    public static class EventInstance {
+        @Patch.OnExit
+        public static void exit(@Patch.Return(readOnly = false) long ret) { ret = onEventInstance(ret); }
     }
 }

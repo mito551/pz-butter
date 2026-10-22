@@ -26,6 +26,7 @@ public class Main {
         MapFast.init();
         SoundTick.init();
         WorldSounds.init();
+        SoundFixes.init();
         LuaPatches.uiLuaFast = Settings.flag("uiLuaFast");
     }
 
