@@ -25,7 +25,6 @@ final class LightChecks {
 
     static int switchTtl;
     static int lightingFps;
-    private static boolean fpsDone;
 
     // private game members, read through handles (null when a member is missing: stock runs)
     private static VarHandle perPlayer, onScreenChunks;
@@ -80,9 +79,12 @@ final class LightChecks {
         return Boolean.FALSE;
     }
 
-    /** True when a square's stamp should move to this counter: a real counter that differs from the stamp. */
+    /**
+     * True when a clean square may take this counter. A tick of -1 (never had lighting data) is never stamped: stock
+     * invalidates the level on that first dirty square, and a stamp would hide it.
+     */
     static boolean stampClean(int updateTick, int counter) {
-        return counter != -1 && updateTick != counter;
+        return updateTick != -1 && counter != -1 && updateTick != counter;
     }
 
     /** JNILighting.updateFBORenderChunk exit: a clean square takes the current counter, so later queries skip the native call. */
@@ -114,10 +116,12 @@ final class LightChecks {
 
     static synchronized void resetForTest() { switches.clear(); }
 
-    /** IngameState.enter exit: the lighting thread's rate, set once per run (the game clamps it to 1..120). */
+    /** Whether lightingFps is applied at this world start: only a rate above 0 (0 leaves the game's value). */
+    static boolean applyFps(int n) { return n > 0; }
+
+    /** IngameState.enter exit: sets the lighting thread's rate on every world start (the game clamps it to 1..120). */
     static void applyLightingFps() {
-        if (fpsDone) return;
+        if (!applyFps(lightingFps)) return;
         PerformanceSettings.instance.setLightingFPS(lightingFps);
-        fpsDone = true;
     }
 }

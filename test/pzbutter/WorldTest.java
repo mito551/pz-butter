@@ -7,6 +7,7 @@ final class WorldTest {
     static void run() {
         occlusionIgnoresLightingOnlyDirt();
         stampOnlyNewCounter();
+        fpsAppliedOnlyAboveZero();
         switchMemoExpires();
         plan5aKeysOffByDefault();
     }
@@ -22,6 +23,12 @@ final class WorldTest {
     // a square is stamped once per lighting counter: a new counter stamps, the same counter and no counter do not
     static void stampOnlyNewCounter() {
         assert LightChecks.stampClean(5, 6) && !LightChecks.stampClean(6, 6) && !LightChecks.stampClean(5, -1);
+        assert !LightChecks.stampClean(-1, 6);   // never had lighting data: stock invalidates the level first, so no stamp
+    }
+
+    // lightingFps is applied at every world start when above 0, never when 0
+    static void fpsAppliedOnlyAboveZero() {
+        assert LightChecks.applyFps(60) && LightChecks.applyFps(1) && !LightChecks.applyFps(0);
     }
 
     // an answer is reused for fewer than ttl frames, then asked again; an unknown switch always misses
