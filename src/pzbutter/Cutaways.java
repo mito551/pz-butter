@@ -6,10 +6,13 @@ import java.lang.invoke.VarHandle;
 import java.lang.reflect.Array;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
+import java.util.List;
 import zombie.iso.BuildingDef;
 import zombie.iso.IsoCamera;
+import zombie.iso.IsoCell;
 import zombie.iso.IsoChunk;
 import zombie.iso.IsoChunkMap;
 import zombie.iso.IsoGridSquare;
@@ -39,8 +42,11 @@ final class Cutaways {
     private static Class<?> ppdClass, bcClass, cwClass, pirClass, poiClass;
     private static VarHandle perPlayer, pointsOfInterest, lastResults, resultsNorth, resultsWest, visitedNorth, visitedWest,
                              cutawayWalls, buildings, buildingList, poiX, poiY, poiZ;
-    private static MethodHandle visitSquares, invalidateChunk, hasAnyWalls, isInRange, setVisited, shouldCut, partOf;
+    private static MethodHandle visitSquares, invalidateChunk, hasAnyWalls, isInRange, setVisited, shouldCut, partOf, isHorizontal;
     private static Object outOfRange;
+
+    /** A step that may throw, run under withRestore. */
+    interface Work { void run() throws Throwable; }
 
     static void init() {
         changedOnly = Settings.flag("cutawayInvalidateChanged");
@@ -83,6 +89,7 @@ final class Cutaways {
             setVisited = Game.method(cwClass, "setVisitedSquares", MethodType.methodType(void.class, ppdClass));
             shouldCut = Game.method(cwClass, "shouldCutawayBuilding", MethodType.methodType(boolean.class, int.class));
             partOf = Game.method(cwClass, "isPartOfBuilding", MethodType.methodType(boolean.class, BuildingDef.class));
+            isHorizontal = Game.method(cwClass, "isHorizontal", MethodType.methodType(boolean.class));
             outOfRange = Game.staticField(pirClass, "False", pirClass).get();
         } catch (Throwable t) {
             System.out.println("[PZButter] cutaway members not found: " + t);
@@ -92,7 +99,7 @@ final class Cutaways {
             && resultsWest != null && visitedNorth != null && visitedWest != null && cutawayWalls != null
             && buildings != null && buildingList != null && poiX != null && poiY != null && poiZ != null
             && visitSquares != null && invalidateChunk != null && hasAnyWalls != null && isInRange != null
-            && setVisited != null && shouldCut != null && partOf != null && outOfRange != null;
+            && setVisited != null && shouldCut != null && partOf != null && isHorizontal != null && outOfRange != null;
         return ready;
     }
 
@@ -117,10 +124,50 @@ final class Cutaways {
         return r <= 0 || (Math.abs(wx - camChunkX) <= r && Math.abs(wy - camChunkY) <= r);
     }
 
+    /** Runs work; when it throws, restore runs first and the throw goes on (to the guard, which falls back to stock). */
+    static void withRestore(Work work, Runnable restore) throws Throwable {
+        try {
+            work.run();
+        } catch (Throwable t) {
+            try { restore.run(); }
+            catch (Throwable r) { t.addSuppressed(r); }
+            throw t;
+        }
+    }
+
+    /** Puts a collection back to the saved elements. */
+    static void restore(Collection<Object> target, List<Object> saved) {
+        target.clear();
+        target.addAll(saved);
+    }
+
+    /**
+     * Marks the squares a wall's walk would visit, without any cut test. Stock's cutawayVisit marks a horizontal wall's
+     * squares in visitedNorth (x in [x1, x2) on row y1, via the chunk map) and a vertical wall's in visitedWest (y in
+     * [y1, y2) on column x1, via the cell). Same-orientation walls never share a square (wall runs are maximal and
+     * disjoint in a chunk level, see the report), so marking a dropped wall in any order is the same as stock.
+     */
+    static void markWalk(Object wall, int z, IsoChunkMap map, IsoCell cell, HashSet<Object> visN, HashSet<Object> visW)
+            throws Throwable {
+        FBORenderCutaways.CutawayWall w = (FBORenderCutaways.CutawayWall) wall;
+        if ((boolean) isHorizontal.invoke(wall)) {
+            for (int x = w.x1; x < w.x2; x++) {
+                IsoGridSquare sq = map.getGridSquare(x, w.y1, z);
+                if (sq != null) visN.add(sq);
+            }
+        } else {
+            for (int y = w.y1; y < w.y2; y++) {
+                IsoGridSquare sq = cell.getGridSquare(w.x1, y, z);
+                if (sq != null) visW.add(sq);
+            }
+        }
+    }
+
     /**
      * The stock method for player p over the chunk list, in stock's order: save and clear the results; collect the
      * walls; visit the points of interest; old results go to flag 0; exterior walls; new north and west flags; then
      * the four edge booleans of every changed chunk. Returns false when the members are not ready (stock runs).
+     * A throw restores the result and visited sets and the flags touched so far, then propagates.
      */
     @SuppressWarnings("unchecked")
     static boolean visit(Object cut, int p, ArrayList<?> chunks) throws Throwable {
@@ -133,151 +180,176 @@ final class Cutaways {
         ArrayList<Object> walls = (ArrayList<Object>) cutawayWalls.get(pd);
         IsoChunkMap map = c.cell.chunkMap[p];
         long now = System.currentTimeMillis();
-
-        // stock 0-76: last results = north + west; the result and visited sets are cleared
-        last.clear();
-        last.addAll(north);
-        last.addAll(west);
-        north.clear();
-        west.clear();
-        visN.clear();
-        visW.clear();
-        int camZ = (int) Math.floor(IsoCamera.frameState.camCharacterZ);
-
-        // stock 77-179: walls of every on-screen chunk level at camZ; radius limits which chunks count
-        walls.clear();
-        int camChunkX = Math.floorDiv((int) Math.floor(IsoCamera.frameState.camCharacterX), CHUNK);
-        int camChunkY = Math.floorDiv((int) Math.floor(IsoCamera.frameState.camCharacterY), CHUNK);
-        for (Object o : chunks) {
-            IsoChunk chunk = (IsoChunk) o;
-            if (camZ < chunk.minLevel || camZ > chunk.maxLevel) continue;
-            if (!chunk.getRenderLevels(p).isOnScreen(camZ)) continue;
-            if (!inRadius(camChunkX, camChunkY, chunk.wx, chunk.wy, radius)) continue;
-            walls.addAll(chunk.getCutawayDataForLevel(camZ).allWalls);
-        }
-
-        // cutawayVisitPrefilter: drop walls that cannot cut before any square is checked
-        if (prefilter) {
-            boolean peeking = c.cell.playerWindowPeekingRoomId[p] != -1;
-            boolean idsEmpty = c.cell.tempPlayerCutawayRoomIds.get(p).isEmpty();
-            ArrayList<Object> collapsing = (ArrayList<Object>) buildingList.get(buildings.get(pd));
-            for (int i = walls.size() - 1; i >= 0; i--) {
-                Object w = walls.get(i);
-                boolean collapseHit = false;
-                for (int b = 0; !collapseHit && b < collapsing.size(); b++)
-                    collapseHit = (boolean) partOf.invoke(w, collapsing.get(b));
-                boolean cutBuilding = !idsEmpty && (boolean) shouldCut.invoke(w, p);
-                if (!mayCut(idsEmpty, collapseHit, cutBuilding, peeking)) walls.remove(i);
-            }
-        }
-
-        // stock 198-309: each point of interest on camZ is visited unless its square is already in a visited set
-        for (Object o : (ArrayList<Object>) pointsOfInterest.get(cut)) {
-            if ((int) poiZ.get(o) != camZ) continue;
-            IsoGridSquare sq = map.getGridSquare((int) poiX.get(o), (int) poiY.get(o), camZ);
-            if (sq == null || visN.contains(sq) || visW.contains(sq)) continue;
-            visitSquares.invoke(cut, sq, now, chunks);
-        }
-
-        // Every square whose flag may change is tracked from its start flag to its end flag.
+        ArrayList<Object> snapLast = new ArrayList<>(last), snapNorth = new ArrayList<>(north),
+                          snapWest = new ArrayList<>(west), snapVisN = new ArrayList<>(visN), snapVisW = new ArrayList<>(visW);
         ArrayList<Object> sqs = new ArrayList<>();
         ArrayList<Integer> starts = new ArrayList<>();
         IdentityHashMap<Object, Integer> index = new IdentityHashMap<>();
-        HashSet<Object> maskDone = new HashSet<>();
 
-        // stock 322-438: old results go to flag 0; off-screen chunks lose their seen-room mask (once per chunk)
-        for (Object o : last) {
-            IsoGridSquare sq = (IsoGridSquare) o;
-            track(index, sqs, starts, sq, p, now);
-            sq.setPlayerCutawayFlag(p, 0, now);
-            IsoChunk chunk = sq.getChunk();
-            if (chunk != null && maskDone.add(chunk) && !chunk.IsOnScreen(false))
-                chunk.getCutawayData().invalidateOccludedSquaresMaskForSeenRooms(p, sq.z);
-        }
+        withRestore(() -> {
+            // stock 0-76: last results = north + west; the result and visited sets are cleared
+            last.clear();
+            last.addAll(north);
+            last.addAll(west);
+            north.clear();
+            west.clear();
+            visN.clear();
+            visW.clear();
+            int camZ = (int) Math.floor(IsoCamera.frameState.camCharacterZ);
 
-        // stock 441-575: exterior walls of on-screen chunk levels set their squares visited when the player is not out of range
-        for (Object o : chunks) {
-            IsoChunk chunk = (IsoChunk) o;
-            if (camZ < chunk.minLevel || camZ > chunk.maxLevel) continue;
-            if (!chunk.getRenderLevels(p).isOnScreen(camZ)) continue;
-            for (Object w : chunk.getCutawayDataForLevel(camZ).exteriorWalls)
-                if (!(boolean) isInRange.invoke(w, p, outOfRange)) setVisited.invoke(w, pd);
-        }
+            // stock 77-179: walls of every on-screen chunk level at camZ; radius limits which chunks count
+            walls.clear();
+            int camChunkX = Math.floorDiv((int) Math.floor(IsoCamera.frameState.camCharacterX), CHUNK);
+            int camChunkY = Math.floorDiv((int) Math.floor(IsoCamera.frameState.camCharacterY), CHUNK);
+            for (Object o : chunks) {
+                IsoChunk chunk = (IsoChunk) o;
+                if (camZ < chunk.minLevel || camZ > chunk.maxLevel) continue;
+                if (!chunk.getRenderLevels(p).isOnScreen(camZ)) continue;
+                if (!inRadius(camChunkX, camChunkY, chunk.wx, chunk.wy, radius)) continue;
+                walls.addAll(chunk.getCutawayDataForLevel(camZ).allWalls);
+            }
 
-        // stock 581-774: new north squares get flag 1, then new west squares get flag 2
-        for (Object o : north) {
-            IsoGridSquare sq = (IsoGridSquare) o;
-            track(index, sqs, starts, sq, p, now);
-            sq.addPlayerCutawayFlag(p, NORTH, now);
-        }
-        for (Object o : west) {
-            IsoGridSquare sq = (IsoGridSquare) o;
-            track(index, sqs, starts, sq, p, now);
-            sq.addPlayerCutawayFlag(p, WEST, now);
-        }
-
-        // Chunk levels: only a chunk where a square's flag changed is invalidated (all touched chunks when the key is off).
-        int n = sqs.size();
-        int[] chunkOf = new int[n], before = new int[n], after = new int[n];
-        IdentityHashMap<Object, Integer> chunkIndex = new IdentityHashMap<>();
-        ArrayList<IsoChunk> chunkList = new ArrayList<>();
-        for (int i = 0; i < n; i++) {
-            IsoGridSquare sq = (IsoGridSquare) sqs.get(i);
-            IsoChunk chunk = sq.getChunk();
-            if (chunk == null) {
-                chunkOf[i] = -1;
-            } else {
-                Integer k = chunkIndex.get(chunk);
-                if (k == null) {
-                    k = chunkList.size();
-                    chunkIndex.put(chunk, k);
-                    chunkList.add(chunk);
+            // cutawayVisitPrefilter: drop walls that cannot cut; they still mark their squares (see dropped below)
+            ArrayList<Object> dropped = new ArrayList<>();
+            if (prefilter) {
+                boolean peeking = c.cell.playerWindowPeekingRoomId[p] != -1;
+                boolean idsEmpty = c.cell.tempPlayerCutawayRoomIds.get(p).isEmpty();
+                ArrayList<Object> collapsing = (ArrayList<Object>) buildingList.get(buildings.get(pd));
+                for (int i = walls.size() - 1; i >= 0; i--) {
+                    Object w = walls.get(i);
+                    boolean collapseHit = false;
+                    for (int b = 0; !collapseHit && b < collapsing.size(); b++)
+                        collapseHit = (boolean) partOf.invoke(w, collapsing.get(b));
+                    boolean cutBuilding = !idsEmpty && (boolean) shouldCut.invoke(w, p);
+                    if (!mayCut(idsEmpty, collapseHit, cutBuilding, peeking)) {
+                        dropped.add(w);
+                        walls.remove(i);
+                    }
                 }
-                chunkOf[i] = k;
             }
-            before[i] = starts.get(i);
-            after[i] = sq.getPlayerCutawayFlag(p, now);
-        }
-        boolean[] changed = new boolean[chunkList.size()];
-        if (changedOnly) changed = changedChunks(chunkOf, before, after, chunkList.size());
-        else Arrays.fill(changed, true);
-        boolean[] invalidated = new boolean[chunkList.size()];
-        for (int i = 0; i < n; i++) {
-            int k = chunkOf[i];
-            if (k < 0 || !changed[k] || invalidated[k]) continue;
-            invalidated[k] = true;
-            chunkList.get(k).getRenderLevels(p).invalidateLevel(((IsoGridSquare) sqs.get(i)).z, DIRTY_CUTAWAYS);
-        }
 
-        // stock 777-1055: the four edge booleans of each changed chunk; a change invalidates the neighbour chunk
-        for (int k = 0; k < chunkList.size(); k++) {
-            if (!changed[k]) continue;
-            IsoChunk chunk = chunkList.get(k);
-            FBORenderCutaways.ChunkLevelData d = chunk.getCutawayData().getDataForLevel(camZ);
-            if (d == null) continue;
-            int wx = chunk.wx, wy = chunk.wy;
-            boolean a = (boolean) hasAnyWalls.invoke(cut, p, chunk, camZ, (byte) NORTH, 0, 0, 0, 7);
-            if (a != d.hasCutawayNorthWallsOnWestEdge) {
-                d.hasCutawayNorthWallsOnWestEdge = a;
-                invalidateChunk.invoke(cut, p, map, wx - 1, wy, camZ);
+            // stock 198-309: each point of interest on camZ is visited unless its square is already in a visited set.
+            // Stock's first walk marks every wall's squares; a dropped wall's marks are added right after that walk.
+            boolean marked = false;
+            for (Object o : (ArrayList<Object>) pointsOfInterest.get(cut)) {
+                if ((int) poiZ.get(o) != camZ) continue;
+                IsoGridSquare sq = map.getGridSquare((int) poiX.get(o), (int) poiY.get(o), camZ);
+                if (sq == null || visN.contains(sq) || visW.contains(sq)) continue;
+                visitSquares.invoke(cut, sq, now, chunks);
+                if (!marked) {
+                    marked = true;
+                    IsoChunkMap walkMap = c.cell.chunkMap[IsoCamera.frameState.playerIndex];
+                    if (walkMap != null && !walkMap.ignore)
+                        for (Object w : dropped) markWalk(w, camZ, walkMap, c.cell, visN, visW);
+                }
             }
-            boolean b = (boolean) hasAnyWalls.invoke(cut, p, chunk, camZ, (byte) NORTH, 7, 0, 7, 7);
-            if (b != d.hasCutawayNorthWallsOnEastEdge) {
-                d.hasCutawayNorthWallsOnEastEdge = b;
-                invalidateChunk.invoke(cut, p, map, wx + 1, wy, camZ);
+
+            // Every square whose flag may change is tracked from its start flag to its end flag.
+            HashSet<Object> maskDone = new HashSet<>();
+
+            // stock 322-438: old results go to flag 0; off-screen chunks lose their seen-room mask (once per chunk)
+            for (Object o : last) {
+                IsoGridSquare sq = (IsoGridSquare) o;
+                track(index, sqs, starts, sq, p, now);
+                sq.setPlayerCutawayFlag(p, 0, now);
+                IsoChunk chunk = sq.getChunk();
+                if (chunk != null && maskDone.add(chunk) && !chunk.IsOnScreen(false))
+                    chunk.getCutawayData().invalidateOccludedSquaresMaskForSeenRooms(p, sq.z);
             }
-            boolean e = (boolean) hasAnyWalls.invoke(cut, p, chunk, camZ, (byte) WEST, 0, 0, 7, 0);
-            if (e != d.hasCutawayWestWallsOnNorthEdge) {
-                d.hasCutawayWestWallsOnNorthEdge = e;
-                invalidateChunk.invoke(cut, p, map, wx, wy - 1, camZ);
+
+            // stock 441-575: exterior walls of on-screen chunk levels set their squares visited when the player is not out of range
+            for (Object o : chunks) {
+                IsoChunk chunk = (IsoChunk) o;
+                if (camZ < chunk.minLevel || camZ > chunk.maxLevel) continue;
+                if (!chunk.getRenderLevels(p).isOnScreen(camZ)) continue;
+                if (!inRadius(camChunkX, camChunkY, chunk.wx, chunk.wy, radius)) continue;
+                for (Object w : chunk.getCutawayDataForLevel(camZ).exteriorWalls)
+                    if (!(boolean) isInRange.invoke(w, p, outOfRange)) setVisited.invoke(w, pd);
             }
-            // stock stores the north-edge value (local 13) here; the ruling stores the south-edge value
-            boolean s = (boolean) hasAnyWalls.invoke(cut, p, chunk, camZ, (byte) WEST, 0, 7, 7, 7);
-            if (s != d.hasCutawayWestWallsOnSouthEdge) {
-                d.hasCutawayWestWallsOnSouthEdge = s;
-                invalidateChunk.invoke(cut, p, map, wx, wy + 1, camZ);
+
+            // stock 581-774: new north squares get flag 1, then new west squares get flag 2
+            for (Object o : north) {
+                IsoGridSquare sq = (IsoGridSquare) o;
+                track(index, sqs, starts, sq, p, now);
+                sq.addPlayerCutawayFlag(p, NORTH, now);
             }
-        }
+            for (Object o : west) {
+                IsoGridSquare sq = (IsoGridSquare) o;
+                track(index, sqs, starts, sq, p, now);
+                sq.addPlayerCutawayFlag(p, WEST, now);
+            }
+
+            // Chunk levels: only a chunk where a square's flag changed is invalidated (all touched chunks when the key is off).
+            int n = sqs.size();
+            int[] chunkOf = new int[n], before = new int[n], after = new int[n];
+            IdentityHashMap<Object, Integer> chunkIndex = new IdentityHashMap<>();
+            ArrayList<IsoChunk> chunkList = new ArrayList<>();
+            for (int i = 0; i < n; i++) {
+                IsoGridSquare sq = (IsoGridSquare) sqs.get(i);
+                IsoChunk chunk = sq.getChunk();
+                if (chunk == null) {
+                    chunkOf[i] = -1;
+                } else {
+                    Integer k = chunkIndex.get(chunk);
+                    if (k == null) {
+                        k = chunkList.size();
+                        chunkIndex.put(chunk, k);
+                        chunkList.add(chunk);
+                    }
+                    chunkOf[i] = k;
+                }
+                before[i] = starts.get(i);
+                after[i] = sq.getPlayerCutawayFlag(p, now);
+            }
+            boolean[] changed = new boolean[chunkList.size()];
+            if (changedOnly) changed = changedChunks(chunkOf, before, after, chunkList.size());
+            else Arrays.fill(changed, true);
+            boolean[] invalidated = new boolean[chunkList.size()];
+            for (int i = 0; i < n; i++) {
+                int k = chunkOf[i];
+                if (k < 0 || !changed[k] || invalidated[k]) continue;
+                invalidated[k] = true;
+                chunkList.get(k).getRenderLevels(p).invalidateLevel(((IsoGridSquare) sqs.get(i)).z, DIRTY_CUTAWAYS);
+            }
+
+            // stock 777-1055: the four edge booleans of each changed chunk; a change invalidates the neighbour chunk
+            for (int k = 0; k < chunkList.size(); k++) {
+                if (!changed[k]) continue;
+                IsoChunk chunk = chunkList.get(k);
+                FBORenderCutaways.ChunkLevelData d = chunk.getCutawayData().getDataForLevel(camZ);
+                if (d == null) continue;
+                int wx = chunk.wx, wy = chunk.wy;
+                boolean a = (boolean) hasAnyWalls.invoke(cut, p, chunk, camZ, (byte) NORTH, 0, 0, 0, 7);
+                if (a != d.hasCutawayNorthWallsOnWestEdge) {
+                    d.hasCutawayNorthWallsOnWestEdge = a;
+                    invalidateChunk.invoke(cut, p, map, wx - 1, wy, camZ);
+                }
+                boolean b = (boolean) hasAnyWalls.invoke(cut, p, chunk, camZ, (byte) NORTH, 7, 0, 7, 7);
+                if (b != d.hasCutawayNorthWallsOnEastEdge) {
+                    d.hasCutawayNorthWallsOnEastEdge = b;
+                    invalidateChunk.invoke(cut, p, map, wx + 1, wy, camZ);
+                }
+                boolean e = (boolean) hasAnyWalls.invoke(cut, p, chunk, camZ, (byte) WEST, 0, 0, 7, 0);
+                if (e != d.hasCutawayWestWallsOnNorthEdge) {
+                    d.hasCutawayWestWallsOnNorthEdge = e;
+                    invalidateChunk.invoke(cut, p, map, wx, wy - 1, camZ);
+                }
+                // stock stores the north-edge value (local 13) here; the ruling stores the south-edge value
+                boolean s = (boolean) hasAnyWalls.invoke(cut, p, chunk, camZ, (byte) WEST, 0, 7, 7, 7);
+                if (s != d.hasCutawayWestWallsOnSouthEdge) {
+                    d.hasCutawayWestWallsOnSouthEdge = s;
+                    invalidateChunk.invoke(cut, p, map, wx, wy + 1, camZ);
+                }
+            }
+        }, () -> {
+            restore(last, snapLast);
+            restore(north, snapNorth);
+            restore(west, snapWest);
+            restore(visN, snapVisN);
+            restore(visW, snapVisW);
+            for (int i = 0; i < sqs.size(); i++)
+                ((IsoGridSquare) sqs.get(i)).setPlayerCutawayFlag(p, starts.get(i), now);
+        });
         return true;
     }
 

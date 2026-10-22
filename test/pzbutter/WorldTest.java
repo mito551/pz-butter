@@ -18,6 +18,7 @@ final class WorldTest {
         prefilterKeepsPossibleCuts();
         radiusInChunks();
         cutawayHandlesResolve();
+        restoreOnFailureKeepsSets();
     }
 
     // squares in chunks 0,0,1,2: chunk 0 same flags, chunk 1 north->west, chunk 2 new cut square
@@ -123,5 +124,31 @@ final class WorldTest {
         GridGate.debounce(false, 0, 8);
         assert !GridGate.debounce(true, 8, 8);       // one real scan after 8 skipped frames: first differ, no flip
         assert GridGate.debounce(true, 16, 8);       // still differs 8 frames later: flips
+    }
+
+    // a throw in the visit's work restores the sets to their saved contents and the throw still reaches the caller
+    static void restoreOnFailureKeepsSets() {
+        java.util.HashSet<Object> north = new java.util.HashSet<>(java.util.List.of("a"));
+        java.util.HashSet<Object> west = new java.util.HashSet<>(java.util.List.of("b"));
+        java.util.ArrayList<Object> snapN = new java.util.ArrayList<>(north), snapW = new java.util.ArrayList<>(west);
+        boolean threw = false;
+        try {
+            Cutaways.withRestore(() -> { north.clear(); west.clear(); throw new IllegalStateException("boom"); },
+                                 () -> { Cutaways.restore(north, snapN); Cutaways.restore(west, snapW); });
+        } catch (IllegalStateException e) {
+            threw = true;
+        } catch (Throwable t) {
+            throw new AssertionError(t);
+        }
+        assert threw;
+        assert north.equals(java.util.Set.of("a")) && west.equals(java.util.Set.of("b"));
+        // a clean run leaves the work's changes alone
+        north.clear();
+        try {
+            Cutaways.withRestore(() -> north.add("c"), () -> { throw new AssertionError("restore must not run"); });
+        } catch (Throwable t) {
+            throw new AssertionError(t);
+        }
+        assert north.equals(java.util.Set.of("c"));
     }
 }
