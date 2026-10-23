@@ -19,21 +19,60 @@ final class WorldTest {
         radiusInChunks();
         cutawayHandlesResolve();
         restoreOnFailureKeepsSets();
-        replayWritesSameCellsAsStock();
+        lossyMatchesStockIntShift();
+        replayMatchesHandWrittenStock();
         replayBoxDecidesSquares();
         replayNeedsFreshSameBox();
+        replayNeedsStoredMatchingTruth();
     }
 
-    // the replay writes the stock cells of each set bit and only raises a cell (max), at a lower level it never lowers one
-    static void replayWritesSameCellsAsStock() {
-        int w = 40; int[] grid = new int[w * 40]; java.util.Arrays.fill(grid, -32);
-        long mask = (1L << 0) | (1L << 9) | (1L << 63);     // squares (0,0), (1,1), (7,7) of chunk (2,3), level 1
-        Cutaways.replay(mask, 2, 3, 1, 0, 0, 39, 39, w, grid);
-        assert grid[(16 - 3) + (24 - 3) * w] == 1 && grid[(17 - 3) + (25 - 3) * w] == 1 && grid[(23 - 3) + (31 - 3) * w] == 1;
-        int set = 0; for (int v : grid) if (v != -32) set++;
-        assert set == 3;
-        Cutaways.replay(1L, 2, 3, 0, 0, 0, 39, 39, w, grid);  // a lower level never lowers a cell
-        assert grid[(16) + (24) * w] == 0 && grid[(16 - 3) + (24 - 3) * w] == 1;
+    // stock's int-shifted store: square i sets bit (i & 31) of an int, which sign-extends into the long
+    static long stockStored(int[] squares) {
+        long acc = 0;
+        for (int i : squares) acc |= (long) (1 << (i % 8 + (i / 8) * 8));
+        return acc;
+    }
+
+    // lossy(true mask) is the stored field stock writes: rows 4-7 alias rows 0-3, and bit 31 spreads into 31..63
+    static void lossyMatchesStockIntShift() {
+        assert Cutaways.lossy(1L << 0) == 1L;
+        assert Cutaways.lossy(1L << 32) == 1L;                       // square (0,4) aliases (0,0)
+        assert Cutaways.lossy(1L << 31) == 0xFFFFFFFF80000000L;      // square (7,3)
+        assert Cutaways.lossy(1L << 63) == 0xFFFFFFFF80000000L;      // square (7,7)
+        int[] sq = {0, 32, 31, 63};
+        assert Cutaways.lossy((1L << 0) | (1L << 32) | (1L << 31) | (1L << 63)) == stockStored(sq);
+    }
+
+    // a hand-written copy of stock's loop over the squares that pass its tests writes the same cells as the replay of their mask
+    static void replayMatchesHandWrittenStock() {
+        int wx = 2, wy = 3, z = 1, gx1 = 0, gy1 = 0, gx2 = 39, gy2 = 39, w = gx2 - gx1 + 1;
+        int[] pass = {0, 9, 32, 45, 31, 63, 39};                    // includes rows 4-7 and square 63
+        int[] stock = new int[w * 40]; java.util.Arrays.fill(stock, -32);
+        long truth = 0;
+        for (int i : pass) {
+            int dx = wx * 8 + i % 8 - 3 * z - gx1, dy = wy * 8 + i / 8 - 3 * z - gy1;
+            if (dx < 0 || dy < 0 || dx > gx2 - gx1 || dy > gy2 - gy1) continue;
+            stock[dx + dy * w] = Math.max(stock[dx + dy * w], z);
+            truth |= 1L << i;
+        }
+        int[] got = new int[w * 40]; java.util.Arrays.fill(got, -32);
+        Cutaways.replay(truth, wx, wy, z, gx1, gy1, gx2, gy2, w, got);
+        assert java.util.Arrays.equals(stock, got);
+        int set = 0; for (int v : got) if (v != -32) set++;
+        assert set == pass.length;
+        Cutaways.replay(1L, 2, 3, 0, 0, 0, 39, 39, w, got);  // a lower level never lowers a cell
+        assert got[(16) + (24) * w] == 0 && got[(16 - 3) + (24 - 3) * w] == 1;
+    }
+
+    // the stored field replays only when it is the lossy form of the true mask (removeFromWorld zeroes it)
+    static void replayNeedsStoredMatchingTruth() {
+        Cutaways.Fast f = new Cutaways.Fast();
+        Cutaways.beginCompute(f, 1, 0, 0, 39, 39);
+        Cutaways.endCompute(f, 1);
+        f.truth[1] = (1L << 63) | (1L << 5);
+        assert Cutaways.replayable(f, 1, 0, 0, 39, 39, Cutaways.lossy(f.truth[1]));
+        assert !Cutaways.replayable(f, 1, 0, 0, 39, 39, 0L);         // removeFromWorld zeroed the field
+        assert !Cutaways.replayable(f, 1, 0, 0, 39, 39, 1L << 5);    // the unaliased bits only
     }
 
     // a square outside the box (stock's check on x - 3z - gx1 and y - 3z - gy1) writes nothing
