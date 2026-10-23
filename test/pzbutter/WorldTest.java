@@ -41,6 +41,11 @@ final class WorldTest {
         assert Cutaways.lossy(1L << 63) == 0xFFFFFFFF80000000L;      // square (7,7)
         int[] sq = {0, 32, 31, 63};
         assert Cutaways.lossy((1L << 0) | (1L << 32) | (1L << 31) | (1L << 63)) == stockStored(sq);
+        java.util.Random r = new java.util.Random(5);
+        for (int n = 0; n < 2000; n++) {
+            long t = r.nextLong();
+            assert Cutaways.lossy(t) == stockStored(java.util.stream.IntStream.range(0, 64).filter(i -> (t & (1L << i)) != 0).toArray());
+        }
     }
 
     // a hand-written copy of stock's loop over the squares that pass its tests writes the same cells as the replay of their mask

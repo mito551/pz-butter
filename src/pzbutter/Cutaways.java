@@ -384,14 +384,11 @@ final class Cutaways {
 
     /**
      * The field stock stores for a true mask: each set bit i is shifted as an int (1 << i, so the shift count is i & 31)
-     * and sign-extended into the long. Rows 4-7 alias rows 0-3, and square 31 fills bits 31..63.
+     * and sign-extended into the long. Rows 4-7 alias rows 0-3, and square 31 fills bits 31..63. So: the two int halves
+     * ORed, then widened.
      */
     static long lossy(long truth) {
-        long out = 0;
-        for (int i = 0; i < CHUNK * CHUNK; i++) {
-            if ((truth & (1L << i)) != 0) out |= (long) (1 << (i & 31));
-        }
-        return out;
+        return (int) truth | (int) (truth >>> 32);
     }
 
     /**
