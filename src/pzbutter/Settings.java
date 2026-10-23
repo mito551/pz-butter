@@ -129,7 +129,7 @@ public final class Settings {
       + "cutawayFast=false\n"
       + "# rainSplashesFast: rain splashes start by skipping idle squares with a local random generator; the same odds, with less work per frame.\n"
       + "rainSplashesFast=false\n"
-      + "# weatherMaskIdleSkip: without clouds, fog or rain the weather mask is not scanned or drawn; indoors only your building is scanned.\n"
+      + "# weatherMaskIdleSkip: with no clouds, fog or precipitation on screen, the weather mask is not scanned or drawn.\n"
       + "weatherMaskIdleSkip=false\n"
       + "# puddleEarlyZ: puddles take their depth from the vertex, so hidden wet ground is rejected before the costly shader; the look is the same.\n"
       + "puddleEarlyZ=false\n"

@@ -24,6 +24,10 @@ final class WorldTest {
         replayBoxDecidesSquares();
         replayNeedsFreshSameBox();
         replayNeedsStoredMatchingTruth();
+        splashIdleRateMatches();
+        splashActiveAdvancesAndResets();
+        splashResetOnStop();
+        maskIdleOnlyWithoutWeather();
     }
 
     // stock's int-shifted store: square i sets bit (i & 31) of an int, which sign-extends into the long
@@ -231,5 +235,37 @@ final class WorldTest {
             throw new AssertionError(t);
         }
         assert north.equals(java.util.Set.of("c"));
+    }
+
+    // Task 5 (rainSplashesFast, weatherMaskIdleSkip)
+    static void splashIdleRateMatches() {
+        java.util.SplittableRandom r = new java.util.SplittableRandom(7);
+        long triggered = 0, idle = 0;
+        for (int f = 0; f < 20000; f++) {
+            float[] frame = new float[64]; java.util.Arrays.fill(frame, -1f);
+            byte[] flags = new byte[64];
+            Weather.updateSplashes(frame, flags, 50, 0.08f, r::nextDouble);
+            for (float v : frame) { idle++; if (v == 0f) triggered++; }
+        }
+        double rate = triggered / (double) idle;
+        assert Math.abs(rate - 1.0 / 50) < 0.002 : rate;
+    }
+
+    static void splashActiveAdvancesAndResets() {
+        float[] frame = new float[64]; java.util.Arrays.fill(frame, -1f); frame[3] = 0.95f; frame[4] = 0.5f;
+        Weather.updateSplashes(frame, new byte[64], Integer.MAX_VALUE, 0.08f, () -> 0.999);
+        assert frame[3] == -1f && Math.abs(frame[4] - 0.58f) < 1e-6;
+    }
+
+    static void splashResetOnStop() {
+        // covered by the hook: not raining → stock fill with -1 (asserted on the helper Weather.stopSplashes(float[]))
+        float[] frame = {0.2f, -1f, 0.7f};
+        Weather.stopSplashes(frame);
+        assert frame[0] == -1f && frame[2] == -1f;
+    }
+
+    static void maskIdleOnlyWithoutWeather() {
+        assert Weather.maskIdle(false, false, false);
+        assert !Weather.maskIdle(true, false, false) && !Weather.maskIdle(false, true, false) && !Weather.maskIdle(false, false, true);
     }
 }

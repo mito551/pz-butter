@@ -30,6 +30,7 @@ public class Main {
         LightChecks.init();
         GridGate.init();
         Cutaways.init();
+        Weather.init();
         AudioLimiter.init();
         SoundPatches.onFmodInit();
         LuaPatches.uiLuaFast = Settings.flag("uiLuaFast");

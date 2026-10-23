@@ -2,6 +2,7 @@ package pzbutter;
 
 import java.util.ArrayList;
 import zombie.iso.IsoChunk;
+import zombie.iso.IsoChunkLevel;
 import me.zed_0xff.zombie_buddy.Patch;
 
 /**
@@ -19,6 +20,8 @@ public final class WorldPatches {
     static final Guard roofGuard = new Guard("roofHideDebounceFrames");
     static final Guard cutawayGuard = new Guard("cutawayVisit");
     static final Guard fastGuard = new Guard("cutawayFast");
+    static final Guard splashGuard = new Guard("rainSplashesFast");
+    static final Guard maskGuard = new Guard("weatherMaskIdleSkip");
 
     /** FBORenderCell.hasAnyDirtyChunkTextures entry: the answer when occlusionSkipLightingOnly is on; null runs stock. */
     public static Boolean onDirtyEnter(Object cell, int p) {
@@ -186,5 +189,31 @@ public final class WorldPatches {
     public static class IngameEnter {
         @Patch.OnExit
         public static void exit() { onIngameEnter(); }
+    }
+
+    /** IsoChunkLevel.updateRainSplashes entry: true when the rewrite ran (stock skipped); false runs stock. */
+    public static boolean onSplashEnter(IsoChunkLevel level) {
+        if (!splashGuard.on) return false;
+        try { Weather.splashes(level); return true; }
+        catch (Throwable t) { splashGuard.fail(t); return false; }
+    }
+
+    /** WeatherFxMask.renderFxMask entry: true when no weather is on screen (stock skipped); false runs stock. */
+    public static boolean onMaskEnter() {
+        if (!maskGuard.on) return false;
+        try { return Weather.maskSkip(); }
+        catch (Throwable t) { maskGuard.fail(t); return false; }
+    }
+
+    @Patch(className = "zombie.iso.IsoChunkLevel", methodName = "updateRainSplashes")
+    public static class RainSplashes {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This IsoChunkLevel self) { return onSplashEnter(self); }
+    }
+
+    @Patch(className = "zombie.iso.weather.fx.WeatherFxMask", methodName = "renderFxMask")
+    public static class WeatherMask {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter() { return onMaskEnter(); }
     }
 }
