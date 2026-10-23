@@ -418,12 +418,15 @@ final class Cutaways {
      * w is the grid width, gx2 - gx1 + 1.
      */
     static void replay(long mask, int wx, int wy, int z, int gx1, int gy1, int gx2, int gy2, int w, int[] grid) {
-        for (int i = 0; i < CHUNK * CHUNK; i++) {
-            if ((mask & (1L << i)) == 0) continue;
-            int dx = wx * CHUNK + i % CHUNK - 3 * z - gx1, dy = wy * CHUNK + i / CHUNK - 3 * z - gy1;
-            if (dx < 0 || dy < 0 || dx > gx2 - gx1 || dy > gy2 - gy1) continue;
-            int idx = dx + dy * w;
-            if (grid[idx] < z) grid[idx] = z;
+        int ox = wx * CHUNK - 3 * z - gx1;
+        int oy = wy * CHUNK - 3 * z - gy1;
+        int bw = gx2 - gx1, bh = gy2 - gy1;
+        for (long m = mask; m != 0; m &= m - 1) {   // set bits only, lowest first
+            int i = Long.numberOfTrailingZeros(m);
+            int dx = ox + (i & 7), dy = oy + (i >>> 3);
+            if ((dx | dy) < 0 || dx > bw || dy > bh) continue;
+            int k = dx + dy * w;
+            grid[k] = grid[k] < z ? z : grid[k];
         }
     }
 
