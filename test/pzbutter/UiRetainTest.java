@@ -61,6 +61,7 @@ final class UiRetainTest {
         retainJavaRenderOverrideIsLive();
         retainRenderWriteIsVolatile();
         retainBalanceOnErrorAndThrow();
+        retainReplayThrowLeavesNothingOpen();
         retainExcludeAndModsFilter();
         retainSettingsAndInit();
     }
@@ -812,5 +813,32 @@ final class UiRetainTest {
         Settings.load(SelfTest.write("enabled=false\n"));
         UiRetain.init();
         assert !UiRetain.guard.on;
+    }
+
+    // a replay that throws, again and again until the guard trips, leaves the queue, the open state and the read set clean
+    static void retainReplayThrowLeavesNothingOpen() {
+        GenericSpriteRenderState s = state();
+        put(s, 0, TextureDraw.Type.glDraw, 1f);
+        UiSlice bad = UiSlice.record(s, 0, 1, null);
+        bad.entries = null;   // replay throws
+        UiRetain.Record r = record();
+        boolean g = UiRetain.guard.on, c = UiRetain.check.on, a = UiRetain.any;
+        UiRetain.guard.on = true;
+        UiRetain.any = true;
+        try {
+            for (int i = 0; i < 5; i++) {
+                s.numSprites = 3;
+                UiRetain.openForTest(r, new Object(), s);
+                UiRetain.noteRead(new Object(), "k", 1.0);
+                assert !UiRetain.tryReplay(r, bad, s);
+                assert s.numSprites == 3 && !UiRetain.noting && !UiRetain.openForTest() && UiRetain.depthForTest() == 0;
+            }
+            assert !UiRetain.guard.on && !UiRetain.any;
+            UiRetain.openForTest(r, new Object(), s);
+            UiRetain.noteRead(new Object(), "k", 1.0);
+            r.reads.clear();
+            assert UiRetain.noting;   // sanity: openForTest itself still opens
+        } finally { UiRetain.closeForTest(); UiRetain.guard.on = g; UiRetain.check.on = c; UiRetain.any = a; }
+        assert !UiRetain.noting;
     }
 }

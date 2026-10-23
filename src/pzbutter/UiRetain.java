@@ -47,9 +47,9 @@ final class UiRetain {
         "se.krka.kahlua.integration.expose.ReturnValues", "se.krka.kahlua.stdlib.OsLib", "se.krka.kahlua.stdlib.RandomLib"};
     private static final Object[] NO_ARGS = new Object[0];
 
-    /** True while a recorded top-level render is open: the note paths do work only then. Main thread writes it. */
     /** guard.on || check.on, kept in sync: the one check every hook path starts with. */
     static boolean any;
+    /** True while a recorded top-level render is open: the note paths do work only then. Main thread writes it. */
     static boolean noting;
     /** True while verification re-reads: nothing is noted. */
     static boolean suspended;
@@ -496,22 +496,9 @@ final class UiRetain {
         UiSlice old = r.slice;
         boolean would = old != null && verify(r, e, stencil, ep, fbo);
         if (would && guard.on && !check.on) {
-            int n0 = s.numSprites;
-            try {
-                GLState.startFrame();
-                UiSlice.replay(old, s);
-                GLState.startFrame();
-                F.STENCIL.set(r.stencilOut);
-                root = null;
-                return true;
-            } catch (Throwable t) {   // a partial replay must not stay in the queue: stock draws instead
-                s.numSprites = n0;
-                guard.fail(t);
-                check.fail(t);
-                any = guard.on || check.on;
-                old = null;
-                would = false;
-            }
+            if (tryReplay(r, old, s)) { root = null; return true; }
+            if (any) root = e;   // this window and its children draw live this frame, nothing is recorded
+            return false;
         }
         r.slice = null;
         r.reset();
@@ -526,6 +513,22 @@ final class UiRetain {
         rec = r;
         noting = true;
         return false;
+    }
+
+    /** Replays a kept slice. On a throw nothing partial stays in the queue and nothing stays open; stock draws. */
+    static boolean tryReplay(Record r, UiSlice old, GenericSpriteRenderState s) {
+        int n0 = s.numSprites;
+        try {
+            GLState.startFrame();
+            UiSlice.replay(old, s);
+            GLState.startFrame();
+            F.STENCIL.set(r.stencilOut);
+            return true;
+        } catch (Throwable t) {
+            s.numSprites = n0;
+            fail(t);   // aborts what is open and counts the failure
+            return false;
+        }
     }
 
     /** Every re-read of a window's record, with nothing noted. */

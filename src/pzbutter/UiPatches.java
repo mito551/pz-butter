@@ -166,7 +166,7 @@ public final class UiPatches {
     /** ReturnValues.push entry: a Java answer for Lua. An array is the varargs overload, which pushes each element itself. */
     public static void onJavaAnswer(Object answer) {
         if (UiRetain.noting) { try { UiRetain.noteAnswer(answer); } catch (Throwable t) { UiRetain.fail(t); } }
-        if (answer instanceof Object[] || !UiCensus.active()) return;
+        if (!UiCensus.active() || answer instanceof Object[]) return;
         try { UiCensus.noteRead(UiCensus.currentCall(), answer); } catch (Throwable t) { UiCensus.guard.fail(t); }
     }
 
