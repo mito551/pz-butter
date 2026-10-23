@@ -31,6 +31,7 @@ public class Main {
         GridGate.init();
         Cutaways.init();
         AudioLimiter.init();
+        SoundPatches.onFmodInit();
         LuaPatches.uiLuaFast = Settings.flag("uiLuaFast");
     }
 
