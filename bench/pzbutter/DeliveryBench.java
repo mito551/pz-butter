@@ -14,6 +14,9 @@ import java.util.Arrays;
  *          and at 3 calls a frame (ambience only); frames advance every N calls.
  * cutaway: ns per cutawayFast replay (Cutaways.replayable + replay, as occludingEnter) over 256 chunk levels, for sparse,
  *          dense and box-clipped masks; prints a grid checksum, which must not change.
+ * splash:  ns per Weather.updateSplashes (SplittableRandom overload) per 64-square chunk level, after warm-up to the
+ *          steady state, for light rain (n 2000), heavy rain (n 400) and heavy rain at 30 fps (n 100); prints the
+ *          trigger rate per idle square, which must stay near 1/n.
  */
 public final class DeliveryBench {
     static final com.sun.management.ThreadMXBean MX = (com.sun.management.ThreadMXBean) ManagementFactory.getThreadMXBean();
@@ -27,7 +30,8 @@ public final class DeliveryBench {
             case "rawget" -> rawget();
             case "soundgate" -> soundgate();
             case "cutaway" -> cutaway();
-            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | soundgate | cutaway");
+            case "splash" -> splash();
+            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | soundgate | cutaway | splash");
         }
     }
 
@@ -241,6 +245,35 @@ public final class DeliveryBench {
             }
             Arrays.sort(ns);
             System.out.printf("cutaway %-7s: %6.3f ns/level (min %.3f, max %.3f), checksum %x%n", s[0], ns[3], ns[0], ns[6], sum);
+        }
+    }
+
+    static void splash() {
+        int levels = 256;
+        for (int n : new int[] {2000, 400, 100}) {
+            java.util.SplittableRandom r = new java.util.SplittableRandom(11);
+            float step = 0.08f * (30.0f / 120f);
+            float[][] frame = new float[levels][64];
+            byte[][] flags = new byte[levels][64];
+            for (float[] f : frame) Arrays.fill(f, -1f);
+            for (int k = 0; k < 2000; k++) for (int l = 0; l < levels; l++) Weather.updateSplashes(frame[l], flags[l], n, step, r);
+            int frames = 4000;
+            double[] ns = new double[7];
+            long idle = 0, trig = 0;
+            for (int run = -2; run < 7; run++) {
+                long t0 = System.nanoTime();
+                for (int k = 0; k < frames; k++) for (int l = 0; l < levels; l++) Weather.updateSplashes(frame[l], flags[l], n, step, r);
+                if (run >= 0) ns[run] = (System.nanoTime() - t0) / (double) frames / levels;
+            }
+            for (int k = 0; k < 200; k++) for (int l = 0; l < levels; l++) {   // rate check, outside the timing
+                float[] f = frame[l];
+                int before = 0; for (float v : f) if (v < 0) before++;
+                Weather.updateSplashes(f, flags[l], n, step, r);
+                idle += before;
+                for (float v : f) if (v == 0f) trig++;
+            }
+            Arrays.sort(ns);
+            System.out.printf("splash n %4d: %6.3f ns/level (min %.3f, max %.3f), rate x n %.3f%n", n, ns[3], ns[0], ns[6], trig * (double) n / idle);
         }
     }
 }
