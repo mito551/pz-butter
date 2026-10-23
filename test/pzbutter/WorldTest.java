@@ -252,7 +252,7 @@ final class WorldTest {
             for (float v : frame) { idle++; if (v == 0f) triggered++; }
         }
         double rate = triggered / (double) idle;
-        assert Math.abs(rate - 1.0 / 50) < 0.0006 : rate;
+        assert Math.abs(rate - 1.0 / 50) < 0.00025 : rate;
     }
 
     // n <= 1 (and n = 0 or negative): every idle square triggers, and the generator is never called

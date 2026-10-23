@@ -29,11 +29,6 @@ final class Game {
         catch (Throwable t) { return missing(owner, name, t); }
     }
 
-    static MethodHandle staticMethod(Class<?> owner, String name, MethodType type) {
-        try { return lookup(owner).findStatic(owner, name, type); }
-        catch (Throwable t) { return missing(owner, name, t); }
-    }
-
     private static MethodHandles.Lookup lookup(Class<?> owner) throws IllegalAccessException {
         return MethodHandles.privateLookupIn(owner, MethodHandles.lookup());
     }

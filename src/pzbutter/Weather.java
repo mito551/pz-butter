@@ -1,25 +1,18 @@
 package pzbutter;
 
-import java.lang.invoke.MethodHandle;
-import java.lang.invoke.MethodType;
 import java.lang.invoke.VarHandle;
 import java.util.Arrays;
 import java.util.SplittableRandom;
 import java.util.function.DoubleSupplier;
-import se.krka.kahlua.vm.KahluaThread;
-import zombie.Lua.LuaManager;
 import zombie.core.Core;
 import zombie.core.PerformanceSettings;
 import zombie.core.math.PZMath;
 import zombie.core.random.Rand;
-import zombie.debug.DebugOptions;
 import zombie.iso.IsoCamera;
 import zombie.iso.IsoChunkLevel;
 import zombie.iso.IsoWorld;
 import zombie.iso.objects.RainManager;
 import zombie.iso.weather.fx.IsoWeatherFX;
-import zombie.iso.weather.fx.WeatherFxMask;
-import zombie.network.GameServer;
 
 /**
  * Plan 5a weather checks (Task 5): rainSplashesFast and weatherMaskIdleSkip. The holders in WorldPatches call the
@@ -30,10 +23,8 @@ final class Weather {
 
     private static final ThreadLocal<SplittableRandom> RNG = ThreadLocal.withInitial(SplittableRandom::new);
 
-    // private or protected members, read through handles (null when missing: the mask skip stays off, stock runs)
-    private static VarHandle fxInstance, playerMasks, curPlayerIndex, maskEnabled, hasMaskToDraw;
-    private static MethodHandle scanTiles;
-    private static boolean maskReady;
+    // IsoWeatherFX.instance is protected (null handle when missing: the mask skip stays off, stock runs)
+    private static VarHandle fxInstance;
 
     static void init() {
         WorldPatches.splashGuard.on = Settings.flag("rainSplashesFast");
@@ -42,13 +33,6 @@ final class Weather {
         if (WorldPatches.maskGuard.on) {
             Main.classPresent("zombie.iso.weather.fx.WeatherFxMask");
             fxInstance = Game.staticField(IsoWeatherFX.class, "instance", IsoWeatherFX.class);
-            playerMasks = Game.staticField(WeatherFxMask.class, "playerMasks", WeatherFxMask.PlayerFxMask[].class);
-            curPlayerIndex = Game.staticField(WeatherFxMask.class, "curPlayerIndex", int.class);
-            maskEnabled = Game.field(WeatherFxMask.PlayerFxMask.class, "maskEnabled", boolean.class);
-            hasMaskToDraw = Game.field(WeatherFxMask.PlayerFxMask.class, "hasMaskToDraw", boolean.class);
-            scanTiles = Game.staticMethod(WeatherFxMask.class, "scanForTiles", MethodType.methodType(void.class, int.class));
-            maskReady = fxInstance != null && playerMasks != null && curPlayerIndex != null && maskEnabled != null
-                        && hasMaskToDraw != null && scanTiles != null;
         }
     }
 
@@ -127,35 +111,16 @@ final class Weather {
     }
 
     /**
-     * WeatherFxMask.renderFxMask(p): true when stock's layered pass has nothing to draw, so stock is skipped. Before
-     * skipping, scanForTiles(p) runs exactly when stock would reach it (its gates mirrored here), so the raster scan
-     * keeps its progress across the skipped frames.
+     * WeatherFxMask.renderFxMask body: true when stock's layered pass has nothing to draw, so stock is skipped. The
+     * skipped tile scan only feeds that pass; PlayerFxMask.hasMaskToDraw (read by IsoWeatherFX.update) is set in
+     * initMask, which FBORenderCell drives, so it stays as stock.
      */
-    static boolean maskSkip(int p) throws Throwable {
-        if (!maskReady) return false;
+    static boolean maskSkip() {
+        if (fxInstance == null) return false;
         IsoWeatherFX fx = (IsoWeatherFX) fxInstance.get();
         if (fx == null) return false;
         boolean clouds = fx.hasCloudsToRender();
         boolean fog = PerformanceSettings.fogQuality == 2 && fx.hasFogToRender();
-        boolean idle = maskIdle(clouds, fog, Core.getInstance().getOptionRenderPrecipitation(), fx.hasPrecipitationToRender());
-        if (!idle) return false;
-        scanIfStock(p);
-        return true;
-    }
-
-    /** The scan part of stock's renderFxMask, in stock's order: returns where stock returns, and scans where stock scans. */
-    private static void scanIfStock(int p) throws Throwable {
-        if (IsoCamera.frameState.camCharacterZ < 0) return;
-        if (!DebugOptions.instance.weather.fx.getValue()) return;
-        if (GameServer.server) return;
-        KahluaThread lua = LuaManager.thread;
-        if (lua != null && lua.step) return;
-        WeatherFxMask.PlayerFxMask[] masks = (WeatherFxMask.PlayerFxMask[]) playerMasks.get();
-        if (!(boolean) maskEnabled.get(masks[p])) return;
-        WeatherFxMask.PlayerFxMask cur = masks[(int) curPlayerIndex.get()];
-        if (!(boolean) maskEnabled.get(cur)) return;
-        if (WeatherFxMask.maskingEnabled && !WeatherFxMask.checkFbos()) WeatherFxMask.maskingEnabled = false;
-        if (!WeatherFxMask.maskingEnabled || !(boolean) hasMaskToDraw.get(cur)) return;
-        scanTiles.invokeExact(p);
+        return maskIdle(clouds, fog, Core.getInstance().getOptionRenderPrecipitation(), fx.hasPrecipitationToRender());
     }
 }
