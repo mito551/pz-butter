@@ -12,6 +12,8 @@ import java.util.Arrays;
  * rawget:  ns per lookup, stock KahluaTableImpl.rawget against the luaRawgetFast hook; hits, then misses that ask a metatable.
  * soundgate: ns per SoundPatches.skipTick() call with soundTickHz=60, at 2000 calls a frame (a horde's sound parameters)
  *          and at 3 calls a frame (ambience only); frames advance every N calls.
+ * cutaway: ns per cutawayFast replay (Cutaways.replayable + replay, as occludingEnter) over 256 chunk levels, for sparse,
+ *          dense and box-clipped masks; prints a grid checksum, which must not change.
  */
 public final class DeliveryBench {
     static final com.sun.management.ThreadMXBean MX = (com.sun.management.ThreadMXBean) ManagementFactory.getThreadMXBean();
@@ -24,7 +26,8 @@ public final class DeliveryBench {
             case "widths" -> widths();
             case "rawget" -> rawget();
             case "soundgate" -> soundgate();
-            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | soundgate");
+            case "cutaway" -> cutaway();
+            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | soundgate | cutaway");
         }
     }
 
@@ -193,6 +196,51 @@ public final class DeliveryBench {
             }
             Arrays.sort(ns);
             System.out.printf("soundgate %4d/frame: %6.3f ns/call (min %.3f, max %.3f), skipped %d%n", perFrame, ns[3], ns[0], ns[6], skipped);
+        }
+    }
+
+    static void cutaway() {
+        int levels = 256, gw = 60;
+        // scenario: name, bits set per mask, box x origin (0 = chunk inside the box, 20 = box cuts the chunk)
+        Object[][] scen = {{"sparse", 8, 0}, {"dense", 48, 0}, {"clipped", 24, 20}};
+        for (Object[] s : scen) {
+            int bits = (Integer) s[1], gx1 = (Integer) s[2], gy1 = 0, gx2 = gx1 + gw - 1, gy2 = gw - 1;
+            java.util.Random r = new java.util.Random(7);
+            Cutaways.Fast[] fs = new Cutaways.Fast[levels];
+            long[] stored = new long[levels];
+            int[] wx = new int[levels], wy = new int[levels], z = new int[levels];
+            for (int l = 0; l < levels; l++) {
+                long t = 0;
+                while (Long.bitCount(t) < bits) t |= 1L << r.nextInt(64);
+                Cutaways.Fast f = new Cutaways.Fast();
+                int p = l & 3;
+                Cutaways.beginCompute(f, p, gx1, gy1, gx2, gy2);
+                f.truth[p] = t;
+                Cutaways.endCompute(f, p);
+                fs[l] = f;
+                stored[l] = Cutaways.lossy(t);
+                wx[l] = 2 + (l & 3); wy[l] = 2 + ((l >> 2) & 3); z[l] = (l >> 4) % 3;
+            }
+            int[] grid = new int[gw * gw];
+            int n = 40_000;
+            double[] ns = new double[7];
+            long sum = 0;
+            for (int run = -2; run < 7; run++) {
+                long t0 = System.nanoTime();
+                for (int k = 0; k < n; k++) {
+                    for (int l = 0; l < levels; l++) {
+                        int p = l & 3;
+                        if (Cutaways.replayable(fs[l], p, gx1, gy1, gx2, gy2, stored[l]))
+                            Cutaways.replay(fs[l].truth[p], wx[l], wy[l], z[l], gx1, gy1, gx2, gy2, gx2 - gx1 + 1, grid);
+                    }
+                    if ((k & 63) == 0) Arrays.fill(grid, -32);
+                }
+                if (run >= 0) ns[run] = (System.nanoTime() - t0) / (double) n / levels;
+                sum = 0;
+                for (int i = 0; i < grid.length; i++) sum = sum * 31 + grid[i];
+            }
+            Arrays.sort(ns);
+            System.out.printf("cutaway %-7s: %6.3f ns/level (min %.3f, max %.3f), checksum %x%n", s[0], ns[3], ns[0], ns[6], sum);
         }
     }
 }
