@@ -28,6 +28,7 @@ public class Main {
         WorldSounds.init();
         SoundFixes.init();
         AudioLimiter.init();
+        SoundPatches.onFmodInit();
         LuaPatches.uiLuaFast = Settings.flag("uiLuaFast");
     }
 

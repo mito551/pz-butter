@@ -7,6 +7,7 @@ import zombie.characters.IsoGameCharacter;
 import zombie.WorldSoundManager.ResultBiggestSound;
 import zombie.characters.IsoZombie;
 import zombie.core.Core;
+import fmod.fmod.FMODManager;
 
 /**
  * Sound hooks (Plan 4), one holder per game method; each advice is one call to a public static method here
@@ -275,11 +276,19 @@ public final class SoundPatches {
         public static void exit() { onAddSoundExit(); }
     }
 
-    /** FMODManager.init exit: attaches audioLimiter when its key is on, the game has sound and the master group exists. */
+    /** FMODManager.init ran to its end: it sets the in-game channel group last, and sets soundDisabled when it gives up. */
+    static boolean fmodUp(boolean soundDisabled, long inGameGroup) {
+        return !soundDisabled && inGameGroup != 0;
+    }
+
+    /**
+     * Attaches audioLimiter when its key is on, the game has sound and the master group exists. Called from Main (ZB
+     * loads pzbutter after FMODManager.init returned, so its exit hook is too late) and from that hook (FMOD up later).
+     */
     public static void onFmodInit() {
         if (!AudioLimiter.on) return;
         try {
-            if (Core.soundDisabled) return;
+            if (!fmodUp(Core.soundDisabled, FMODManager.instance.channelGroupInGameNonBankSounds)) return;
             long master = fmod.javafmod.FMOD_System_GetMasterChannelGroup();
             if (master != 0) AudioLimiter.install(master);
         } catch (Throwable t) { System.out.println("[PZButter] audioLimiter: " + t); }

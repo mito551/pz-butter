@@ -23,6 +23,7 @@ final class SoundTest {
         nullHandleOnlyInsideAddSound();
         limiterFindsLibraryOnPath();
         limiterCeilingClamped();
+        limiterAttachesOnceWhenFmodIsUp();
         stereoFoldOnByDefault();
         forceParamsOnlyForStartingSound();
         skipTickHonoursForce();
@@ -94,6 +95,13 @@ final class SoundTest {
         assert AudioLimiter.findLibrary("/nope", "Linux") == null;
         java.nio.file.Files.createFile(d.resolve("fmod.dll"));
         assert AudioLimiter.findLibrary(d.toString(), "Windows 11").equals(d.resolve("fmod.dll"));
+    }
+
+    static void limiterAttachesOnceWhenFmodIsUp() {
+        assert SoundPatches.fmodUp(false, 7L);                      // FMODManager.init ran to its end: the group handle is set
+        assert !SoundPatches.fmodUp(false, 0L) && !SoundPatches.fmodUp(true, 7L);   // init not run, or sound disabled
+        AudioLimiter.resetForTest();
+        assert AudioLimiter.claim() && !AudioLimiter.claim();       // the init call and the hook can both ask; only one wins
     }
 
     static void limiterCeilingClamped() {

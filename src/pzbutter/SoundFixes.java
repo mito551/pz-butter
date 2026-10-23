@@ -186,6 +186,9 @@ final class SoundFixes {
         SoundPatches.zoneGuard.on = Settings.flag("soundZoneCache");
         SoundPatches.electricityGuard.on = Settings.flag("electricityLevelRange");
         SoundPatches.fliesGuard.on = Settings.flag("fliesToggleFix");
+        // ZB's transformer skips a class first loaded while it transforms another (ByteBuddy circularity lock); the
+        // retransforming of IsoGameCharacter and others reflects over signatures that name IsoGridSquare. Load it first.
+        if (SoundPatches.fliesGuard.on) Main.classPresent("zombie.iso.IsoGridSquare");
         SoundPatches.nullGuard.on = Settings.flag("fmodNullHandleFix");
         if (Settings.flag("corpseFliesCap")) {
             try { applyCorpseCap(); }

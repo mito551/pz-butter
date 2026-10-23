@@ -18,7 +18,7 @@ import static java.lang.foreign.ValueLayout.JAVA_INT;
 
 /**
  * audioLimiter (Plan 4): FMOD's own limiter DSP at the head of the master channel group, called through FFM on the
- * libfmod that the game already loaded. Installed once, from the OnExit of FMODManager.init (SoundPatches). Every
+ * libfmod that the game already loaded. Installed once: at pzbutter's init when FMODManager.init has already returned (ZB loads mods after it), else from its OnExit (SoundPatches). Every
  * FMOD_RESULT other than 0 logs one line and stops; nothing here throws into the game.
  */
 final class AudioLimiter {
@@ -56,10 +56,18 @@ final class AudioLimiter {
         return null;
     }
 
+    /** True for the first caller only: pzbutter's init and the FMODManager.init hook may both ask. */
+    static synchronized boolean claim() {
+        if (installed) return false;
+        installed = true;
+        return true;
+    }
+
+    static void resetForTest() { installed = false; }
+
     /** Attaches the limiter to the master group, once per run. Called from SoundPatches.onFmodInit, which has checked the keys. */
     static void install(long masterChannelGroup) throws Throwable {
-        if (installed) return;
-        installed = true;
+        if (!claim()) return;
         Path lib = findLibrary(System.getProperty("java.library.path"), System.getProperty("os.name"));
         if (lib == null) {
             System.out.println("[PZButter] audioLimiter: libfmod not found on java.library.path");
