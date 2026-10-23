@@ -66,7 +66,8 @@ final class UiRetainTest {
         retainSettingsAndInit();
         retainControlsSnapshot();
         segmentsReplayOrder();
-        retainOverrideChildDoesNotPoisonParent();
+        retainOverrideChildKeepsParentLive();
+        retainPrunesStaleRecords();
         retainChildrenReplayBalanced();
         retainChildrenUnobservedControlIsLive();
         retainChildrenUnbalancedStencilIsLive();
@@ -868,36 +869,46 @@ final class UiRetainTest {
         return UiSlice.record(s, 0, 1, null);
     }
 
-    // a parent with segments [p0][c1][p1][c2][p2] replays p0, calls c1, p1, calls c2, p2, with the recorded stencil at each step
+    // a parent replays piece 0, runs the stock loop over its live controls, then the last piece, with the recorded stencil level
     static void segmentsReplayOrder() {
         GenericSpriteRenderState s = state();
         UiRetain.Record r = new UiRetain.Record();
-        zombie.ui.UIElement c1 = new zombie.ui.UIElement(), c2 = new zombie.ui.UIElement();
-        UiSlice p0 = seg(s, 10f), p1 = seg(s, 11f), p2 = seg(s, 12f);
+        zombie.ui.UIElement e = new zombie.ui.UIElement(), c1 = new zombie.ui.UIElement(), c2 = new zombie.ui.UIElement();
+        e.AddChild(c1);
+        e.AddChild(c2);
+        UiSlice p0 = seg(s, 10f), p2 = seg(s, 12f);
+        s.numSprites = 0;
+        UiSlice p1 = UiSlice.record(s, 0, 0, null);   // between children nothing is drawn
         r.addKid(c1);
         r.addKid(c2);
         r.putSeg(0, p0, 1, 2);
-        r.putSeg(1, p1, 2, 3);
-        r.putSeg(2, p2, 3, 4);
+        r.putSeg(1, p1, 2, 2);
+        r.putSeg(2, p2, 2, 4);
         r.stencilOut = 4;
         r.slice = p0;
         s.numSprites = 0;
         List<String> log = new java.util.ArrayList<>();
-        UiRetain.walk(r, s, kid -> {
-            log.add(kid == c1 ? "c1@" + UiRetain.stencilForTest() : "c2@" + UiRetain.stencilForTest());
+        UiRetain.walk(r, s, e, kid -> {
+            log.add((kid == c1 ? "c1@" : "c2@") + UiRetain.stencilForTest());
             put(s, s.numSprites, TextureDraw.Type.glDraw, kid == c1 ? 20f : 21f);   // the child draws live
             s.numSprites++;
-            UiRetain.setStencilForTest(UiRetain.stencilForTest());   // balanced child
         });
-        assert log.equals(List.of("c1@2", "c2@3")) : log;
-        assert s.numSprites == 5;
-        float[] want = {10f, 20f, 11f, 21f, 12f};
-        for (int i = 0; i < 5; i++) assert s.sprite[i].x0 == want[i] : i + " " + s.sprite[i].x0;
+        assert log.equals(List.of("c1@2", "c2@2")) : log;
+        assert s.numSprites == 4;
+        float[] want = {10f, 20f, 21f, 12f};
+        for (int i = 0; i < 4; i++) assert s.sprite[i].x0 == want[i] : i + " " + s.sprite[i].x0;
         assert UiRetain.stencilForTest() == 4 && r.slice != null;
         // a child that leaves another stencil level than recorded: the parent is drawn again next frame
         s.numSprites = 0;
-        UiRetain.walk(r, s, kid -> UiRetain.setStencilForTest(9));
+        UiRetain.walk(r, s, e, kid -> UiRetain.setStencilForTest(9));
         assert r.slice == null;
+        UiRetain.setStencilForTest(0);
+        // the loop reads the live list: a control added since is rendered too
+        List<zombie.ui.UIElement> seen = new java.util.ArrayList<>();
+        e.AddChild(new zombie.ui.UIElement());
+        s.numSprites = 0;
+        UiRetain.walk(r, s, e, seen::add);
+        assert seen.size() == 3;
         UiRetain.setStencilForTest(0);
     }
 
@@ -908,6 +919,7 @@ final class UiRetainTest {
         final Map<zombie.ui.UIElement, Runnable> bodies = new HashMap<>();
         final Map<zombie.ui.UIElement, Integer> ran = new HashMap<>();
         final List<zombie.ui.UIElement> order = new java.util.ArrayList<>();
+        final Map<zombie.ui.UIElement, float[]> outside = new HashMap<>();   // an override's draws before and after super.render()
 
         void draw(float x) { put(s, s.numSprites, TextureDraw.Type.glDraw, x); s.numSprites++; }
 
@@ -924,6 +936,12 @@ final class UiRetainTest {
         Runnable leaf(float x) { return () -> draw(x); }
 
         void render(zombie.ui.UIElement e) {
+            float[] ob = outside.get(e);
+            if (ob != null) draw(ob[0]);
+            try { hooked(e); } finally { if (ob != null) draw(ob[1]); }
+        }
+
+        private void hooked(zombie.ui.UIElement e) {
             Object r = UiPatches.onElementRenderEnter(e);
             Throwable thrown = null;
             try {
@@ -1004,22 +1022,27 @@ final class UiRetainTest {
             balanced();
             assert Arrays.equals(r.xs(), new float[] {1f, 2f, 3f, 5f}) : Arrays.toString(r.xs());
             assert r.count(p) == 1 && r.count(c1) == 1 && r.count(c2) == 1 : "replayed " + r.count(p) + r.count(c1) + r.count(c2);
-            c2.setX(40.0);   // one child moved: the parent runs stock, the other child still replays
+            c2.setX(40.0);   // one child moved: the parent stays replayable, the child decides for itself
             r.frame(p);
             balanced();
-            assert r.count(p) == 2 && r.count(c1) == 1 && r.count(c2) == 2;
+            assert r.count(p) == 1 && r.count(c1) == 1 && r.count(c2) == 2;
             assert Arrays.equals(r.xs(), new float[] {1f, 2f, 3f, 5f});
             r.frame(p);   // and settles again
             balanced();
-            assert r.count(p) == 2 && r.count(c1) == 1 && r.count(c2) == 2;
-            c1.setVisible(false);   // a hidden child: the parent runs stock again
+            assert r.count(p) == 1 && r.count(c1) == 1 && r.count(c2) == 2;
+            c1.setVisible(false);   // a hidden child draws nothing itself; the parent replays and calls it
             r.frame(p);
             balanced();
-            assert r.count(p) == 3 && Arrays.equals(r.xs(), new float[] {1f, 3f, 5f}) : Arrays.toString(r.xs());
+            assert r.count(p) == 1 && Arrays.equals(r.xs(), new float[] {1f, 3f, 5f}) : Arrays.toString(r.xs());
             c1.setVisible(true);
             r.frame(p);
             balanced();
-            assert r.count(p) == 4 && Arrays.equals(r.xs(), new float[] {1f, 2f, 3f, 5f});
+            assert r.count(p) == 1 && Arrays.equals(r.xs(), new float[] {1f, 2f, 3f, 5f});
+            p.AddChild(new zombie.ui.UIElement());   // the list changed: the parent runs stock
+            rig.bodies.put(p.getControls().get(2), rig.leaf(4f));
+            r.frame(p);
+            balanced();
+            assert r.count(p) == 2 && Arrays.equals(r.xs(), new float[] {1f, 2f, 3f, 4f, 5f}) : Arrays.toString(r.xs());
             // the child is called once per replayed parent and in list order
             r.order.clear();
             r.frame(p);
@@ -1027,33 +1050,46 @@ final class UiRetainTest {
         });
     }
 
-    // a child whose class overrides render() draws itself on every parent replay; the parent stays retainable (not with children off)
-    static void retainOverrideChildDoesNotPoisonParent() {
+    // an override draws outside its super.render() (before and after): its parent is never kept, the override's own subtree still is
+    static void retainOverrideChildKeepsParentLive() {
         Rig rig = new Rig();
-        zombie.ui.UIElement p = new zombie.ui.UIElement(), o = new Over(), leaf = new zombie.ui.UIElement();
-        p.AddChild(leaf);
+        zombie.ui.UIElement p = new zombie.ui.UIElement(), o = new Over(), gc = new zombie.ui.UIElement();
         p.AddChild(o);
-        rig.bodies.put(p, rig.parent(p, 1f, 5f));
-        rig.bodies.put(leaf, rig.leaf(2f));
-        float[] n = {3f};
-        rig.bodies.put(o, () -> { rig.draw(n[0]); n[0] += 1f; });   // an animated Java render
+        o.AddChild(gc);
+        float[] ob = {2f, 6f};
+        rig.outside.put(o, ob);
+        rig.bodies.put(p, rig.parent(p, 1f, 9f));
+        rig.bodies.put(o, rig.parent(o, 3f, 5f));
+        rig.bodies.put(gc, rig.leaf(4f));
         withChildren(rig, r -> {
             r.frame(p);
+            assert Arrays.equals(r.xs(), new float[] {1f, 2f, 3f, 4f, 5f, 6f, 9f}) : Arrays.toString(r.xs());
+            ob[0] = 7f;   // animated
             r.frame(p);
             balanced();
-            assert r.count(p) == 1 && r.count(leaf) == 1 : "parent replays: " + r.count(p);
-            assert r.count(o) == 2;
-            assert Arrays.equals(r.xs(), new float[] {1f, 2f, 4f, 5f}) : Arrays.toString(r.xs());
+            assert Arrays.equals(r.xs(), new float[] {1f, 7f, 3f, 4f, 5f, 6f, 9f}) : Arrays.toString(r.xs());
+            assert r.count(p) == 2 : "parent of an override is live: " + r.count(p);
+            assert r.count(gc) == 1 : "the grandchild below the override replays: " + r.count(gc);
+        });
+    }
+
+    // records of windows not rendered for 600 UI frames go; fresh ones stay
+    static void retainPrunesStaleRecords() {
+        Rig rig = new Rig();
+        zombie.ui.UIElement p = new zombie.ui.UIElement(), q = new zombie.ui.UIElement();
+        rig.bodies.put(p, rig.leaf(1f));
+        rig.bodies.put(q, rig.leaf(2f));
+        withChildren(rig, r -> {
+            UiRetain.resetFramesForTest();
             r.frame(p);
-            assert r.count(p) == 1 && r.count(o) == 3 && Arrays.equals(r.xs(), new float[] {1f, 2f, 5f, 5f});
-            // with children off, any override in the tree makes the record volatile
-            UiRetain.children = false;
-            UiRetain.bumpEpoch();
-            r.ran.clear();
-            r.frame(p);
-            r.frame(p);
-            balanced();
-            assert r.count(p) == 2 : "children off: " + r.count(p);
+            assert UiRetain.recordCountForTest() == 1;
+            for (int i = 0; i < 700; i++) UiRetain.frameStart();
+            assert UiRetain.recordCountForTest() == 1;   // 600 frames old is not older than 600
+            r.frame(q);
+            for (int i = 0; i < 500; i++) UiRetain.frameStart();
+            assert UiRetain.recordCountForTest() == 1;
+            r.frame(q);   // still the same, fresh record
+            assert r.count(q) == 1;
         });
     }
 
@@ -1100,6 +1136,9 @@ final class UiRetainTest {
         Settings.load(SelfTest.write("enabled=true\nuiRetainedChildren=true\n"));
         UiRetain.init();
         assert !UiRetain.children;   // nothing to refine without uiRetained
+        Settings.load(SelfTest.write("enabled=true\nuiRetainCheck=true\nuiRetainedChildren=true\n"));
+        UiRetain.init();
+        assert UiRetain.children;   // the shadow run exercises children too
         Settings.load(SelfTest.write("enabled=false\n"));
         UiRetain.init();
         assert !UiRetain.children;

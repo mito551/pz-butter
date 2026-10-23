@@ -78,6 +78,8 @@ final class UiRetain {
     private static final Map<Object, Record> records = new WeakHashMap<>();
     private static final Map<Object, CallInfo> infos = new IdentityHashMap<>();
     private static long seenEpoch;
+    private static int uiFrame;
+    private static final int PRUNE_EVERY = 600;
     private static Object lastState;
     private static int lastPlayers = -1, lastW, lastH;
 
@@ -312,6 +314,7 @@ final class UiRetain {
         UIElement[] kidEls = new UIElement[0];
         Geometry[] kidGeo = new Geometry[0];
         int nKids;
+        int lastFrame;   // the UI frame of its last render or replay
         boolean volatileSeen, errorSeen, mouseSeen, live;
         int mouseX, mouseY;   // where the mouse was when a window read it
         UiSlice slice;   // null: nothing replayable kept
@@ -404,21 +407,29 @@ final class UiRetain {
     }
 
     /**
-     * Draws a clean parent from its pieces: piece 0, child 0, piece 1, ... with the stencil level set to what was recorded
-     * before each. A child that returns with another level than the next piece expects (it drew live and moved the
-     * level) makes the parent draw stock next frame; the pieces still go out, they are what the recorded picture holds.
+     * Draws a clean parent: its first piece, then the stock loop over the live getControls() (the pieces between
+     * children are empty, so nothing else is recorded there), then its last piece. The stencil level is set to what
+     * was recorded before each step. A child that returns with another level (it drew live and moved it) makes the
+     * parent draw stock next frame; the pieces still go out, they are the recorded picture.
      */
-    static void walk(Record r, GenericSpriteRenderState s, Consumer<UIElement> render) {
-        for (int i = 0; i <= r.nKids; i++) {
-            F.STENCIL.set(r.bounds[4 * i + 2]);
-            GLState.startFrame();
-            UiSlice.replay(r.segs[i], s);
-            GLState.startFrame();
-            if (i < r.nKids) {
-                F.STENCIL.set(r.bounds[4 * i + 3]);
-                render.accept(r.kidEls[i]);
-                if ((int) F.STENCIL.get() != r.bounds[4 * i + 6]) r.slice = null;
+    static void walk(Record r, GenericSpriteRenderState s, UIElement e, Consumer<UIElement> render) {
+        int k = r.nKids;
+        F.STENCIL.set(r.bounds[2]);
+        GLState.startFrame();
+        UiSlice.replay(r.segs[0], s);
+        GLState.startFrame();
+        if (k > 0) {
+            int out = r.bounds[3];
+            F.STENCIL.set(out);
+            ArrayList<UIElement> cs = e.getControls();
+            for (int i = 0; i < cs.size(); i++) {
+                render.accept(cs.get(i));
+                if ((int) F.STENCIL.get() != out) { r.slice = null; F.STENCIL.set(out); }
             }
+            F.STENCIL.set(r.bounds[4 * k + 2]);
+            GLState.startFrame();
+            UiSlice.replay(r.segs[k], s);
+            GLState.startFrame();
         }
         F.STENCIL.set(r.stencilOut);
     }
@@ -499,6 +510,7 @@ final class UiRetain {
     /** UIManager.render entry: a new UI frame; whatever a lost exit left open is dropped. */
     static void frameStart() {
         if (root != null || sp > 0) abort();
+        if (++uiFrame % PRUNE_EVERY == 0) records.values().removeIf(r -> uiFrame - r.lastFrame > PRUNE_EVERY);   // destroyed windows
     }
 
     private static void abort() {
@@ -547,6 +559,7 @@ final class UiRetain {
                 || !modsToo && !gameFile(UiTiming.windowFile(e));
             records.put(e, r);
         }
+        r.lastFrame = uiFrame;
         root = e;
         depth = callDepth = 0;
         if (!r.live && overridesRender(e.getClass())) r.live = true;   // its Java render draws from Java fields nobody watches
@@ -599,7 +612,7 @@ final class UiRetain {
         try {
             return canReplay(r, stencil, ep, fbo, Geometry.of(e), (t, k) -> ((KahluaTable) t).rawget(k))
                 && (!children || r.controls != null && sameControls(r.controls, e.getControls()))
-                && kidsSame(r) && callsSame(r) && iconsSame(r) && mouseClear(r, Mouse.getXA(), Mouse.getYA());
+                && (children || kidsSame(r)) && callsSame(r) && iconsSame(r) && mouseClear(r, Mouse.getXA(), Mouse.getYA());
         } catch (Throwable t) { fail(t); return false; }
         finally { suspended = false; }
     }
@@ -649,6 +662,7 @@ final class UiRetain {
             if (!r.live && overridesRender(e.getClass())) r.live = true;   // its Java render draws from Java fields nobody watches
             records.put(e, r);
         }
+        r.lastFrame = uiFrame;
         return r;
     }
 
@@ -702,15 +716,17 @@ final class UiRetain {
     /** Draws a clean parent from its pieces; its children render themselves through the hook. On a throw nothing partial stays. */
     static boolean replayParent(Record r, UIElement e, GenericSpriteRenderState s) {
         int n0 = s.numSprites;
+        int st0 = (int) F.STENCIL.get();
         try {
             push(e, null, s);   // children entered meanwhile are nobody's segments but their own
-            walk(r, s, renderChild);
+            walk(r, s, e, renderChild);
             sp--;
             stack[sp].clear();
             sync();
             return true;
         } catch (Throwable t) {
             s.numSprites = n0;
+            F.STENCIL.set(st0);
             fail(t);
             return false;
         }
@@ -742,6 +758,7 @@ final class UiRetain {
         Object[] seen = Arrays.copyOf(r.kidEls, k, Object[].class);
         ok = ok && sameControls(seen, e.getControls());   // a control that never entered the hook drew inside our pieces
         for (int i = 0; ok && i <= k; i++) ok = r.bounds[4 * i] <= r.bounds[4 * i + 1];
+        for (int i = 0; ok && i < k; i++) ok = !overridesRender(r.kidEls[i].getClass());   // its Java render draws outside the hook, into our first or last piece
         for (int i = 1; ok && i < k; i++) ok = r.bounds[4 * i] == r.bounds[4 * i + 1];   // the loop between children draws nothing
         for (int i = 0; ok && i < k; i++) ok = r.bounds[4 * i + 3] == r.bounds[4 * i + 6];   // a child must leave the stencil level as it found it
         if (ok && pieces == k + 1) checkPieces(e, r, s, k);
@@ -973,6 +990,10 @@ final class UiRetain {
     static int depthForTest() { return depth; }
 
     static int stackForTest() { return sp; }
+
+    static int recordCountForTest() { return records.size(); }
+
+    static void resetFramesForTest() { uiFrame = 0; }
 
     static int stencilForTest() { return (int) F.STENCIL.get(); }
 
