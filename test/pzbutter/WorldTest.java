@@ -300,16 +300,16 @@ final class WorldTest {
     // skipCount: 0 at u = 0, clamped to Integer.MAX_VALUE at u = 1 (never negative), finite for n = Integer.MAX_VALUE
     static void skipCountClamps() {
         double logQ = Math.log1p(-1.0 / 50);
-        assert Weather.skipCount(logQ, 0.0) == 0;
-        assert Weather.skipCount(logQ, 1.0) == Integer.MAX_VALUE;
-        int near = Weather.skipCount(logQ, 0.999999999999);
+        assert Weather.skipCount(1 / logQ, 0.0) == 0;
+        assert Weather.skipCount(1 / logQ, 1.0) == Integer.MAX_VALUE;
+        int near = Weather.skipCount(1 / logQ, 0.999999999999);
         assert near >= 0 && near < Integer.MAX_VALUE;
         double logHuge = Math.log1p(-1.0 / Integer.MAX_VALUE);
         assert Double.isFinite(logHuge) && logHuge < 0;
-        int big = Weather.skipCount(logHuge, 0.5);
+        int big = Weather.skipCount(1 / logHuge, 0.5);
         assert big > 0 && big < Integer.MAX_VALUE : big;
-        assert Weather.skipCount(logHuge, 0.999999) >= 0;
-        assert Weather.skipCount(logHuge, 1.0) == Integer.MAX_VALUE;
+        assert Weather.skipCount(1 / logHuge, 0.999999) >= 0;
+        assert Weather.skipCount(1 / logHuge, 1.0) == Integer.MAX_VALUE;
     }
 
     static void splashActiveAdvancesAndResets() {

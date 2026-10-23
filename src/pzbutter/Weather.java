@@ -21,6 +21,7 @@ import zombie.iso.weather.fx.IsoWeatherFX;
 final class Weather {
     private Weather() {}
 
+    private static final byte SPLASH_BIT = 2;
     private static final ThreadLocal<SplittableRandom> RNG = ThreadLocal.withInitial(SplittableRandom::new);
 
     // IsoWeatherFX.instance is protected (null handle when missing: the mask skip stays off, stock runs)
@@ -41,38 +42,54 @@ final class Weather {
      * (n <= 1 triggers every idle square). Active squares advance by step and reset to -1 at >= 1.
      */
     static void updateSplashes(float[] frame, byte[] flags, int n, float step, DoubleSupplier u) {
-        splashLoop(frame, flags, n, step, null, u);
-    }
-
-    /** The hot-path overload: the generator is passed in, so no method reference is built per call. */
-    static void updateSplashes(float[] frame, byte[] flags, int n, float step, SplittableRandom r) {
-        splashLoop(frame, flags, n, step, r, null);
-    }
-
-    private static void splashLoop(float[] frame, byte[] flags, int n, float step, SplittableRandom r, DoubleSupplier u) {
-        boolean every = n <= 1;
-        double logQ = every ? 0 : Math.log1p(-1.0 / n);   // ln(1 - p)
-        int skip = every ? 0 : skipCount(logQ, r != null ? r.nextDouble() : u.getAsDouble());
-        for (int k = 0; k < frame.length; k++) {
-            if (frame[k] < 0) {
-                if (every || skip == 0) {
+        boolean all = n <= 1;
+        double invLogQ = all ? 0.0 : 1.0 / Math.log1p(-1.0 / n);
+        int skip = all ? 0 : skipCount(invLogQ, u.getAsDouble());
+        for (int k = frame.length - 1; k >= 0; k--) {
+            float v = frame[k];
+            if (v < 0f) {
+                if (skip == 0) {
                     frame[k] = 0f;
-                    flags[k] = (byte) (flags[k] | 2);
-                    if (!every) skip = skipCount(logQ, r != null ? r.nextDouble() : u.getAsDouble());
+                    flags[k] |= SPLASH_BIT;
+                    if (!all) skip = skipCount(invLogQ, u.getAsDouble());
                 } else {
                     skip--;
                 }
             } else {
-                frame[k] += step;
-                if (frame[k] >= 1f) frame[k] = -1f;
+                float t = v + step;
+                frame[k] = t >= 1f ? -1f : t;
             }
         }
     }
 
-    /** Idle squares to pass before the next trigger: floor(ln(U) / ln(1 - p)), with 1 - U in (0, 1]. */
-    static int skipCount(double logQ, double u) {
-        double k = Math.floor(Math.log1p(-u) / logQ);
-        return k >= Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) k;
+    /** The hot-path overload (Weather.splashes passes a thread-local generator). The DoubleSupplier overload above is the same loop and draws in the same order. */
+    static void updateSplashes(float[] frame, byte[] flags, int n, float step, SplittableRandom r) {
+        boolean all = n <= 1;
+        double invLogQ = all ? 0.0 : 1.0 / Math.log1p(-1.0 / n);
+        int skip = all ? 0 : skipCount(invLogQ, r.nextDouble());
+        for (int k = frame.length - 1; k >= 0; k--) {
+            float v = frame[k];
+            if (v < 0f) {
+                if (skip == 0) {
+                    frame[k] = 0f;
+                    flags[k] |= SPLASH_BIT;
+                    if (!all) skip = skipCount(invLogQ, r.nextDouble());
+                } else {
+                    skip--;
+                }
+            } else {
+                float t = v + step;
+                frame[k] = t >= 1f ? -1f : t;
+            }
+        }
+    }
+
+    /**
+     * Idle squares to pass before the next trigger, invLogQ = 1 / ln(1 - p): ln(1 - u) <= 0 and invLogQ < 0, so the
+     * product is >= 0, the cast floors it, and u = 1 saturates to Integer.MAX_VALUE.
+     */
+    static int skipCount(double invLogQ, double u) {
+        return (int) (Math.log(1.0 - u) * invLogQ);
     }
 
     /** Stock's not-raining fill. */
