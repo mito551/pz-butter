@@ -133,8 +133,12 @@ final class UiCensus {
      */
     static void elementExit(Object element) {
         if (!mainThread() || depth == 0) return;
-        int d = depth--;
-        if (d > MAX_DEPTH) return;
+        if (depth > MAX_DEPTH) { depth--; return; }   // untracked level: nothing to check
+        int i = depth - 1;
+        while (i >= 0 && frames[i].element != element) i--;
+        if (i < 0) { depth = 0; return; }   // no open render is this element: drop them all, record nothing
+        int d = i + 1;                       // the frames above it lost their exits: abandoned, recorded nothing
+        depth = i;
         Frame f = frames[d - 1];
         f.hash = geometry(f.hash, element);
         f.inclNs = UiTiming.clock.getAsLong() - f.startNs;
@@ -372,4 +376,6 @@ final class UiCensus {
     static Stat statForTest(String name) { return stats.get(name); }
 
     static ChildStat childStatForTest(String key) { return childStats.get(key); }
+
+    static int depthForTest() { return depth; }
 }

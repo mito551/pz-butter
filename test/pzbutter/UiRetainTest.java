@@ -21,6 +21,11 @@ final class UiRetainTest {
         censusChildStableInsideVolatileWindow();
         censusReusableNotDoubleCounted();
         censusChildVolatileNotReusable();
+        censusExitMismatchUnwinds();
+        censusReusableSumsStableChildren();
+        censusReusableThreeLevels();
+        censusReusableMixedThreeLevels();
+        censusChildReportLine();
     }
 
     static void censusKinds() {
@@ -190,6 +195,112 @@ final class UiRetainTest {
         renderWithChild(t, win, child, false, true, 10_000_000L, 5_000_000L);
         assert UiCensus.statForTest("W").reusableNs == 0;
         assert UiCensus.childStatForTest("W > C").stable == 0;
+        UiTiming.clock = System::nanoTime;
+    }
+
+    // an element that reads one value, is volatile when asked, runs inside() (children advance the clock), then takes ns
+    private static void element(long[] t, Object el, String name, boolean volatileRead, long ns, Runnable inside) {
+        long start = t[0];
+        UiCensus.elementEnterNamed(el, name);
+        UiCensus.noteRead("k", 1.0);
+        if (volatileRead) UiCensus.noteVolatile();
+        inside.run();
+        t[0] = start + ns;
+        UiCensus.elementExit(el);
+    }
+
+    // the window exits without its child's exit: the child is dropped, the window's own render is the last one
+    static void censusExitMismatchUnwinds() {
+        UiCensus.resetForTest();
+        long[] t = {0};
+        UiTiming.clock = () -> t[0];
+        Object win = new Object(), child = new Object();
+        UiCensus.elementExit(new Object());   // a stray exit with nothing open: nothing happens
+        assert UiCensus.depthForTest() == 0;
+        UiCensus.elementEnterNamed(win, "W");
+        UiCensus.noteRead("k", 1.0);
+        t[0] += 1_000_000L;
+        UiCensus.elementEnterNamed(child, "C");
+        UiCensus.noteRead("k", 2.0);
+        t[0] += 5_000_000L;
+        UiCensus.elementExit(win);   // the child's exit never came
+        assert UiCensus.depthForTest() == 0;
+        renderWithChild(t, win, child, false, false, 10_000_000L, 5_000_000L);
+        renderWithChild(t, win, child, false, false, 10_000_000L, 5_000_000L);
+        UiCensus.Stat w = UiCensus.statForTest("W");
+        assert UiCensus.depthForTest() == 0;
+        assert w.renders == 3 && w.reusableNs == 10_000_000L && w.reusableNs <= 2 * 10_000_000L;
+        UiTiming.clock = System::nanoTime;
+    }
+
+    // unstable window, two stable panels of 3 and 4 ms: the window can reuse 7 ms
+    static void censusReusableSumsStableChildren() {
+        UiCensus.resetForTest();
+        long[] t = {0};
+        UiTiming.clock = () -> t[0];
+        Object win = new Object(), c1 = new Object(), c2 = new Object();
+        for (int i = 0; i < 2; i++) {
+            element(t, win, "W", true, 10_000_000L, () -> {
+                element(t, c1, "C1", false, 3_000_000L, () -> { });
+                element(t, c2, "C2", false, 4_000_000L, () -> { });
+            });
+        }
+        assert UiCensus.statForTest("W").reusableNs == 7_000_000L;
+        UiTiming.clock = System::nanoTime;
+    }
+
+    // unstable W > stable P (6 ms) > stable G (2 ms): P is reusable whole, G is not added on top
+    static void censusReusableThreeLevels() {
+        UiCensus.resetForTest();
+        long[] t = {0};
+        UiTiming.clock = () -> t[0];
+        Object win = new Object(), p = new Object(), g = new Object();
+        for (int i = 0; i < 2; i++) {
+            element(t, win, "W", true, 10_000_000L, () ->
+                element(t, p, "P", false, 6_000_000L, () ->
+                    element(t, g, "G", false, 2_000_000L, () -> { })));
+        }
+        assert UiCensus.statForTest("W").reusableNs == 6_000_000L;
+        UiTiming.clock = System::nanoTime;
+    }
+
+    // unstable W > unstable P (volatile read in P) > stable G (2 ms): only G is reusable
+    static void censusReusableMixedThreeLevels() {
+        UiCensus.resetForTest();
+        long[] t = {0};
+        UiTiming.clock = () -> t[0];
+        Object win = new Object(), p = new Object(), g = new Object();
+        for (int i = 0; i < 2; i++) {
+            element(t, win, "W", true, 10_000_000L, () ->
+                element(t, p, "P", true, 6_000_000L, () ->
+                    element(t, g, "G", false, 2_000_000L, () -> { })));
+        }
+        assert UiCensus.statForTest("W").reusableNs == 2_000_000L;
+        UiTiming.clock = System::nanoTime;
+    }
+
+    // the report: one window line with a reusable column, one census child line in the brief's format
+    static void censusChildReportLine() {
+        UiCensus.resetForTest();
+        long[] t = {0};
+        UiTiming.clock = () -> t[0];
+        Object win = new Object(), child = new Object();
+        renderWithChild(t, win, child, true, false, 10_000_000L, 5_000_000L);
+        renderWithChild(t, win, child, true, false, 10_000_000L, 5_000_000L);
+        Map<String, UiTiming.Stat> timing = new HashMap<>();
+        UiTiming.Stat ts = new UiTiming.Stat("W");
+        ts.inclNs = 20_000_000L;
+        timing.put("W", ts);
+        List<String> lines = UiCensus.report(timing, 1_000_000_000L);
+        List<String> children = new java.util.ArrayList<>();
+        String window = null;
+        for (String l : lines) {
+            if (l.startsWith("[PZButter] census child:")) children.add(l);
+            else if (l.startsWith("[PZButter] census:")) window = l;
+        }
+        assert window != null && window.contains("reusable");
+        assert children.size() == 1;
+        assert children.get(0).contains("ms/s  stable  50.0%  W > C");
         UiTiming.clock = System::nanoTime;
     }
 }
