@@ -63,7 +63,7 @@ The mod creates `~/Zomboid/PZButter.properties` on first start and reads it once
 | `cutawayRadius` | `0` is stock. `6` limits cutaway wall checks to chunks near you; only far zoomed-out views change. |
 | `cutawayFast` | Clean chunks reuse their stored cutaway occluder masks instead of testing every square again. |
 | `rainSplashesFast` | Rain splashes start with fewer random-number calls. The same odds. |
-| `weatherMaskIdleSkip` | With no clouds, fog or precipitation on screen, the weather mask is not scanned or drawn. |
+| `weatherMaskIdleSkip` | With no clouds, fog or precipitation active (and none fading out), the weather mask is not drawn. |
 | `puddleEarlyZ` | Hidden puddles are rejected before the costly shader. The look is the same. |
 | `fogEarlyZ` | Hidden fog is rejected before the costly shader. The look is the same. |
 

@@ -198,10 +198,10 @@ public final class WorldPatches {
         catch (Throwable t) { splashGuard.fail(t); return false; }
     }
 
-    /** WeatherFxMask.renderFxMask entry: true when no weather is on screen (stock skipped); false runs stock. */
-    public static boolean onMaskEnter() {
+    /** WeatherFxMask.renderFxMask(p) entry: true when no weather is active (stock skipped, scan kept); false runs stock. */
+    public static boolean onMaskEnter(int p) {
         if (!maskGuard.on) return false;
-        try { return Weather.maskSkip(); }
+        try { return Weather.maskSkip(p); }
         catch (Throwable t) { maskGuard.fail(t); return false; }
     }
 
@@ -214,6 +214,6 @@ public final class WorldPatches {
     @Patch(className = "zombie.iso.weather.fx.WeatherFxMask", methodName = "renderFxMask")
     public static class WeatherMask {
         @Patch.OnEnter(skipOn = true)
-        public static boolean enter() { return onMaskEnter(); }
+        public static boolean enter(@Patch.Argument(0) int p) { return onMaskEnter(p); }
     }
 }

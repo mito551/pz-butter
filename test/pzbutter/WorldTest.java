@@ -25,6 +25,10 @@ final class WorldTest {
         replayNeedsFreshSameBox();
         replayNeedsStoredMatchingTruth();
         splashIdleRateMatches();
+        splashEveryIdleWhenNAtMostOne();
+        splashTriggerSetsFlagBit();
+        splashOverloadsAgree();
+        skipCountClamps();
         splashActiveAdvancesAndResets();
         splashResetOnStop();
         maskIdleOnlyWithoutWeather();
@@ -248,7 +252,64 @@ final class WorldTest {
             for (float v : frame) { idle++; if (v == 0f) triggered++; }
         }
         double rate = triggered / (double) idle;
-        assert Math.abs(rate - 1.0 / 50) < 0.002 : rate;
+        assert Math.abs(rate - 1.0 / 50) < 0.0006 : rate;
+    }
+
+    // n <= 1 (and n = 0 or negative): every idle square triggers, and the generator is never called
+    static void splashEveryIdleWhenNAtMostOne() {
+        for (int n : new int[] {1, 0, -5}) {
+            float[] frame = new float[64]; java.util.Arrays.fill(frame, -1f); frame[9] = 0.3f;
+            byte[] flags = new byte[64];
+            int[] calls = {0};
+            Weather.updateSplashes(frame, flags, n, 0.08f, () -> { calls[0]++; return 0.5; });
+            assert calls[0] == 0 : n;
+            for (int k = 0; k < 64; k++) {
+                if (k == 9) assert Math.abs(frame[k] - 0.38f) < 1e-6 : n;   // active square advances, not triggered
+                else { assert frame[k] == 0f : n + " " + k; assert flags[k] == 2 : n + " " + k; }
+            }
+        }
+    }
+
+    // a trigger sets flags |= 2 and keeps the other bits; squares that do not trigger keep their flags
+    static void splashTriggerSetsFlagBit() {
+        float[] frame = new float[64]; java.util.Arrays.fill(frame, -1f); frame[5] = 0.1f;
+        byte[] flags = new byte[64]; java.util.Arrays.fill(flags, (byte) 1);
+        Weather.updateSplashes(frame, flags, 1, 0.08f, () -> 0.5);
+        assert flags[0] == 3 && flags[63] == 3;          // triggered: bit 1 added, bit 0 kept
+        assert flags[5] == 1;                             // active: flags untouched
+        float[] none = new float[64]; java.util.Arrays.fill(none, 0.2f);
+        byte[] f2 = new byte[64]; java.util.Arrays.fill(f2, (byte) 1);
+        Weather.updateSplashes(none, f2, 1, 0.08f, () -> 0.5);
+        for (byte b : f2) assert b == 1;                  // no idle square: nothing set
+    }
+
+    // the SplittableRandom overload draws in the same order as the DoubleSupplier overload
+    static void splashOverloadsAgree() {
+        float[] a = new float[64], b = new float[64];
+        java.util.Arrays.fill(a, -1f); java.util.Arrays.fill(b, -1f);
+        byte[] fa = new byte[64], fb = new byte[64];
+        java.util.SplittableRandom r1 = new java.util.SplittableRandom(3), r2 = new java.util.SplittableRandom(3);
+        java.util.function.DoubleSupplier ds = r2::nextDouble;
+        for (int f = 0; f < 50; f++) {
+            Weather.updateSplashes(a, fa, 7, 0.08f, r1);
+            Weather.updateSplashes(b, fb, 7, 0.08f, ds);
+            assert java.util.Arrays.equals(a, b) && java.util.Arrays.equals(fa, fb) : f;
+        }
+    }
+
+    // skipCount: 0 at u = 0, clamped to Integer.MAX_VALUE at u = 1 (never negative), finite for n = Integer.MAX_VALUE
+    static void skipCountClamps() {
+        double logQ = Math.log1p(-1.0 / 50);
+        assert Weather.skipCount(logQ, 0.0) == 0;
+        assert Weather.skipCount(logQ, 1.0) == Integer.MAX_VALUE;
+        int near = Weather.skipCount(logQ, 0.999999999999);
+        assert near >= 0 && near < Integer.MAX_VALUE;
+        double logHuge = Math.log1p(-1.0 / Integer.MAX_VALUE);
+        assert Double.isFinite(logHuge) && logHuge < 0;
+        int big = Weather.skipCount(logHuge, 0.5);
+        assert big > 0 && big < Integer.MAX_VALUE : big;
+        assert Weather.skipCount(logHuge, 0.999999) >= 0;
+        assert Weather.skipCount(logHuge, 1.0) == Integer.MAX_VALUE;
     }
 
     static void splashActiveAdvancesAndResets() {
@@ -264,8 +325,14 @@ final class WorldTest {
         assert frame[0] == -1f && frame[2] == -1f;
     }
 
+    // precipitation draws only while its option is 2 or lower (IsoWeatherFX.render: option > 2 skips rain and snow)
     static void maskIdleOnlyWithoutWeather() {
-        assert Weather.maskIdle(false, false, false);
-        assert !Weather.maskIdle(true, false, false) && !Weather.maskIdle(false, true, false) && !Weather.maskIdle(false, false, true);
+        assert Weather.maskIdle(false, false, 1, false);
+        assert Weather.maskIdle(false, false, 3, true);          // option 3: render() skips precipitation
+        assert Weather.maskIdle(false, false, 9, true);
+        assert !Weather.maskIdle(false, false, 2, true);         // option 2 still draws
+        assert !Weather.maskIdle(false, false, 0, true);
+        assert !Weather.maskIdle(true, false, 3, false);
+        assert !Weather.maskIdle(false, true, 3, false);
     }
 }
