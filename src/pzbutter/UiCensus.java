@@ -36,26 +36,47 @@ final class UiCensus {
 
     static final class Stat {
         final String name;
-        long renders, stable, volatileRenders, reads, calls, iterations, itemIcons, entries;
+        long renders, stable, volatileRenders, reads, calls, iterations, itemIcons, entries, reusableNs;
         final long[] byKind = new long[KINDS];
 
         Stat(String name) { this.name = name; }
+    }
+
+    /** A panel inside a window (depth 2 and deeper), keyed "window > panel". */
+    static final class ChildStat {
+        final String key;
+        long renders, stable, inclNs;
+
+        ChildStat(String key) { this.key = key; }
+    }
+
+    /** The full child key, cached per element while its window and name stay the same. */
+    private static final class ChildKey {
+        final String window, name, key;
+
+        ChildKey(String window, String name) {
+            this.window = window;
+            this.name = name;
+            this.key = window + " > " + name;
+        }
     }
 
     /** One open element. A child's frame is folded into its parent's when the child ends. */
     private static final class Frame {
         Object element;
         String name;
-        long hash;
-        boolean volatileSeen;
+        long hash, startNs, inclNs, reusableNs, childReusable;
+        boolean volatileSeen, stable;
         int reads, calls, iterations, itemIcons, entries;
         final int[] byKind = new int[KINDS];
 
-        void open(Object element, String name) {
+        void open(Object element, String name, long startNs) {
             this.element = element;
             this.name = name;
+            this.startNs = startNs;
             hash = SEED;
-            volatileSeen = false;
+            volatileSeen = stable = false;
+            childReusable = 0;
             reads = calls = iterations = itemIcons = entries = 0;
             Arrays.fill(byKind, 0);
         }
@@ -64,6 +85,8 @@ final class UiCensus {
     private static final Frame[] frames = new Frame[MAX_DEPTH];
     private static final String[] callNames = new String[MAX_DEPTH];
     private static final Map<String, Stat> stats = new HashMap<>();
+    private static final Map<String, ChildStat> childStats = new HashMap<>();
+    private static final Map<Object, ChildKey> childKeys = new WeakHashMap<>();
     private static final Map<Object, Long> lastHash = new WeakHashMap<>();
     private static int depth, callDepth;
 
@@ -90,28 +113,38 @@ final class UiCensus {
 
     // ---- events (main thread) ----
 
-    /** An element's render starts. A top-level one is named as uiTiming names it. */
+    /** An element's render starts. It is named as uiTiming names it (a window, or a panel inside one). */
     static void elementEnter(Object element) {
         if (!mainThread()) return;
-        elementEnterNamed(element, depth == 0 ? UiTiming.nameOf(element) : null);
+        elementEnterNamed(element, UiTiming.nameOf(element));
     }
 
-    /** The same with the name given by the caller (tests); a nested element's name is ignored. */
+    /** The same with the name given by the caller (tests). */
     static void elementEnterNamed(Object element, String name) {
         if (!mainThread()) return;
         depth++;
-        if (depth <= MAX_DEPTH) frames[depth - 1].open(element, depth == 1 ? name : null);
+        if (depth <= MAX_DEPTH) frames[depth - 1].open(element, name, UiTiming.clock.getAsLong());
         frames[0].entries++;
     }
 
+    /**
+     * An element's render ends: its verdict (stable against its own previous render), its inclusive time, and its
+     * reusable time (its whole time when stable, else what its panels could reuse). Then it goes to its window or parent.
+     */
     static void elementExit(Object element) {
         if (!mainThread() || depth == 0) return;
         int d = depth--;
         if (d > MAX_DEPTH) return;
         Frame f = frames[d - 1];
         f.hash = geometry(f.hash, element);
+        f.inclNs = UiTiming.clock.getAsLong() - f.startNs;
+        f.stable = verdict(element, f.hash, f.volatileSeen);
+        f.reusableNs = f.stable ? f.inclNs : f.childReusable;
         if (d == 1) finish(f);
-        else fold(frames[d - 2], f);
+        else {
+            childDone(element, f);
+            fold(frames[d - 2], f);
+        }
     }
 
     /** A Java method called from Lua starts. */
@@ -175,7 +208,19 @@ final class UiCensus {
         p.calls += c.calls;
         p.iterations += c.iterations;
         p.itemIcons += c.itemIcons;
+        p.childReusable += c.reusableNs;
         for (int k = 0; k < KINDS; k++) p.byKind[k] += c.byKind[k];
+    }
+
+    /** A panel inside a window: its own renders and inclusive time, under "window > panel". */
+    private static void childDone(Object element, Frame f) {
+        String window = frames[0].name;
+        ChildKey k = childKeys.get(element);
+        if (k == null || k.window != window || k.name != f.name) childKeys.put(element, k = new ChildKey(window, f.name));
+        ChildStat c = childStats.computeIfAbsent(k.key, ChildStat::new);
+        c.renders++;
+        if (f.stable) c.stable++;
+        c.inclNs += f.inclNs;
     }
 
     private static void finish(Frame f) {
@@ -184,22 +229,28 @@ final class UiCensus {
         s.itemIcons += f.itemIcons;
         s.entries += f.entries;
         for (int k = 0; k < KINDS; k++) s.byKind[k] += f.byKind[k];
-        renderDone(f.element, f.name, f.hash, f.volatileSeen, f.reads, f.calls);
+        countRender(s, f.stable, f.volatileSeen, f.reads, f.calls, f.reusableNs);
     }
 
-    /** A render ended with this read hash: counted, and stable when it equals the element's previous render. */
+    /** A top-level render with only its own reads (tests): stable when it equals the element's previous render. */
     static void renderDone(String window, long readHash, boolean volatileSeen, int reads, int calls) {
-        renderDone(window, window, readHash, volatileSeen, reads, calls);
+        countRender(stats.computeIfAbsent(window, Stat::new), verdict(window, readHash, volatileSeen), volatileSeen,
+            reads, calls, 0);
     }
 
-    static void renderDone(Object identity, String window, long readHash, boolean volatileSeen, int reads, int calls) {
-        Stat s = stats.computeIfAbsent(window, Stat::new);
+    /** The element's hash is kept for its next render; stable when it equals the previous one and nothing was volatile. */
+    private static boolean verdict(Object identity, long readHash, boolean volatileSeen) {
+        Long prev = lastHash.put(identity, readHash);
+        return prev != null && prev == readHash && !volatileSeen;
+    }
+
+    private static void countRender(Stat s, boolean stable, boolean volatileSeen, int reads, int calls, long reusableNs) {
         s.renders++;
         if (volatileSeen) s.volatileRenders++;
-        Long prev = lastHash.put(identity, readHash);
-        if (prev != null && prev == readHash && !volatileSeen) s.stable++;
+        if (stable) s.stable++;
         s.reads += reads;
         s.calls += calls;
+        s.reusableNs += reusableNs;
     }
 
     // ---- pure cores ----
@@ -261,13 +312,18 @@ final class UiCensus {
 
     /** The census lines for the minute, then the census starts over. */
     static List<String> report(Map<String, UiTiming.Stat> timing, long elapsedNs) {
-        List<String> lines = reportLines(stats, timing, elapsedNs);
+        List<String> lines = reportLines(stats, childStats, timing, elapsedNs);
         stats.clear();
+        childStats.clear();
         return lines;
     }
 
-    /** The windows with the most inclusive time (from uiTiming), at most 15. stable ms/s = inclusive ms/s x stable fraction. */
-    static List<String> reportLines(Map<String, Stat> census, Map<String, UiTiming.Stat> timing, long elapsedNs) {
+    /**
+     * The windows with the most inclusive time (from uiTiming), at most 15: stable ms/s = inclusive ms/s x stable
+     * fraction, reusable ms/s = the time the window could reuse. Then the panels with the most inclusive time, at most 15.
+     */
+    static List<String> reportLines(Map<String, Stat> census, Map<String, ChildStat> children,
+                                    Map<String, UiTiming.Stat> timing, long elapsedNs) {
         double seconds = Math.max(1e-9, elapsedNs / 1e9);
         List<Stat> sorted = new ArrayList<>(census.values());
         sorted.sort((a, b) -> Long.compare(inclNs(timing, b), inclNs(timing, a)));
@@ -278,11 +334,20 @@ final class UiCensus {
             double incl = inclNs(timing, s) / 1e6 / seconds;
             double stable = s.stable / renders;
             out.add(String.format(Locale.ROOT,
-                "[PZButter] census: %7.3f ms/s  stable %5.1f%% = %7.3f ms/s  volatile %5.1f%%  %5d renders  reads %6.1f  "
-                    + "calls %5.1f (time %.1f random %.1f mouse %.1f other %.1f)  iterations %.1f  icons %.1f  entries %.1f  %s",
-                incl, 100 * stable, incl * stable, 100.0 * s.volatileRenders / renders, s.renders, s.reads / renders,
-                s.calls / renders, s.byKind[TIME] / renders, s.byKind[RANDOM] / renders, s.byKind[MOUSE] / renders,
-                s.byKind[OTHER] / renders, s.iterations / renders, s.itemIcons / renders, s.entries / renders, s.name));
+                "[PZButter] census: %7.3f ms/s  stable %5.1f%% = %7.3f ms/s  reusable %7.3f ms/s  volatile %5.1f%%  "
+                    + "%5d renders  reads %6.1f  calls %5.1f (time %.1f random %.1f mouse %.1f other %.1f)  "
+                    + "iterations %.1f  icons %.1f  entries %.1f  %s",
+                incl, 100 * stable, incl * stable, s.reusableNs / 1e6 / seconds, 100.0 * s.volatileRenders / renders,
+                s.renders, s.reads / renders, s.calls / renders, s.byKind[TIME] / renders, s.byKind[RANDOM] / renders,
+                s.byKind[MOUSE] / renders, s.byKind[OTHER] / renders, s.iterations / renders, s.itemIcons / renders,
+                s.entries / renders, s.name));
+        }
+        List<ChildStat> kids = new ArrayList<>(children.values());
+        kids.sort((a, b) -> Long.compare(b.inclNs, a.inclNs));
+        for (int i = 0; i < Math.min(MAX_LINES, kids.size()); i++) {
+            ChildStat c = kids.get(i);
+            out.add(String.format(Locale.ROOT, "[PZButter] census child: %8.3f ms/s  stable %5.1f%%  %s",
+                c.inclNs / 1e6 / seconds, 100.0 * c.stable / Math.max(1, c.renders), c.key));
         }
         return out;
     }
@@ -298,9 +363,13 @@ final class UiCensus {
     static void resetForTest() {
         FrameClock.mainThread = Thread.currentThread();
         stats.clear();
+        childStats.clear();
+        childKeys.clear();
         lastHash.clear();
         depth = callDepth = 0;
     }
 
     static Stat statForTest(String name) { return stats.get(name); }
+
+    static ChildStat childStatForTest(String key) { return childStats.get(key); }
 }

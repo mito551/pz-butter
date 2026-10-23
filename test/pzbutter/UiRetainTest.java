@@ -18,6 +18,9 @@ final class UiRetainTest {
         censusStableSameElement();
         censusReportLines();
         censusNeedsUiTiming();
+        censusChildStableInsideVolatileWindow();
+        censusReusableNotDoubleCounted();
+        censusChildVolatileNotReusable();
     }
 
     static void censusKinds() {
@@ -111,7 +114,7 @@ final class UiRetainTest {
         timing.put("W", t);
         Map<String, UiCensus.Stat> census = new HashMap<>();
         census.put("W", s);
-        List<String> l = UiCensus.reportLines(census, timing, 1_000_000_000L);
+        List<String> l = UiCensus.reportLines(census, new HashMap<>(), timing, 1_000_000_000L);
         assert l.size() == 1;
         assert l.get(0).contains("10.000 ms/s") && l.get(0).contains("stable  50.0%") && l.get(0).contains("5.000 ms/s");
     }
@@ -128,5 +131,65 @@ final class UiRetainTest {
         assert UiCensus.guard.on;
         UiCensus.guard.on = false;
         UiTiming.guard.on = false;
+    }
+
+    // one render of window W with child C inside it: W runs winNs, C runs childNs (both on the driven clock)
+    private static void renderWithChild(long[] t, Object win, Object child, boolean winVolatile, boolean childVolatile,
+                                        long winNs, long childNs) {
+        long start = t[0];
+        UiCensus.elementEnterNamed(win, "W");
+        UiCensus.noteRead("k", 1.0);
+        if (winVolatile) UiCensus.noteVolatile();
+        t[0] += 1_000_000L;
+        UiCensus.elementEnterNamed(child, "C");
+        UiCensus.noteRead("k", 2.0);
+        if (childVolatile) UiCensus.noteVolatile();
+        t[0] += childNs;
+        UiCensus.elementExit(child);
+        t[0] = start + winNs;
+        UiCensus.elementExit(win);
+    }
+
+    // W reads the clock every render, so W is never stable; its child C is, from the second render on: 5 ms reusable
+    static void censusChildStableInsideVolatileWindow() {
+        UiCensus.resetForTest();
+        long[] t = {0};
+        UiTiming.clock = () -> t[0];
+        Object win = new Object(), child = new Object();
+        renderWithChild(t, win, child, true, false, 7_000_000L, 5_000_000L);
+        UiCensus.Stat w = UiCensus.statForTest("W");
+        assert w.reusableNs == 0 && w.stable == 0;   // first render: nothing kept yet
+        renderWithChild(t, win, child, true, false, 7_000_000L, 5_000_000L);
+        assert w.reusableNs == 5_000_000L && w.stable == 0;
+        UiCensus.ChildStat c = UiCensus.childStatForTest("W > C");
+        assert c.renders == 2 && c.stable == 1 && c.inclNs == 10_000_000L;
+        UiTiming.clock = System::nanoTime;
+    }
+
+    // W and C both stable: W's reusable time is W's own inclusive time, C's is not added on top
+    static void censusReusableNotDoubleCounted() {
+        UiCensus.resetForTest();
+        long[] t = {0};
+        UiTiming.clock = () -> t[0];
+        Object win = new Object(), child = new Object();
+        renderWithChild(t, win, child, false, false, 10_000_000L, 5_000_000L);
+        renderWithChild(t, win, child, false, false, 10_000_000L, 5_000_000L);
+        UiCensus.Stat w = UiCensus.statForTest("W");
+        assert w.stable == 1 && w.reusableNs == 10_000_000L;
+        assert UiCensus.childStatForTest("W > C").stable == 1;
+        UiTiming.clock = System::nanoTime;
+    }
+
+    // C sees a volatile read: C is not reusable, and W (which contains it) gives nothing either
+    static void censusChildVolatileNotReusable() {
+        UiCensus.resetForTest();
+        long[] t = {0};
+        UiTiming.clock = () -> t[0];
+        Object win = new Object(), child = new Object();
+        renderWithChild(t, win, child, false, true, 10_000_000L, 5_000_000L);
+        renderWithChild(t, win, child, false, true, 10_000_000L, 5_000_000L);
+        assert UiCensus.statForTest("W").reusableNs == 0;
+        assert UiCensus.childStatForTest("W > C").stable == 0;
+        UiTiming.clock = System::nanoTime;
     }
 }
