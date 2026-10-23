@@ -8,6 +8,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BiFunction;
 import java.util.concurrent.CompletableFuture;
 
 import zombie.core.Styles.AlphaOp;
@@ -47,6 +48,18 @@ final class UiRetainTest {
         sliceRejectsDrawerFutureProbe();
         sliceRecordReplayRoundTrip();
         sliceRecordReusesEntries();
+        readSameSemantics();
+        readSetStillSame();
+        retainNeedsSameStencil();
+        retainRejectsSliceOnError();
+        retainVolatileNeverReplays();
+        retainNeedsSameEpochFboGeometryReads();
+        retainGeometryOfElement();
+        try { retainNotesFillOpenRecord(); } catch (ReflectiveOperationException e) { throw new AssertionError(e); }
+        retainSuspendedNotesNothing();
+        retainMouseRule();
+        retainExcludeAndModsFilter();
+        retainSettingsAndInit();
     }
 
     static void censusKinds() {
@@ -490,5 +503,215 @@ final class UiRetainTest {
         assert !UiSlice.sameAs(sl, s, 0, 1);
         s.sprite[1].y2 = 9f;
         assert !UiSlice.sameAs(sl, s, 0, 2);
+    }
+
+    // ---- uiRetained: read sets, verify, replay decision ----
+
+    static void readSameSemantics() {
+        assert UiRetain.same(Double.valueOf(3.0), Double.valueOf(3.0));
+        assert UiRetain.same("a", new String("a"));
+        assert !UiRetain.same(new Object(), new Object());
+        assert UiRetain.same(null, null);
+        assert !UiRetain.same(1.0, 1.0f);
+        assert !UiRetain.same(null, "a") && !UiRetain.same("a", null);
+        Object o = new Object();
+        assert UiRetain.same(o, o);
+        assert UiRetain.same(Integer.valueOf(1000), Integer.valueOf(1000)) && UiRetain.same(Boolean.TRUE, Boolean.TRUE);
+        assert !UiRetain.same(Double.valueOf(3.0), "3.0");
+    }
+
+    private static BiFunction<Object, Object, Object> reader(Map<Object, Map<Object, Object>> m) {
+        return (t, k) -> m.get(t).get(k);
+    }
+
+    static void readSetStillSame() {
+        Object t1 = new Object(), t2 = new Object();
+        Map<Object, Map<Object, Object>> m = new HashMap<>();
+        m.put(t1, new HashMap<>(Map.of("a", 1.0, "b", "x")));
+        m.put(t2, new HashMap<>(Map.of("c", true)));
+        UiRetain.ReadSet rs = new UiRetain.ReadSet();
+        rs.add(t1, "a", 1.0);
+        rs.add(t1, "b", "x");
+        rs.add(t2, "c", true);
+        assert rs.size() == 3 && rs.stillSame(reader(m));
+        m.get(t1).put("a", 2.0);
+        assert !rs.stillSame(reader(m));
+        m.get(t1).put("a", 1.0);
+        assert rs.stillSame(reader(m));
+        m.get(t2).remove("c");   // a key removed: the reader answers null
+        assert !rs.stillSame(reader(m));
+        rs.clear();
+        assert rs.size() == 0 && rs.stillSame(reader(m));
+        for (int i = 0; i < 1000; i++) rs.add(t1, "a", 1.0);   // grows
+        assert rs.size() == 1000;
+    }
+
+    private static UiRetain.Record record() {
+        GenericSpriteRenderState s = state();
+        put(s, 0, TextureDraw.Type.glDraw, 1f);
+        UiRetain.Record r = new UiRetain.Record();
+        r.slice = UiSlice.record(s, 0, 1, null);
+        r.geometry = new UiRetain.Geometry();
+        r.stencilIn = 2;
+        r.stencilOut = 3;
+        r.epoch = 7;
+        r.fbo = true;
+        return r;
+    }
+
+    private static final BiFunction<Object, Object, Object> NO_READS = (t, k) -> null;
+
+    static void retainNeedsSameStencil() {
+        UiRetain.Record r = record();
+        assert UiRetain.canReplay(r, 2, 7, true, new UiRetain.Geometry(), NO_READS);
+        assert !UiRetain.canReplay(r, 1, 7, true, new UiRetain.Geometry(), NO_READS);
+        assert !UiRetain.canReplay(r, 3, 7, true, new UiRetain.Geometry(), NO_READS);
+    }
+
+    static void retainRejectsSliceOnError() {
+        UiRetain.Record r = record();
+        r.errorSeen = true;
+        assert !UiRetain.canReplay(r, 2, 7, true, new UiRetain.Geometry(), NO_READS);
+        r.errorSeen = false;
+        r.slice = null;   // the slice was rejected at record time
+        assert !UiRetain.canReplay(r, 2, 7, true, new UiRetain.Geometry(), NO_READS);
+    }
+
+    static void retainVolatileNeverReplays() {
+        UiRetain.Record r = record();
+        r.volatileSeen = true;
+        assert !UiRetain.canReplay(r, 2, 7, true, new UiRetain.Geometry(), NO_READS);
+    }
+
+    static void retainNeedsSameEpochFboGeometryReads() {
+        UiRetain.Record r = record();
+        UiRetain.Geometry g = new UiRetain.Geometry();
+        assert !UiRetain.canReplay(r, 2, 8, true, g, NO_READS);    // epoch bumped
+        assert !UiRetain.canReplay(r, 2, 7, false, g, NO_READS);   // FBO flag flipped
+        UiRetain.Geometry moved = new UiRetain.Geometry();
+        moved.absX = 5;
+        assert !UiRetain.canReplay(r, 2, 7, true, moved, NO_READS);
+        UiRetain.Geometry nan = new UiRetain.Geometry();
+        nan.absY = Double.NaN;
+        UiRetain.Geometry nan2 = new UiRetain.Geometry();
+        nan2.absY = Double.NaN;
+        r.geometry = nan2;
+        assert UiRetain.canReplay(r, 2, 7, true, nan, NO_READS);   // NaN equals itself here
+        r.geometry = new UiRetain.Geometry();
+        Object t = new Object();
+        r.reads.add(t, "k", 1.0);
+        assert UiRetain.canReplay(r, 2, 7, true, g, (tt, k) -> 1.0);
+        assert !UiRetain.canReplay(r, 2, 7, true, g, (tt, k) -> 2.0);
+    }
+
+    static void retainGeometryOfElement() {
+        zombie.ui.UIElement e = new zombie.ui.UIElement();
+        UiRetain.Geometry a = UiRetain.Geometry.of(e);
+        assert a.equals(UiRetain.Geometry.of(e));
+        e.setX(12.0);
+        assert !a.equals(UiRetain.Geometry.of(e));
+        UiRetain.Geometry b = UiRetain.Geometry.of(e);
+        e.setVisible(!e.isVisible());
+        assert !b.equals(UiRetain.Geometry.of(e));
+        zombie.ui.UIElement kid = new zombie.ui.UIElement();
+        UiRetain.Geometry c = UiRetain.Geometry.of(e);
+        e.AddChild(kid);
+        assert !c.equals(UiRetain.Geometry.of(e));   // a child added
+    }
+
+    static void retainNotesFillOpenRecord() throws ReflectiveOperationException {
+        UiRetain.Record r = new UiRetain.Record();
+        UiRetain.openForTest(r);
+        try {
+            Object t = new Object();
+            UiRetain.noteRead(t, "k", 1.0);
+            assert r.reads.size() == 1;
+            java.util.ArrayList<Object> list = new java.util.ArrayList<>(List.of(10, 20));
+            se.krka.kahlua.integration.expose.caller.MethodCaller size =
+                new se.krka.kahlua.integration.expose.caller.MethodCaller(java.util.ArrayList.class.getMethod("size"), null, true);
+            se.krka.kahlua.integration.expose.caller.MethodCaller get =
+                new se.krka.kahlua.integration.expose.caller.MethodCaller(java.util.ArrayList.class.getMethod("get", int.class), null, true);
+            se.krka.kahlua.integration.expose.caller.MethodCaller add =
+                new se.krka.kahlua.integration.expose.caller.MethodCaller(java.util.ArrayList.class.getMethod("add", Object.class), null, true);
+            UiRetain.noteCall(size, list, new Object[0]);
+            UiRetain.noteAnswer(2);
+            UiRetain.callExit();
+            Object[] args = {0};
+            UiRetain.noteCall(get, list, args);
+            args[0] = 1;   // Kahlua reuses its argument arrays
+            UiRetain.noteAnswer(10);
+            UiRetain.callExit();
+            UiRetain.noteCall(add, list, new Object[] {5});   // not a getter: an effect, not recorded
+            UiRetain.callExit();
+            assert r.nCalls == 2 && ((Object[]) r.calls[1].args)[0].equals(0);
+            assert UiRetain.callsSame(r);
+            list.set(0, 11);   // get(0) answers differently now
+            assert !UiRetain.callsSame(r);
+            list.set(0, 10);
+            assert UiRetain.callsSame(r);
+            list.add(7);       // size differs
+            assert !UiRetain.callsSame(r);
+            UiRetain.noteVolatile();
+            UiRetain.noteError();
+            assert r.volatileSeen && r.errorSeen;
+            UiRetain.noteItemIcon(null);   // no item: nothing, no throw
+        } finally { UiRetain.closeForTest(); }
+    }
+
+    static void retainSuspendedNotesNothing() {
+        UiRetain.Record r = new UiRetain.Record();
+        UiRetain.openForTest(r);
+        try {
+            UiRetain.suspended = true;
+            UiRetain.noteRead(new Object(), "k", 1.0);
+            UiRetain.noteVolatile();
+            UiRetain.noteError();
+            assert r.reads.size() == 0 && !r.volatileSeen && !r.errorSeen;
+        } finally { UiRetain.suspended = false; UiRetain.closeForTest(); }
+        UiRetain.noteRead(new Object(), "k", 1.0);   // nothing open: nothing
+        assert r.reads.size() == 0;
+    }
+
+    static void retainMouseRule() {
+        UiRetain.Record r = record();
+        UiRetain.Geometry g = new UiRetain.Geometry();
+        g.absX = 100; g.absY = 100; g.width = 50; g.height = 40;
+        r.geometry = g;
+        assert UiRetain.mouseClear(r, 120, 120);    // no mouse read: any position
+        r.mouseSeen = true;
+        assert UiRetain.mouseClear(r, 0, 0);
+        assert !UiRetain.mouseClear(r, 120, 120);
+        assert !UiRetain.mouseClear(r, 98, 100);    // the margin
+        assert UiRetain.mouseClear(r, 300, 300);
+    }
+
+    static void retainExcludeAndModsFilter() {
+        Set<String> ex = UiRetain.parseNames(" ObjectTooltip, ISToolTip ,,ISToolTipInv");
+        assert ex.equals(Set.of("ObjectTooltip", "ISToolTip", "ISToolTipInv"));
+        assert UiRetain.excluded(ex, "ObjectTooltip", null) && UiRetain.excluded(ex, "UIElement", "ISToolTipInv");
+        assert !UiRetain.excluded(ex, "UIElement", "ISPanel") && !UiRetain.excluded(ex, "UIElement", null);
+        assert UiRetain.gameFile(null) && UiRetain.gameFile("media/lua/client/ISUI/ISInventoryPane.lua");
+        assert UiRetain.gameFile("/home/u/ProjectZomboid/projectzomboid/media/lua/client/ISUI/ISPanel.lua");
+        assert !UiRetain.gameFile("mods/x/media/lua/client/MyWin.lua");
+        assert !UiRetain.gameFile("/steam/steamapps/workshop/content/108600/1/mods/Y/media/lua/client/W.lua");
+        assert !UiRetain.gameFile("C:\\steam\\steamapps\\workshop\\content\\1\\mods\\Y\\media\\lua\\W.lua");
+        assert !UiRetain.gameFile("somewhere/else.lua");
+    }
+
+    static void retainSettingsAndInit() {
+        Settings.load(SelfTest.write("enabled=true\nuiRetainExclude=A,B\n"));
+        assert Settings.text("uiRetainExclude", "x").equals("A,B") && Settings.text("nope", "d").equals("d");
+        assert Settings.flag("uiVerify") && Settings.flag("uiRetainedMods") && !Settings.flag("uiRetained") && !Settings.flag("uiRetainCheck");
+        UiRetain.init();
+        assert !UiRetain.guard.on && !UiRetain.check.on;
+        Settings.load(SelfTest.write("enabled=true\nuiRetained=true\n"));
+        UiRetain.init();
+        assert UiRetain.guard.on && UiRetain.excludedNames().equals(Set.of("ObjectTooltip", "ISToolTip", "ISToolTipInv"));
+        Settings.load(SelfTest.write("enabled=true\nuiRetained=true\nuiVerify=false\n"));
+        UiRetain.init();
+        assert !UiRetain.guard.on;   // uiRetained needs uiVerify: one log line, retain stays off
+        Settings.load(SelfTest.write("enabled=false\n"));
+        UiRetain.init();
+        assert !UiRetain.guard.on;
     }
 }

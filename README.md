@@ -41,6 +41,11 @@ The mod creates `~/Zomboid/PZButter.properties` on first start and reads it once
 | `frameLog` | Writes one line per frame to `~/Zomboid/pzbutter/frames.out`. |
 | `uiTiming` | Diagnostic: once a minute, the UI's time per frame and the 15 slowest windows to the console (and `~/Zomboid/pzbutter/ui.out` with `frameLog`). |
 | `uiCensus` | Diagnostic, needs `uiTiming`: per window, what each render reads and calls, and how often it read the same values as its previous render (stable fraction and stable ms/s), and the same for the panels inside each window (reusable ms/s). Printed with the `uiTiming` report. |
+| `uiRetained` | A window that read nothing new since its last frame is drawn from its recorded draw list instead of running its Lua again. Off by default. Needs `uiVerify`. |
+| `uiVerify` | Before `uiRetained` reuses a window it checks everything the window read: Lua fields, Java answers, item icons, its place and size, and its children. On by default; `uiRetained` stays off without it. |
+| `uiRetainedMods` | With `false`, only the game's own windows are reused; windows from mods always run. |
+| `uiRetainExclude` | Windows that always run live, by Java class name or Lua `Type`, comma separated. Default `ObjectTooltip,ISToolTip,ISToolTipInv`. |
+| `uiRetainCheck` | Diagnostic: never reuses a window, but compares each draw list it would have reused with the live one and logs the first differences per window. |
 
 Each line of `frames.out` has five fields:
 

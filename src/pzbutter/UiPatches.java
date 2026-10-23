@@ -66,7 +66,7 @@ public final class UiPatches {
     static volatile int fontsLoaded;
 
     /** TextManager.Init exit: fonts were (re)loaded. */
-    public static void onFontsLoaded() { fontsLoaded++; TextWidths.clear(); }
+    public static void onFontsLoaded() { fontsLoaded++; TextWidths.clear(); UiRetain.bumpEpoch(); }
 
     @Patch(className = "zombie.ui.TextManager", methodName = "MeasureStringX")
     public static class MeasureX {
@@ -104,6 +104,7 @@ public final class UiPatches {
 
     /** UIManager.render entry: one UI frame starts. */
     public static void onUiRenderEnter() {
+        if (UiRetain.guard.on || UiRetain.check.on) UiRetain.frameStart();
         if (!UiTiming.guard.on) return;
         try { UiTiming.uiEnter(); } catch (Throwable t) { UiTiming.guard.fail(t); }
     }
@@ -114,15 +115,26 @@ public final class UiPatches {
         try { UiTiming.uiExit(); } catch (Throwable t) { UiTiming.guard.fail(t); }
     }
 
-    /** UIElement.render entry: the element's window starts, or it is nested in one. */
-    public static void onElementRenderEnter(Object element) {
+    /**
+     * UIElement.render entry: the element's window starts, or it is nested in one. Timing starts first so a replayed
+     * window counts its verification; retain decides next (its re-reads happen before the census frame opens). The
+     * answer is Boolean.TRUE when the window was drawn from its record and the stock render must be skipped, else null.
+     */
+    public static Object onElementRenderEnter(Object element) {
+        Object replayed = null;
+        if (UiTiming.guard.on) { try { UiTiming.elementEnter(element, drawCount()); } catch (Throwable t) { UiTiming.guard.fail(t); } }
+        if (UiRetain.guard.on || UiRetain.check.on) {
+            try { if (UiRetain.onRenderEnter((UIElement) element)) replayed = Boolean.TRUE; } catch (Throwable t) { UiRetain.fail(t); }
+        }
         if (UiCensus.guard.on) { try { UiCensus.elementEnter(element); } catch (Throwable t) { UiCensus.guard.fail(t); } }
-        if (!UiTiming.guard.on) return;
-        try { UiTiming.elementEnter(element, drawCount()); } catch (Throwable t) { UiTiming.guard.fail(t); }
+        return replayed;
     }
 
-    /** UIElement.render exit, also when it threw. */
-    public static void onElementRenderExit(Object element) {
+    /** UIElement.render exit, also when it threw. replayed is what the entry answered. */
+    public static void onElementRenderExit(Object element, Object replayed) {
+        if (replayed == null && (UiRetain.guard.on || UiRetain.check.on)) {
+            try { UiRetain.onRenderExit((UIElement) element); } catch (Throwable t) { UiRetain.fail(t); }
+        }
         if (UiCensus.guard.on) { try { UiCensus.elementExit(element); } catch (Throwable t) { UiCensus.guard.fail(t); } }
         if (!UiTiming.guard.on) return;
         try { UiTiming.elementExit(drawCount()); } catch (Throwable t) { UiTiming.guard.fail(t); }
@@ -134,42 +146,64 @@ public final class UiPatches {
         catch (Throwable t) { return -1; }
     }
 
-    // ---- uiCensus ----
+    // ---- uiCensus, uiRetained ----
 
     /** MethodCaller.call entry: a Java method called from Lua starts. */
-    public static void onJavaCallEnter(Object caller) {
-        if (!UiCensus.active()) return;
-        try { UiCensus.noteCall(UiCensus.methodName(caller)); } catch (Throwable t) { UiCensus.guard.fail(t); }
+    public static void onJavaCallEnter(Object caller, Object self, Object args) {
+        if (UiCensus.active()) {
+            try { UiCensus.noteCall(UiCensus.methodName(caller)); } catch (Throwable t) { UiCensus.guard.fail(t); }
+        }
+        if (UiRetain.noting) { try { UiRetain.noteCall(caller, self, args); } catch (Throwable t) { UiRetain.fail(t); } }
     }
 
     /** MethodCaller.call exit, also when it threw. */
     public static void onJavaCallExit() {
+        if (UiRetain.noting) UiRetain.callExit();
         if (!UiCensus.active()) return;
         try { UiCensus.callExit(); } catch (Throwable t) { UiCensus.guard.fail(t); }
     }
 
     /** ReturnValues.push entry: a Java answer for Lua. An array is the varargs overload, which pushes each element itself. */
     public static void onJavaAnswer(Object answer) {
-        if (!UiCensus.active() || answer instanceof Object[]) return;
+        if (answer instanceof Object[]) return;
+        if (UiRetain.noting) { try { UiRetain.noteAnswer(answer); } catch (Throwable t) { UiRetain.fail(t); } }
+        if (!UiCensus.active()) return;
         try { UiCensus.noteRead(UiCensus.currentCall(), answer); } catch (Throwable t) { UiCensus.guard.fail(t); }
     }
 
     /** OsLib.call and RandomLib.call entry: the render reads the clock or random numbers. */
     public static void onVolatileCall() {
+        if (UiRetain.noting) { try { UiRetain.noteVolatile(); } catch (Throwable t) { UiRetain.fail(t); } }
         if (!UiCensus.active()) return;
         try { UiCensus.noteVolatile(); } catch (Throwable t) { UiCensus.guard.fail(t); }
     }
 
     /** UIElement.DrawItemIcon entry. */
-    public static void onItemIcon() {
+    public static void onItemIcon(Object item) {
+        if (UiRetain.noting) { try { UiRetain.noteItemIcon(item); } catch (Throwable t) { UiRetain.fail(t); } }
         if (!UiCensus.active()) return;
         try { UiCensus.noteItemIcon(); } catch (Throwable t) { UiCensus.guard.fail(t); }
     }
 
+    /** ExceptionLogger.logException entry: Lua (or a Java call from it) logged an error. */
+    public static void onLuaError() {
+        if (UiRetain.noting) { try { UiRetain.noteError(); } catch (Throwable t) { UiRetain.fail(t); } }
+    }
+
+    /** A fact every kept picture depends on changed (texture destroyed or reloaded, UI FBO option). */
+    public static void onEpochEvent() {
+        if (UiRetain.guard.on || UiRetain.check.on) UiRetain.bumpEpoch();
+    }
+
+    /** UIManager.resize exit (every frame; only a size change counts). */
+    public static void onResize() { UiRetain.onResize(); }
+
     @Patch(className = "se.krka.kahlua.integration.expose.caller.MethodCaller", methodName = "call")
     public static class JavaCall {
         @Patch.OnEnter
-        public static void enter(@Patch.This Object caller) { onJavaCallEnter(caller); }
+        public static void enter(@Patch.This Object caller, @Patch.Argument(0) Object self, @Patch.Argument(2) Object args) {
+            onJavaCallEnter(caller, self, args);
+        }
 
         @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
         public static void exit() { onJavaCallExit(); }
@@ -196,7 +230,7 @@ public final class UiPatches {
     @Patch(className = "zombie.ui.UIElement", methodName = "DrawItemIcon")
     public static class ItemIcon {
         @Patch.OnEnter
-        public static void enter() { onItemIcon(); }
+        public static void enter(@Patch.Argument(0) Object item) { onItemIcon(item); }
     }
 
     @Patch(className = "zombie.ui.UIManager", methodName = "render")
@@ -210,10 +244,43 @@ public final class UiPatches {
 
     @Patch(className = "zombie.ui.UIElement", methodName = "render")
     public static class ElementRender {
-        @Patch.OnEnter
-        public static void enter(@Patch.This Object element) { onElementRenderEnter(element); }
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This Object element, @Patch.Local("r") Object r) {
+            r = onElementRenderEnter(element);
+            return r != null;
+        }
 
         @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
-        public static void exit(@Patch.This Object element) { onElementRenderExit(element); }
+        public static void exit(@Patch.This Object element, @Patch.Local("r") Object r) { onElementRenderExit(element, r); }
+    }
+
+    @Patch(className = "zombie.core.logger.ExceptionLogger", methodName = "logException")
+    public static class LuaError {
+        @Patch.OnEnter
+        public static void enter() { onLuaError(); }
+    }
+
+    @Patch(className = "zombie.ui.UIManager", methodName = "resize")
+    public static class Resize {
+        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
+        public static void exit() { onResize(); }
+    }
+
+    @Patch(className = "zombie.core.textures.Texture", methodName = "destroy")
+    public static class TexDestroy {
+        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
+        public static void exit() { onEpochEvent(); }
+    }
+
+    @Patch(className = "zombie.core.textures.Texture", methodName = "reload")
+    public static class TexReload {
+        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
+        public static void exit() { onEpochEvent(); }
+    }
+
+    @Patch(className = "zombie.core.Core", methodName = "setOptionUIFBO")
+    public static class OptionFbo {
+        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
+        public static void exit() { onEpochEvent(); }
     }
 }

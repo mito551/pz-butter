@@ -63,6 +63,16 @@ public final class Settings {
       + "uiTiming=false\n"
       + "# uiCensus: diagnostic; with uiTiming on, also counts what each UI window reads per frame and how often it read the same values twice in a row (Plan 3c).\n"
       + "uiCensus=false\n"
+      + "# uiRetained: a window that read nothing new since its last frame is drawn from its recorded draw list.\n"
+      + "uiRetained=false\n"
+      + "# uiVerify: uiRetained checks everything a window read before reusing it; uiRetained needs it.\n"
+      + "uiVerify=true\n"
+      + "# uiRetainedMods: windows from mods are reused too (false: only the game's own windows).\n"
+      + "uiRetainedMods=true\n"
+      + "# uiRetainExclude: windows that are always drawn live (Java class name or Lua Type), comma separated.\n"
+      + "uiRetainExclude=ObjectTooltip,ISToolTip,ISToolTipInv\n"
+      + "# uiRetainCheck: diagnostic; never reuses a window, but compares each draw list it would have reused with the live one and logs differences.\n"
+      + "uiRetainCheck=false\n"
       + "# luaRawgetFast: Lua table reads do one hash lookup instead of two (measured slower than stock; off).\n"
       + "luaRawgetFast=false\n"
       + "# luaInternConstants: string constants of loaded Lua are interned, so table lookups match by identity first.\n"
@@ -182,7 +192,7 @@ public final class Settings {
     /** Features that passed their in-game check and default to on (still only with the master switch). */
     static final java.util.Set<String> ON_BY_DEFAULT = java.util.Set.of("limiterSleep", "inputLatch", "keyboardFresh", "frameStartGate",
         "reflexSleep", "vsyncAdaptive", "luaBudget",
-        "luaInternConstants", "luaSkipEmpty", "uiTickStagger", "textWidthCache", "uiLuaFast", "mapStreetMemo", "mapStreetCache", "mapVisitedFast");   // these two only act with vsync on
+        "luaInternConstants", "luaSkipEmpty", "uiVerify", "uiRetainedMods", "uiTickStagger", "textWidthCache", "uiLuaFast", "mapStreetMemo", "mapStreetCache", "mapVisitedFast");   // these two only act with vsync on
 
     public static boolean flag(String key) { return enabled && bool(props, key, ON_BY_DEFAULT.contains(key)); }
 
@@ -192,6 +202,12 @@ public final class Settings {
         int n = dflt;
         if (v != null) try { n = Integer.parseInt(v.trim()); } catch (NumberFormatException e) { n = dflt; }
         return Math.max(min, Math.min(max, n));
+    }
+
+    /** A text key; the default when missing. */
+    public static String text(String key, String dflt) {
+        String v = props.getProperty(key);
+        return v == null ? dflt : v.trim();
     }
 
     /** "off", "on" or "auto"; "off" when the master switch is off or the value is unreadable. */

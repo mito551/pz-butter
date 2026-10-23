@@ -111,16 +111,22 @@ final class UiTiming {
         String name = names.get(element);
         if (name == null) {
             UIElement e = (UIElement) element;
-            String type = null, file = null;
-            KahluaTable t = e.getTable();
-            if (t != null) {
-                if (UIManager.tableget(t, "Type") instanceof String s) type = s;
-                file = pickFile(fileOf(UIManager.tableget(t, "render")), fileOf(UIManager.tableget(t, "prerender")),
-                    fileOf(UIManager.tableget(t, "createChildren")), fileOf(UIManager.tableget(t, "new")));
-            }
-            names.put(element, name = windowName(type, e.getClass().getSimpleName(), file));
+            names.put(element, name = windowName(typeOf(e), e.getClass().getSimpleName(), windowFile(e)));
         }
         return name;
+    }
+
+    /** The Lua Type of an element's table, or null. */
+    static String typeOf(UIElement e) {
+        KahluaTable t = e.getTable();
+        return t != null && UIManager.tableget(t, "Type") instanceof String s ? s : null;
+    }
+
+    /** The source file that defines an element's Lua window, or null for a Java one. */
+    static String windowFile(UIElement e) {
+        KahluaTable t = e.getTable();
+        return t == null ? null : pickFile(fileOf(UIManager.tableget(t, "render")), fileOf(UIManager.tableget(t, "prerender")),
+            fileOf(UIManager.tableget(t, "createChildren")), fileOf(UIManager.tableget(t, "new")));
     }
 
     private static String fileOf(Object fn) {

@@ -82,14 +82,16 @@ public final class LuaPatches {
         catch (Throwable t) { /* interning is an optimisation only */ }
     }
 
-    /** rawget's answer, after the fast path: a table read counts for the open UI element (uiCensus). */
-    public static void onRawgetAnswer(Object key, Object value) {
+    /** rawget's answer, after the fast path: a table read counts for the open UI element (uiCensus, uiRetained). */
+    public static void onRawgetAnswer(Object table, Object key, Object value) {
+        if (UiRetain.noting) { try { UiRetain.noteRead(table, key, value); } catch (Throwable t) { UiRetain.fail(t); } }
         if (!UiCensus.active()) return;
         try { UiCensus.noteRead(key, value); } catch (Throwable t) { UiCensus.guard.fail(t); }
     }
 
     /** KahluaTableImpl.iterator entry: iterating a table makes the open UI element live (uiCensus). */
     public static void onIterate() {
+        if (UiRetain.noting) { try { UiRetain.noteVolatile(); } catch (Throwable t) { UiRetain.fail(t); } }
         if (!UiCensus.active()) return;
         try { UiCensus.noteIterate(); } catch (Throwable t) { UiCensus.guard.fail(t); }
     }
@@ -103,10 +105,10 @@ public final class LuaPatches {
         }
 
         @Patch.OnExit
-        public static void exit(@Patch.Argument(0) Object key, @Patch.Return(readOnly = false) Object ret,
+        public static void exit(@Patch.This Object self, @Patch.Argument(0) Object key, @Patch.Return(readOnly = false) Object ret,
                                 @Patch.Local("v") Object v) {
             if (v != NOT_FAST) ret = v;
-            onRawgetAnswer(key, ret);
+            onRawgetAnswer(self, key, ret);
         }
     }
 
