@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.WeakHashMap;
+import java.util.function.Consumer;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiFunction;
 
@@ -53,6 +54,12 @@ final class UiRetain {
     static boolean noting;
     /** True while verification re-reads: nothing is noted. */
     static boolean suspended;
+    /** uiRetainedChildren: every element entered gets its own record, with its children as segments (Task 5). */
+    static boolean children;
+    /** True while the UI draws in the game (not a menu); tests replace it. */
+    static java.util.function.BooleanSupplier playing = () -> GameWindow.states.current instanceof IngameState;
+    /** How a replayed parent renders a child: the stock render, which enters the hook again; tests replace it. */
+    static Consumer<UIElement> renderChild = UIElement::render;
 
     private static final AtomicLong EPOCH = new AtomicLong();
     private static Set<String> excluded = Set.of();
@@ -101,6 +108,7 @@ final class UiRetain {
         guard.on = want && ready;
         check.on = diag && ready;
         any = guard.on || check.on;
+        children = any && Settings.flag("uiRetainedChildren");
         if (guard.on || check.on) for (String c : TARGETS) Main.classPresent(c);
     }
 
@@ -308,6 +316,26 @@ final class UiRetain {
         int mouseX, mouseY;   // where the mouse was when a window read it
         UiSlice slice;   // null: nothing replayable kept
         UiSlice spare;   // the slice object to record into again
+        // uiRetainedChildren: the own pieces around the children (nKids + 1 of them) and the stencil level at each edge
+        UiSlice[] segs = new UiSlice[0];
+        int[] bounds = new int[0];   // per piece: live from, live to (while recording), stencil in, stencil out
+        Object[] controls;   // getControls() when the render ended
+
+        private void room(int i) {
+            if (segs.length <= i) segs = Arrays.copyOf(segs, i + 4);
+            if (bounds.length <= 4 * i + 3) bounds = Arrays.copyOf(bounds, 4 * i + 16);
+        }
+
+        void putSeg(int i, UiSlice sl, int in, int out) {
+            room(i);
+            segs[i] = sl;
+            bounds[4 * i + 2] = in;
+            bounds[4 * i + 3] = out;
+        }
+
+        void segFrom(int i, int from, int in) { room(i); bounds[4 * i] = from; bounds[4 * i + 2] = in; }
+
+        void segTo(int i, int to, int out) { room(i); bounds[4 * i + 1] = to; bounds[4 * i + 3] = out; }
 
         Call addCall(Call c) {
             if (nCalls == calls.length) calls = Arrays.copyOf(calls, Math.max(8, nCalls * 2));
@@ -335,6 +363,7 @@ final class UiRetain {
             Arrays.fill(kidEls, 0, nKids, null);
             Arrays.fill(kidGeo, 0, nKids, null);
             nCalls = nIcons = nKids = 0;
+            controls = null;
             volatileSeen = errorSeen = mouseSeen = false;
         }
     }
@@ -364,6 +393,34 @@ final class UiRetain {
     /** A window that read the mouse position keeps its picture only while the mouse stays where it was. */
     static boolean mouseClear(Record r, int mx, int my) {
         return !r.mouseSeen || r.mouseX == mx && r.mouseY == my;
+    }
+
+    /** The children a render drew, by identity and in order, against the element's getControls() now. */
+    static boolean sameControls(Object[] recorded, java.util.List<?> now) {
+        int n = now == null ? 0 : now.size();
+        if (recorded.length != n) return false;
+        for (int i = 0; i < n; i++) if (recorded[i] != now.get(i)) return false;
+        return true;
+    }
+
+    /**
+     * Draws a clean parent from its pieces: piece 0, child 0, piece 1, ... with the stencil level set to what was recorded
+     * before each. A child that returns with another level than the next piece expects (it drew live and moved the
+     * level) makes the parent draw stock next frame; the pieces still go out, they are what the recorded picture holds.
+     */
+    static void walk(Record r, GenericSpriteRenderState s, Consumer<UIElement> render) {
+        for (int i = 0; i <= r.nKids; i++) {
+            F.STENCIL.set(r.bounds[4 * i + 2]);
+            GLState.startFrame();
+            UiSlice.replay(r.segs[i], s);
+            GLState.startFrame();
+            if (i < r.nKids) {
+                F.STENCIL.set(r.bounds[4 * i + 3]);
+                render.accept(r.kidEls[i]);
+                if ((int) F.STENCIL.get() != r.bounds[4 * i + 6]) r.slice = null;
+            }
+        }
+        F.STENCIL.set(r.stencilOut);
     }
 
     private static final Map<Class<?>, Boolean> javaRender = new IdentityHashMap<>();
@@ -441,10 +498,12 @@ final class UiRetain {
 
     /** UIManager.render entry: a new UI frame; whatever a lost exit left open is dropped. */
     static void frameStart() {
-        if (root != null) abort();
+        if (root != null || sp > 0) abort();
     }
 
     private static void abort() {
+        for (int i = 0; i < sp; i++) stack[i].clear();
+        sp = 0;
         root = null;
         rec = null;
         noting = false;
@@ -457,6 +516,7 @@ final class UiRetain {
     static boolean onRenderEnter(UIElement e) {
         if (!any || !main()) return false;
         try {
+            if (children) return enterChild(e);
             if (root != null) {
                 depth++;
                 if (rec != null) rec.addKid(e);
@@ -468,8 +528,10 @@ final class UiRetain {
 
     /** UIElement.render exit, for a render that was not replayed. threw: the render ended with an exception. */
     static void onRenderExit(UIElement e, boolean threw) {
-        if (root == null || !main()) return;
+        if (!main()) return;
         try {
+            if (children) { exitChild(e, threw); return; }
+            if (root == null) return;
             if (depth > 0) { depth--; return; }
             if (root != e) { abort(); return; }
             finish(e, threw);
@@ -488,7 +550,7 @@ final class UiRetain {
         root = e;
         depth = callDepth = 0;
         if (!r.live && overridesRender(e.getClass())) r.live = true;   // its Java render draws from Java fields nobody watches
-        if (r.live || Core.debug || !(GameWindow.states.current instanceof IngameState)) return false;
+        if (r.live || Core.debug || !playing.getAsBoolean()) return false;
         GenericSpriteRenderState s = populating();
         if (s == null) return false;
         int stencil = (int) F.STENCIL.get();
@@ -536,9 +598,189 @@ final class UiRetain {
         suspended = true;
         try {
             return canReplay(r, stencil, ep, fbo, Geometry.of(e), (t, k) -> ((KahluaTable) t).rawget(k))
+                && (!children || r.controls != null && sameControls(r.controls, e.getControls()))
                 && kidsSame(r) && callsSame(r) && iconsSame(r) && mouseClear(r, Mouse.getXA(), Mouse.getYA());
         } catch (Throwable t) { fail(t); return false; }
         finally { suspended = false; }
+    }
+
+    // ---- uiRetainedChildren (main thread) ----
+
+    /** An open render. r == null: nothing is recorded (live element, or a parent being replayed). */
+    private static final class Frame {
+        UIElement e;
+        Record r;
+        GenericSpriteRenderState s;
+        int wasPieces;   // pieces the record held when this render began and would have replayed (uiRetainCheck)
+
+        void clear() { e = null; r = null; s = null; }
+    }
+
+    private static final Frame[] stack = new Frame[128];
+    private static int sp;
+
+    private static Frame push(UIElement e, Record r, GenericSpriteRenderState s) {
+        if (sp == stack.length) throw new IllegalStateException("UI nesting too deep");
+        Frame f = stack[sp];
+        if (f == null) stack[sp] = f = new Frame();
+        sp++;
+        f.e = e;
+        f.r = r;
+        f.s = s;
+        f.wasPieces = 0;
+        sync();
+        return f;
+    }
+
+    /** Notes go to the innermost open render's record, if it records. */
+    private static void sync() {
+        Frame t = sp > 0 ? stack[sp - 1] : null;
+        rec = t == null ? null : t.r;
+        noting = rec != null;
+        callDepth = 0;
+    }
+
+    private static Record recordFor(UIElement e) {
+        Record r = records.get(e);
+        if (r == null) {
+            r = new Record();
+            r.live = excluded(excluded, e.getClass().getSimpleName(), UiTiming.typeOf(e))
+                || !modsToo && !gameFile(UiTiming.windowFile(e));
+            if (!r.live && overridesRender(e.getClass())) r.live = true;   // its Java render draws from Java fields nobody watches
+            records.put(e, r);
+        }
+        return r;
+    }
+
+    /** UIElement.render entry with children on. True: the element was drawn from its record. */
+    private static boolean enterChild(UIElement e) {
+        long ep = checkEpoch();
+        Record r = recordFor(e);
+        Frame top = sp > 0 ? stack[sp - 1] : null;
+        Record parent = top == null ? null : top.r;
+        if (parent != null) cut(top, e);
+        GenericSpriteRenderState s = r.live || Core.debug || !playing.getAsBoolean() ? null : populating();
+        if (s == null) { push(e, null, null); return false; }
+        int stencil = (int) F.STENCIL.get();
+        boolean fbo = UIManager.useUiFbo;
+        boolean would = r.slice != null && verify(r, e, stencil, ep, fbo);
+        if (would && guard.on && !check.on) {
+            if (!replayParent(r, e, s)) return false;   // failed: everything open was dropped, stock draws
+            if (parent != null) resume(top);
+            return true;
+        }
+        int pieces = would ? r.nKids + 1 : 0;
+        r.slice = null;
+        r.reset();
+        r.geometry = Geometry.of(e);
+        r.stencilIn = stencil;
+        r.epoch = ep;
+        r.fbo = fbo;
+        GLState.startFrame();
+        Frame f = push(e, r, s);
+        f.wasPieces = pieces;
+        r.segFrom(0, s.numSprites, stencil);
+        return false;
+    }
+
+    /** A child render starts inside a recorded parent: the parent's piece so far ends here. */
+    private static void cut(Frame top, UIElement child) {
+        Record p = top.r;
+        if (callDepth > 0) p.volatileSeen = true;   // rendered from inside a Java call of the parent's Lua: not attributable
+        p.segTo(p.nKids, top.s.numSprites, (int) F.STENCIL.get());
+        p.addKid(child);
+        GLState.startFrame();
+    }
+
+    /** The child is done: the parent's next piece starts here. */
+    private static void resume(Frame top) {
+        Record p = top.r;
+        p.segFrom(p.nKids, top.s.numSprites, (int) F.STENCIL.get());
+        GLState.startFrame();
+    }
+
+    /** Draws a clean parent from its pieces; its children render themselves through the hook. On a throw nothing partial stays. */
+    static boolean replayParent(Record r, UIElement e, GenericSpriteRenderState s) {
+        int n0 = s.numSprites;
+        try {
+            push(e, null, s);   // children entered meanwhile are nobody's segments but their own
+            walk(r, s, renderChild);
+            sp--;
+            stack[sp].clear();
+            sync();
+            return true;
+        } catch (Throwable t) {
+            s.numSprites = n0;
+            fail(t);
+            return false;
+        }
+    }
+
+    private static void exitChild(UIElement e, boolean threw) {
+        if (sp == 0) return;
+        Frame f = stack[sp - 1];
+        if (f.e != e) { abort(); return; }
+        Record r = f.r;
+        GenericSpriteRenderState s = f.s;
+        int pieces = f.wasPieces;
+        f.clear();
+        sp--;
+        Frame top = sp > 0 ? stack[sp - 1] : null;
+        sync();
+        if (r != null) finishChild(e, r, s, pieces, threw);
+        if (top != null && top.r != null) resume(top);
+    }
+
+    private static void finishChild(UIElement e, Record r, GenericSpriteRenderState s, int pieces, boolean threw) {
+        GenericSpriteRenderState s2 = populating();
+        int to = s2 == null ? -1 : s2.numSprites;
+        int k = r.nKids;
+        int stencil = (int) F.STENCIL.get();
+        r.segTo(k, to, stencil);
+        r.stencilOut = stencil;
+        boolean ok = !threw && s2 == s;
+        Object[] seen = Arrays.copyOf(r.kidEls, k, Object[].class);
+        ok = ok && sameControls(seen, e.getControls());   // a control that never entered the hook drew inside our pieces
+        for (int i = 0; ok && i <= k; i++) ok = r.bounds[4 * i] <= r.bounds[4 * i + 1];
+        for (int i = 1; ok && i < k; i++) ok = r.bounds[4 * i] == r.bounds[4 * i + 1];   // the loop between children draws nothing
+        for (int i = 0; ok && i < k; i++) ok = r.bounds[4 * i + 3] == r.bounds[4 * i + 6];   // a child must leave the stencil level as it found it
+        if (ok && pieces == k + 1) checkPieces(e, r, s, k);
+        if (ok && !r.errorSeen && !r.volatileSeen && Geometry.of(e).equals(r.geometry)) {
+            boolean all = true;
+            for (int i = 0; i <= k && all; i++) {
+                UiSlice sl = UiSlice.record(s, r.bounds[4 * i], r.bounds[4 * i + 1], i < r.segs.length ? r.segs[i] : null);
+                if (sl == null) all = false;
+                else {
+                    sl.stencilIn = r.bounds[4 * i + 2];
+                    sl.stencilOut = r.bounds[4 * i + 3];
+                    r.putSeg(i, sl, sl.stencilIn, sl.stencilOut);
+                }
+            }
+            if (all) { r.controls = seen; r.slice = r.segs[0]; }
+        }
+        if (threw) r.slice = null;
+        GLState.startFrame();
+    }
+
+    /** uiRetainCheck: the pieces kept last time against the live ones (before they are overwritten). */
+    private static void checkPieces(UIElement e, Record r, GenericSpriteRenderState s, int k) {
+        String name = UiTiming.nameOf(e);
+        int[] c = checks.computeIfAbsent(name, x -> new int[2]);
+        c[0]++;
+        boolean differs = false;
+        for (int i = 0; i <= k; i++) {
+            UiSlice was = i < r.segs.length ? r.segs[i] : null;
+            int from = r.bounds[4 * i], to = r.bounds[4 * i + 1];
+            if (was != null && !UiSlice.sameAs(was, s, from, to)) {
+                differs = true;
+                if (c[1] == 0) for (String line : mismatches(was, s, from, to, 5)) System.out.println("[PZButter] uiRetainCheck " + name + ": piece " + i + " " + line);
+                break;
+            }
+        }
+        if (differs) c[1]++;
+        if (c[0] >= 100 && c[0] % 100 == 0 || c[0] == 1) {
+            System.out.println("[PZButter] uiRetainCheck " + name + ": would replay " + c[0] + " times, draw list differed " + c[1]);
+        }
     }
 
     private static long checkEpoch() {
@@ -729,6 +971,12 @@ final class UiRetain {
     }
 
     static int depthForTest() { return depth; }
+
+    static int stackForTest() { return sp; }
+
+    static int stencilForTest() { return (int) F.STENCIL.get(); }
+
+    static void setStencilForTest(int v) { F.STENCIL.set(v); }
 
     static boolean openForTest() { return root != null; }
 

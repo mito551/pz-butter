@@ -65,6 +65,8 @@ public final class Settings {
       + "uiCensus=false\n"
       + "# uiRetained: a window that read nothing new since its last frame is drawn from its recorded draw list.\n"
       + "uiRetained=false\n"
+      + "# uiRetainedChildren: panels inside a redrawn window are reused when nothing they read changed (needs uiRetained).\n"
+      + "uiRetainedChildren=false\n"
       + "# uiVerify: uiRetained checks everything a window read before reusing it; uiRetained needs it.\n"
       + "uiVerify=true\n"
       + "# uiRetainedMods: windows from mods are reused too (false: only the game's own windows).\n"
