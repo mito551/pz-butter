@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Microbenchmarks. Usage: ./bench.sh [repo dir whose src/ is measured] [parker|stamps|learner|widths|rawget|uislice]
+# Microbenchmarks. Usage: ./bench.sh [repo dir whose src/ is measured] [parker|stamps|learner|widths|rawget|uislice|readset]
 # With no unit: the frame clock's per-frame cost (FrameBench).
 set -euo pipefail
 JDK="${JDK:-/usr/lib/jvm/java-25-openjdk}"

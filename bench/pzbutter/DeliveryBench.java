@@ -12,6 +12,8 @@ import java.util.Arrays;
  * rawget:  ns per lookup, stock KahluaTableImpl.rawget against the luaRawgetFast hook; hits, then misses that ask a metatable.
  * uislice: ns per entry for UiSlice.replay and UiSlice.record over 200-entry slices (all glDraw; 10 % state entries;
  *          10 % entries with a 4-float vars array); prints a checksum of the replayed state, which must not change.
+ * readset: ns per read for UiRetain.ReadSet: add (recording), stillSame with every value unchanged, and stillSame with
+ *          the value changed whose first read comes last; 200 and 2000 reads over real Kahlua tables, each (table, key) read 4 times per render.
  */
 public final class DeliveryBench {
     static final com.sun.management.ThreadMXBean MX = (com.sun.management.ThreadMXBean) ManagementFactory.getThreadMXBean();
@@ -24,7 +26,8 @@ public final class DeliveryBench {
             case "widths" -> widths();
             case "rawget" -> rawget();
             case "uislice" -> uislice();
-            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | uislice");
+            case "readset" -> readset();
+            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | uislice | readset");
         }
     }
 
@@ -221,6 +224,59 @@ public final class DeliveryBench {
             }
             Arrays.sort(rs);
             System.out.printf("uislice record %-5s: %6.2f ns/entry (min %.2f, max %.2f), n %d%n", scen, rs[3], rs[0], rs[6], keep.n);
+        }
+    }
+
+    static void readset() {
+        java.util.function.BiFunction<Object, Object, Object> read = (t, k) -> ((se.krka.kahlua.vm.KahluaTable) t).rawget(k);
+        for (int reads : new int[] {200, 2000}) {
+            int distinct = reads / 4, nt = Math.max(4, distinct / 10);
+            se.krka.kahlua.j2se.KahluaTableImpl[] tables = new se.krka.kahlua.j2se.KahluaTableImpl[nt];
+            for (int i = 0; i < nt; i++) tables[i] = new se.krka.kahlua.j2se.KahluaTableImpl(new java.util.HashMap<>());
+            Object[] rt = new Object[reads], rk = new Object[reads], rv = new Object[reads];
+            java.util.SplittableRandom rnd = new java.util.SplittableRandom(7);
+            for (int d = 0; d < distinct; d++) {
+                se.krka.kahlua.j2se.KahluaTableImpl t = tables[d % nt];
+                String k = ("field" + d).intern();
+                Object v = switch (d % 3) { case 0 -> (double) d; case 1 -> "s" + d; default -> (d & 4) == 0; };
+                t.rawset(k, v);
+                for (int c = 0; c < 4; c++) { int at = d * 4 + c; rt[at] = t; rk[at] = k; }
+            }
+            for (int i = reads - 1; i > 0; i--) {   // shuffle so repeats are spread as in a render
+                int j = rnd.nextInt(i + 1);
+                Object a = rt[i]; rt[i] = rt[j]; rt[j] = a; a = rk[i]; rk[i] = rk[j]; rk[j] = a;
+            }
+            for (int i = 0; i < reads; i++) rv[i] = ((se.krka.kahlua.vm.KahluaTable) rt[i]).rawget(rk[i]);
+            java.util.Map<Object, Integer> first = new java.util.HashMap<>();
+            for (int i = 0; i < reads; i++) first.putIfAbsent(rk[i], i);
+            int lastFirst = java.util.Collections.max(first.values());   // the key whose first read comes last
+            UiRetain.ReadSet rs = new UiRetain.ReadSet();
+            int reps = 4_000_000 / reads;
+            double[] add = new double[7], same = new double[7], changed = new double[7];
+            long check = 0;
+            for (int r = -2; r < 7; r++) {
+                long t0 = System.nanoTime();
+                for (int k = 0; k < reps; k++) { rs.clear(); for (int i = 0; i < reads; i++) rs.add(rt[i], rk[i], rv[i]); }
+                long t1 = System.nanoTime();
+                int ok = 0;
+                for (int k = 0; k < reps; k++) if (rs.stillSame(read)) ok++;
+                long t2 = System.nanoTime();
+                se.krka.kahlua.vm.KahluaTable last = (se.krka.kahlua.vm.KahluaTable) rt[lastFirst];
+                Object old = last.rawget(rk[lastFirst]);
+                last.rawset(rk[lastFirst], "changed");
+                int bad = 0;
+                for (int k = 0; k < reps; k++) if (!rs.stillSame(read)) bad++;
+                long t3 = System.nanoTime();
+                last.rawset(rk[lastFirst], old);
+                if (r >= 0) {
+                    add[r] = (t1 - t0) / (double) reps / reads; same[r] = (t2 - t1) / (double) reps / reads; changed[r] = (t3 - t2) / (double) reps / reads;
+                }
+                check = check * 31 + ok * 7L + bad + rs.size();
+            }
+            Arrays.sort(add); Arrays.sort(same); Arrays.sort(changed);
+            System.out.printf("readset %4d add    : %6.2f ns/read (min %.2f, max %.2f)%n", reads, add[3], add[0], add[6]);
+            System.out.printf("readset %4d same   : %6.2f ns/read (min %.2f, max %.2f)%n", reads, same[3], same[0], same[6]);
+            System.out.printf("readset %4d changed: %6.2f ns/read (min %.2f, max %.2f), checksum %x%n", reads, changed[3], changed[0], changed[6], check);
         }
     }
 }
