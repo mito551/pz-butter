@@ -10,6 +10,8 @@ import java.util.Arrays;
  * stamps:  ns and bytes per onPush + onAcquire pair, three states in rotation.
  * learner: ns per observe() over a fixed 240 fps trace; prints a checksum of every hold, which must not change.
  * rawget:  ns per lookup, stock KahluaTableImpl.rawget against the luaRawgetFast hook; hits, then misses that ask a metatable.
+ * uislice: ns per entry for UiSlice.replay and UiSlice.record over 200-entry slices (all glDraw; 10 % state entries;
+ *          10 % entries with a 4-float vars array); prints a checksum of the replayed state, which must not change.
  */
 public final class DeliveryBench {
     static final com.sun.management.ThreadMXBean MX = (com.sun.management.ThreadMXBean) ManagementFactory.getThreadMXBean();
@@ -21,7 +23,8 @@ public final class DeliveryBench {
             case "learner" -> learner();
             case "widths" -> widths();
             case "rawget" -> rawget();
-            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget");
+            case "uislice" -> uislice();
+            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | uislice");
         }
     }
 
@@ -165,6 +168,59 @@ public final class DeliveryBench {
                 System.out.printf("rawget %s %s: %6.2f ns/op (min %.2f, max %.2f), checksum %d%n",
                     keys == hit ? "hit " : "miss", hook ? "hook " : "stock", ns[3], ns[0], ns[6], check);
             }
+        }
+    }
+
+    static zombie.core.sprite.GenericSpriteRenderState sliceState(int n) {
+        zombie.core.sprite.GenericSpriteRenderState s = new zombie.core.sprite.GenericSpriteRenderState(0) { };
+        for (int i = 0; i < n; i++) { s.numSprites = i; s.CheckSpriteSlots(); }
+        s.numSprites = 0;
+        return s;
+    }
+
+    static void uislice() {
+        zombie.core.textures.TextureDraw.Type[] states = {zombie.core.textures.TextureDraw.Type.glStencilFunc,
+            zombie.core.textures.TextureDraw.Type.glEnable, zombie.core.textures.TextureDraw.Type.glBlendFunc};
+        int n = 200;
+        for (String scen : new String[] {"draw", "state", "vars"}) {
+            zombie.core.sprite.GenericSpriteRenderState src = sliceState(n);
+            for (int i = 0; i < n; i++) {
+                zombie.core.textures.TextureDraw d = src.sprite[i];
+                boolean odd = i % 10 == 3;
+                d.type = scen.equals("state") && odd ? states[i % 3] : zombie.core.textures.TextureDraw.Type.glDraw;
+                d.a = i; d.b = i * 3; d.c = i * 5; d.col0 = i * 7; d.col1 = i * 11; d.col2 = i * 13; d.col3 = i * 17;
+                d.x0 = i; d.x1 = i + 1; d.x2 = i + 2; d.x3 = i + 3; d.y0 = -i; d.y1 = -i - 1; d.y2 = -i - 2; d.y3 = -i - 3;
+                d.u0 = i * .5f; d.u1 = i * .25f; d.v0 = i * .125f; d.v1 = i * .0625f; d.z = i * .001f; d.singleCol = (i & 1) == 0;
+                if (scen.equals("vars") && odd) d.vars = new float[] {i, i + .5f, i + .25f, i + .125f};
+                src.style[i] = null;
+                src.numSprites = i + 1;
+            }
+            UiSlice sl = UiSlice.record(src, 0, n, null);
+            zombie.core.sprite.GenericSpriteRenderState dst = sliceState(n);
+            int reps = 100_000;
+            double[] ns = new double[7];
+            for (int r = -2; r < 7; r++) {
+                long t0 = System.nanoTime();
+                for (int k = 0; k < reps; k++) { dst.numSprites = 0; UiSlice.replay(sl, dst); }
+                if (r >= 0) ns[r] = (System.nanoTime() - t0) / (double) reps / n;
+            }
+            long check = 0;
+            for (int i = 0; i < dst.numSprites; i++) {
+                zombie.core.textures.TextureDraw d = dst.sprite[i];
+                check = check * 31 + d.type.ordinal() + d.a + d.col3 + Float.floatToRawIntBits(d.x3) + Float.floatToRawIntBits(d.v1)
+                    + (d.singleCol ? 1 : 0) + (d.vars == null ? 0 : Float.floatToRawIntBits(d.vars[3]) + 7L * d.vars.length);
+            }
+            Arrays.sort(ns);
+            System.out.printf("uislice replay %-5s: %6.2f ns/entry (min %.2f, max %.2f), checksum %x%n", scen, ns[3], ns[0], ns[6], check);
+            double[] rs = new double[7];
+            UiSlice keep = sl;
+            for (int r = -2; r < 7; r++) {
+                long t0 = System.nanoTime();
+                for (int k = 0; k < reps; k++) keep = UiSlice.record(src, 0, n, keep);
+                if (r >= 0) rs[r] = (System.nanoTime() - t0) / (double) reps / n;
+            }
+            Arrays.sort(rs);
+            System.out.printf("uislice record %-5s: %6.2f ns/entry (min %.2f, max %.2f), n %d%n", scen, rs[3], rs[0], rs[6], keep.n);
         }
     }
 }
