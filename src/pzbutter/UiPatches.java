@@ -104,7 +104,7 @@ public final class UiPatches {
 
     /** UIManager.render entry: one UI frame starts. */
     public static void onUiRenderEnter() {
-        if (UiRetain.guard.on || UiRetain.check.on) UiRetain.frameStart();
+        if (UiRetain.any) UiRetain.frameStart();
         if (!UiTiming.guard.on) return;
         try { UiTiming.uiEnter(); } catch (Throwable t) { UiTiming.guard.fail(t); }
     }
@@ -123,7 +123,7 @@ public final class UiPatches {
     public static Object onElementRenderEnter(Object element) {
         Object replayed = null;
         if (UiTiming.guard.on) { try { UiTiming.elementEnter(element, drawCount()); } catch (Throwable t) { UiTiming.guard.fail(t); } }
-        if (UiRetain.guard.on || UiRetain.check.on) {
+        if (UiRetain.any) {
             try { if (UiRetain.onRenderEnter((UIElement) element)) replayed = Boolean.TRUE; } catch (Throwable t) { UiRetain.fail(t); }
         }
         if (UiCensus.guard.on) { try { UiCensus.elementEnter(element); } catch (Throwable t) { UiCensus.guard.fail(t); } }
@@ -131,9 +131,9 @@ public final class UiPatches {
     }
 
     /** UIElement.render exit, also when it threw. replayed is what the entry answered. */
-    public static void onElementRenderExit(Object element, Object replayed) {
-        if (replayed == null && (UiRetain.guard.on || UiRetain.check.on)) {
-            try { UiRetain.onRenderExit((UIElement) element); } catch (Throwable t) { UiRetain.fail(t); }
+    public static void onElementRenderExit(Object element, Object replayed, Throwable thrown) {
+        if (replayed == null && UiRetain.any) {
+            try { UiRetain.onRenderExit((UIElement) element, thrown != null); } catch (Throwable t) { UiRetain.fail(t); }
         }
         if (UiCensus.guard.on) { try { UiCensus.elementExit(element); } catch (Throwable t) { UiCensus.guard.fail(t); } }
         if (!UiTiming.guard.on) return;
@@ -165,9 +165,8 @@ public final class UiPatches {
 
     /** ReturnValues.push entry: a Java answer for Lua. An array is the varargs overload, which pushes each element itself. */
     public static void onJavaAnswer(Object answer) {
-        if (answer instanceof Object[]) return;
         if (UiRetain.noting) { try { UiRetain.noteAnswer(answer); } catch (Throwable t) { UiRetain.fail(t); } }
-        if (!UiCensus.active()) return;
+        if (answer instanceof Object[] || !UiCensus.active()) return;
         try { UiCensus.noteRead(UiCensus.currentCall(), answer); } catch (Throwable t) { UiCensus.guard.fail(t); }
     }
 
@@ -192,7 +191,7 @@ public final class UiPatches {
 
     /** A fact every kept picture depends on changed (texture destroyed or reloaded, UI FBO option). */
     public static void onEpochEvent() {
-        if (UiRetain.guard.on || UiRetain.check.on) UiRetain.bumpEpoch();
+        if (UiRetain.any) UiRetain.bumpEpoch();
     }
 
     /** UIManager.resize exit (every frame; only a size change counts). */
@@ -251,7 +250,9 @@ public final class UiPatches {
         }
 
         @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
-        public static void exit(@Patch.This Object element, @Patch.Local("r") Object r) { onElementRenderExit(element, r); }
+        public static void exit(@Patch.This Object element, @Patch.Local("r") Object r, @Patch.Thrown Throwable thrown) {
+            onElementRenderExit(element, r, thrown);
+        }
     }
 
     @Patch(className = "zombie.core.logger.ExceptionLogger", methodName = "logException")

@@ -15,6 +15,7 @@ import java.util.WeakHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiFunction;
 
+import se.krka.kahlua.integration.expose.caller.AbstractCaller;
 import se.krka.kahlua.integration.expose.caller.MethodCaller;
 import se.krka.kahlua.vm.KahluaTable;
 import zombie.characters.IsoPlayer;
@@ -25,6 +26,7 @@ import zombie.core.sprite.GenericSpriteRenderState;
 import zombie.core.textures.TextureDraw;
 import zombie.entity.components.fluids.FluidContainer;
 import zombie.gameStates.IngameState;
+import zombie.input.Mouse;
 import zombie.GameWindow;
 import zombie.inventory.InventoryItem;
 import zombie.ui.UIElement;
@@ -43,10 +45,11 @@ final class UiRetain {
         "zombie.core.opengl.GLState", "zombie.core.logger.ExceptionLogger", "zombie.core.textures.Texture",
         "zombie.inventory.InventoryItem", "se.krka.kahlua.integration.expose.caller.MethodCaller",
         "se.krka.kahlua.integration.expose.ReturnValues", "se.krka.kahlua.stdlib.OsLib", "se.krka.kahlua.stdlib.RandomLib"};
-    private static final int MOUSE_MARGIN = 4;
     private static final Object[] NO_ARGS = new Object[0];
 
     /** True while a recorded top-level render is open: the note paths do work only then. Main thread writes it. */
+    /** guard.on || check.on, kept in sync: the one check every hook path starts with. */
+    static boolean any;
     static boolean noting;
     /** True while verification re-reads: nothing is noted. */
     static boolean suspended;
@@ -97,6 +100,7 @@ final class UiRetain {
         if (!ready) System.out.println("[PZButter] uiRetained: game members missing; off");
         guard.on = want && ready;
         check.on = diag && ready;
+        any = guard.on || check.on;
         if (guard.on || check.on) for (String c : TARGETS) Main.classPresent(c);
     }
 
@@ -209,9 +213,19 @@ final class UiRetain {
 
         boolean stillSame() {
             if (!answered) return true;   // it pushed nothing (void, or it threw): nothing to compare
-            try { return UiRetain.same(answer, info.method.invoke(info.hasSelf ? self : info.owner, args)); }
+            try { return sameAnswer(answer, info.method.invoke(info.hasSelf ? self : info.owner, args)); }
             catch (Throwable t) { return false; }
         }
+    }
+
+    /** A getter's answer: arrays by content (element by element with same), anything else with same. */
+    static boolean sameAnswer(Object a, Object b) {
+        if (a instanceof Object[] x && b instanceof Object[] y) {
+            if (x.length != y.length) return false;
+            for (int i = 0; i < x.length; i++) if (!sameAnswer(x[i], y[i])) return false;
+            return true;
+        }
+        return same(a, b);
     }
 
     /** A MethodCaller's method, read once: how it is called again and what kind of answer it gives. */
@@ -245,6 +259,7 @@ final class UiRetain {
 
         boolean stillSame() {
             Object[] now = iconValues(item);
+            if (now.length != values.length) return false;
             for (int i = 0; i < now.length; i++) if (!UiRetain.same(values[i], now[i])) return false;
             return true;
         }
@@ -290,6 +305,7 @@ final class UiRetain {
         Geometry[] kidGeo = new Geometry[0];
         int nKids;
         boolean volatileSeen, errorSeen, mouseSeen, live;
+        int mouseX, mouseY;   // where the mouse was when a window read it
         UiSlice slice;   // null: nothing replayable kept
         UiSlice spare;   // the slice object to record into again
 
@@ -345,14 +361,35 @@ final class UiRetain {
         return true;
     }
 
-    /** A window that read the mouse position keeps its picture only while the mouse stays out of its rectangle. */
+    /** A window that read the mouse position keeps its picture only while the mouse stays where it was. */
     static boolean mouseClear(Record r, int mx, int my) {
-        return !r.mouseSeen || !inside(r.geometry, mx, my);
+        return !r.mouseSeen || r.mouseX == mx && r.mouseY == my;
     }
 
-    private static boolean inside(Geometry g, int mx, int my) {
-        return mx >= g.absX - MOUSE_MARGIN && mx < g.absX + g.width + MOUSE_MARGIN
-            && my >= g.absY - MOUSE_MARGIN && my < g.absY + g.height + MOUSE_MARGIN;
+    private static final Map<Class<?>, Boolean> javaRender = new IdentityHashMap<>();
+
+    /** True when the element or anything in its getControls() tree is of a class other than UIElement that declares render(). */
+    static boolean hasJavaRender(UIElement e) { return hasJavaRender(e, 0); }
+
+    private static boolean hasJavaRender(UIElement e, int level) {
+        if (level > 32) return true;   // deeper than any real window: not worth tracing
+        if (overridesRender(e.getClass())) return true;
+        ArrayList<UIElement> c = e.getControls();
+        if (c != null) for (int i = 0; i < c.size(); i++) if (hasJavaRender(c.get(i), level + 1)) return true;
+        return false;
+    }
+
+    private static boolean overridesRender(Class<?> k) {
+        if (k == UIElement.class) return false;
+        Boolean b = javaRender.get(k);
+        if (b == null) {
+            boolean has = false;
+            for (Class<?> c = k; c != null && c != UIElement.class && !has; c = c.getSuperclass()) {
+                try { c.getDeclaredMethod("render"); has = true; } catch (NoSuchMethodException ignored) { }
+            }
+            javaRender.put(k, b = has);
+        }
+        return b;
     }
 
     static Set<String> parseNames(String csv) {
@@ -399,6 +436,7 @@ final class UiRetain {
         abort();
         guard.fail(t);
         check.fail(t);
+        any = guard.on || check.on;
     }
 
     /** UIManager.render entry: a new UI frame; whatever a lost exit left open is dropped. */
@@ -417,7 +455,7 @@ final class UiRetain {
 
     /** UIElement.render entry. True: the window was replayed and the stock render must be skipped. */
     static boolean onRenderEnter(UIElement e) {
-        if (!(guard.on || check.on) || !main()) return false;
+        if (!any || !main()) return false;
         try {
             if (root != null) {
                 depth++;
@@ -428,13 +466,13 @@ final class UiRetain {
         } catch (Throwable t) { fail(t); return false; }
     }
 
-    /** UIElement.render exit, for a render that was not replayed. */
-    static void onRenderExit(UIElement e) {
+    /** UIElement.render exit, for a render that was not replayed. threw: the render ended with an exception. */
+    static void onRenderExit(UIElement e, boolean threw) {
         if (root == null || !main()) return;
         try {
             if (depth > 0) { depth--; return; }
             if (root != e) { abort(); return; }
-            finish(e);
+            finish(e, threw);
         } catch (Throwable t) { fail(t); }
     }
 
@@ -449,20 +487,31 @@ final class UiRetain {
         }
         root = e;
         depth = callDepth = 0;
+        if (!r.live && overridesRender(e.getClass())) r.live = true;   // its Java render draws from Java fields nobody watches
         if (r.live || Core.debug || !(GameWindow.states.current instanceof IngameState)) return false;
-        GenericSpriteRenderState s = SpriteRenderer.instance.states.getPopulatingActiveState();
+        GenericSpriteRenderState s = populating();
         if (s == null) return false;
         int stencil = (int) F.STENCIL.get();
         boolean fbo = UIManager.useUiFbo;
         UiSlice old = r.slice;
         boolean would = old != null && verify(r, e, stencil, ep, fbo);
         if (would && guard.on && !check.on) {
-            GLState.startFrame();
-            UiSlice.replay(old, s);
-            GLState.startFrame();
-            F.STENCIL.set(r.stencilOut);
-            root = null;
-            return true;
+            int n0 = s.numSprites;
+            try {
+                GLState.startFrame();
+                UiSlice.replay(old, s);
+                GLState.startFrame();
+                F.STENCIL.set(r.stencilOut);
+                root = null;
+                return true;
+            } catch (Throwable t) {   // a partial replay must not stay in the queue: stock draws instead
+                s.numSprites = n0;
+                guard.fail(t);
+                check.fail(t);
+                any = guard.on || check.on;
+                old = null;
+                would = false;
+            }
         }
         r.slice = null;
         r.reset();
@@ -484,7 +533,7 @@ final class UiRetain {
         suspended = true;
         try {
             return canReplay(r, stencil, ep, fbo, Geometry.of(e), (t, k) -> ((KahluaTable) t).rawget(k))
-                && kidsSame(r) && callsSame(r) && iconsSame(r) && mouseClear(r, UIManager.lastMouseX, UIManager.lastMouseY);
+                && kidsSame(r) && callsSame(r) && iconsSame(r) && mouseClear(r, Mouse.getXA(), Mouse.getYA());
         } catch (Throwable t) { fail(t); return false; }
         finally { suspended = false; }
     }
@@ -498,7 +547,12 @@ final class UiRetain {
         return ep;
     }
 
-    private static void finish(UIElement e) {
+    /** The state the UI draws into; tests replace it. */
+    static java.util.function.Supplier<GenericSpriteRenderState> populating = () -> SpriteRenderer.instance.states.getPopulatingActiveState();
+
+    private static GenericSpriteRenderState populating() { return populating.get(); }
+
+    private static void finish(UIElement e, boolean threw) {
         Record r = rec;
         GenericSpriteRenderState s = openState;
         int from = openFrom;
@@ -510,11 +564,11 @@ final class UiRetain {
         checkSlice = null;
         depth = callDepth = 0;
         if (r == null) return;
-        GenericSpriteRenderState s2 = SpriteRenderer.instance.states.getPopulatingActiveState();
+        GenericSpriteRenderState s2 = populating();
         int to = s2 == null ? -1 : s2.numSprites;
-        boolean ok = s2 == s && to >= from;
+        boolean ok = !threw && s2 == s && to >= from;
         if (ok && was != null) checkAgainst(e, was, s, from, to);
-        if (r.mouseSeen && inside(r.geometry, UIManager.lastMouseX, UIManager.lastMouseY)) r.volatileSeen = true;
+        if (ok && !r.volatileSeen && hasJavaRender(e)) r.volatileSeen = true;
         r.stencilOut = (int) F.STENCIL.get();
         if (ok && !r.errorSeen && !r.volatileSeen && Geometry.of(e).equals(r.geometry)) {   // a render that moved itself is not kept
             UiSlice sl = UiSlice.record(s, from, to, r.spare);
@@ -525,14 +579,17 @@ final class UiRetain {
             }
             r.slice = sl;
         }
+        if (threw) r.slice = null;
         GLState.startFrame();
     }
 
     // ---- uiRetainCheck ----
 
     private static final Map<String, int[]> checks = new HashMap<>();   // window -> {would replay, differed}
-    private static final Field[] DRAW_FIELDS = Arrays.stream(TextureDraw.class.getFields())
-        .filter(f -> !java.lang.reflect.Modifier.isStatic(f.getModifiers())).toArray(Field[]::new);
+    private static final class DrawFields {
+        static final Field[] ALL = Arrays.stream(TextureDraw.class.getFields())
+            .filter(f -> !java.lang.reflect.Modifier.isStatic(f.getModifiers())).toArray(Field[]::new);
+    }
 
     private static void checkAgainst(UIElement e, UiSlice was, GenericSpriteRenderState s, int from, int to) {
         String name = UiTiming.nameOf(e);
@@ -553,7 +610,7 @@ final class UiRetain {
         for (int i = 0; i < a.n && out.size() < max; i++) {
             if (a.styles[i] != s.style[from + i]) out.add("entry " + i + " field style");
             TextureDraw x = a.entries[i], y = s.sprite[from + i];
-            for (Field f : DRAW_FIELDS) {
+            for (Field f : DrawFields.ALL) {
                 try {
                     if (!Objects.deepEquals(f.get(x), f.get(y)) && out.size() < max) out.add("entry " + i + " field " + f.getName());
                 } catch (Throwable t) { out.add("entry " + i + " field " + f.getName() + " unreadable"); }
@@ -576,10 +633,14 @@ final class UiRetain {
         if (!noting || suspended || !main()) return;
         Call c = null;
         CallInfo ci = info(caller);
-        if (ci == null) rec.volatileSeen = true;   // cannot tell what it is
+        if (ci == null || caller instanceof AbstractCaller ac && ac.needsMultipleReturnValues()) rec.volatileSeen = true;   // cannot tell what it is, or it answers with several values
         else if (ci.kind == UiCensus.TIME || ci.kind == UiCensus.RANDOM) rec.volatileSeen = true;
-        else if (ci.kind == UiCensus.MOUSE) rec.mouseSeen = true;
-        else if (ci.reinvoke) c = rec.addCall(new Call(ci, self, args instanceof Object[] a ? a.clone() : NO_ARGS));
+        else if (ci.kind == UiCensus.MOUSE) {
+            rec.mouseSeen = true;
+            rec.mouseX = Mouse.getXA();
+            rec.mouseY = Mouse.getYA();
+            c = MOUSE_CALL;
+        } else if (ci.reinvoke) c = rec.addCall(new Call(ci, self, args instanceof Object[] a ? a.clone() : NO_ARGS));
         if (callDepth < pending.length) pending[callDepth] = c;
         callDepth++;
     }
@@ -592,9 +653,28 @@ final class UiRetain {
     static void noteAnswer(Object value) {
         if (!noting || suspended || callDepth == 0 || !main()) return;
         Call c = pending[Math.min(callDepth, pending.length) - 1];
-        if (c != null && !c.answered) {
-            c.answer = value;
+        if (c == MOUSE_CALL) return;
+        if (c == null) { rec.volatileSeen = true; return; }   // an answer nobody can check again
+        if (!c.answered) {
+            c.answer = value instanceof Object[] a ? a.clone() : value;
             c.answered = true;
+        }
+    }
+
+    private static final Map<String, int[]> writeLogs = new HashMap<>();
+
+    /** A Lua table write by the open window: one that changes what the table holds makes the window live. */
+    static void noteWrite(Object table, Object key, Object value) {
+        if (!noting || suspended || !main()) return;
+        suspended = true;
+        boolean same;
+        try { same = same(((KahluaTable) table).rawget(key), value); }
+        finally { suspended = false; }
+        if (same) return;
+        rec.volatileSeen = true;
+        if (check.on && root instanceof UIElement e) {
+            int[] n = writeLogs.computeIfAbsent(UiTiming.nameOf(e), k -> new int[1]);
+            if (n[0]++ < 5) System.out.println("[PZButter] uiRetainCheck " + UiTiming.nameOf(e) + ": render writes key " + key);
         }
     }
 
@@ -615,6 +695,8 @@ final class UiRetain {
         rec.errorSeen = true;
     }
 
+    private static final Call MOUSE_CALL = new Call(null, null, null);   // a mouse answer: kept as the position it came from
+
     private static CallInfo info(Object caller) {
         CallInfo ci = infos.get(caller);
         if (ci == null && !infos.containsKey(caller)) {
@@ -631,13 +713,21 @@ final class UiRetain {
     // ---- test entry points (package-private) ----
 
     /** Tests run on the test thread: it becomes the main thread, and r the open record. */
-    static void openForTest(Record r) {
+    static void openForTest(Record r) { openForTest(r, new Object(), null); }
+
+    static void openForTest(Record r, Object rootElement, GenericSpriteRenderState s) {
         FrameClock.mainThread = Thread.currentThread();
         abort();
-        root = new Object();
+        root = rootElement;
         rec = r;
         noting = true;
+        openState = s;
+        openFrom = s == null ? 0 : s.numSprites;
     }
+
+    static int depthForTest() { return depth; }
+
+    static boolean openForTest() { return root != null; }
 
     static void closeForTest() { abort(); }
 }

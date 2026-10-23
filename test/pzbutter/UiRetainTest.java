@@ -57,7 +57,10 @@ final class UiRetainTest {
         retainGeometryOfElement();
         try { retainNotesFillOpenRecord(); } catch (ReflectiveOperationException e) { throw new AssertionError(e); }
         retainSuspendedNotesNothing();
-        retainMouseRule();
+        try { retainMouseNeedsSamePosition(); retainUnverifiableAnswerIsVolatile(); } catch (ReflectiveOperationException e) { throw new AssertionError(e); }
+        retainJavaRenderOverrideIsLive();
+        retainRenderWriteIsVolatile();
+        retainBalanceOnErrorAndThrow();
         retainExcludeAndModsFilter();
         retainSettingsAndInit();
     }
@@ -672,17 +675,113 @@ final class UiRetainTest {
         assert r.reads.size() == 0;
     }
 
-    static void retainMouseRule() {
+    static void retainMouseNeedsSamePosition() throws ReflectiveOperationException {
         UiRetain.Record r = record();
-        UiRetain.Geometry g = new UiRetain.Geometry();
-        g.absX = 100; g.absY = 100; g.width = 50; g.height = 40;
-        r.geometry = g;
-        assert UiRetain.mouseClear(r, 120, 120);    // no mouse read: any position
+        assert UiRetain.mouseClear(r, 1, 1);   // no mouse read: any position
         r.mouseSeen = true;
-        assert UiRetain.mouseClear(r, 0, 0);
-        assert !UiRetain.mouseClear(r, 120, 120);
-        assert !UiRetain.mouseClear(r, 98, 100);    // the margin
-        assert UiRetain.mouseClear(r, 300, 300);
+        r.mouseX = 10;
+        r.mouseY = 20;
+        assert UiRetain.mouseClear(r, 10, 20) && !UiRetain.mouseClear(r, 11, 20) && !UiRetain.mouseClear(r, 10, 19);
+        // a mouse-kind call during a record stores the position and its answer is not "unverifiable"
+        UiRetain.Record n = new UiRetain.Record();
+        UiRetain.openForTest(n);
+        try {
+            se.krka.kahlua.integration.expose.caller.MethodCaller m = new se.krka.kahlua.integration.expose.caller.MethodCaller(
+                Mouseish.class.getMethod("getMouseX"), null, false);
+            UiRetain.noteCall(m, null, new Object[0]);
+            UiRetain.noteAnswer(5);
+            UiRetain.callExit();
+            assert n.mouseSeen && !n.volatileSeen && n.nCalls == 0;
+        } finally { UiRetain.closeForTest(); }
+    }
+
+    public static final class Mouseish { public static int getMouseX() { return 5; } }
+
+    public static class Over extends zombie.ui.UIElement { public void render() { } }
+    public static class Sub extends Over { }
+
+    static void retainJavaRenderOverrideIsLive() {
+        assert !UiRetain.hasJavaRender(new zombie.ui.UIElement());
+        assert UiRetain.hasJavaRender(new Over()) && UiRetain.hasJavaRender(new Sub());
+        zombie.ui.UIElement p = new zombie.ui.UIElement();
+        zombie.ui.UIElement mid = new zombie.ui.UIElement();
+        p.AddChild(mid);
+        assert !UiRetain.hasJavaRender(p);
+        mid.AddChild(new Over());   // a grandchild; it need not call super.render() to count
+        assert UiRetain.hasJavaRender(p);
+    }
+
+    static void retainUnverifiableAnswerIsVolatile() throws ReflectiveOperationException {
+        java.util.ArrayList<Object> list = new java.util.ArrayList<>(List.of(1));
+        se.krka.kahlua.integration.expose.caller.MethodCaller add =
+            new se.krka.kahlua.integration.expose.caller.MethodCaller(java.util.ArrayList.class.getMethod("add", Object.class), null, true);
+        se.krka.kahlua.integration.expose.caller.MethodCaller size =
+            new se.krka.kahlua.integration.expose.caller.MethodCaller(java.util.ArrayList.class.getMethod("size"), null, true);
+        UiRetain.Record r = new UiRetain.Record();
+        UiRetain.openForTest(r);
+        try {
+            UiRetain.noteCall(add, list, new Object[] {2});   // a void-like effect that pushes nothing
+            UiRetain.callExit();
+            assert !r.volatileSeen;
+            UiRetain.noteCall(add, list, new Object[] {3});
+            UiRetain.noteAnswer(true);                         // an answer nobody can re-read
+            UiRetain.callExit();
+            assert r.volatileSeen;
+            r.volatileSeen = false;
+            Object[] arr = {"a", 1.0};
+            UiRetain.noteCall(size, list, new Object[0]);
+            UiRetain.noteAnswer(arr);
+            UiRetain.callExit();
+            arr[0] = "changed";
+            assert !r.volatileSeen && ((Object[]) r.calls[0].answer)[0].equals("a");   // a copy
+        } finally { UiRetain.closeForTest(); }
+        assert UiRetain.sameAnswer(new String[] {"a"}, new String[] {new String("a")});
+        assert !UiRetain.sameAnswer(new String[] {"a"}, new String[] {"b"}) && !UiRetain.sameAnswer(new String[] {"a"}, new String[0]);
+        assert UiRetain.sameAnswer(new Object[] {1.0, new String[] {"x"}}, new Object[] {1.0, new String[] {"x"}});
+    }
+
+    static void retainRenderWriteIsVolatile() {
+        se.krka.kahlua.j2se.KahluaTableImpl t = new se.krka.kahlua.j2se.KahluaTableImpl(new HashMap<>());
+        t.rawset("k", 1.0);
+        UiRetain.Record r = new UiRetain.Record();
+        UiRetain.openForTest(r);
+        try {
+            UiRetain.noteWrite(t, "k", 1.0);        // idempotent: the same value again
+            assert !r.volatileSeen;
+            UiRetain.noteWrite(t, "k", 2.0);
+            assert r.volatileSeen;
+            r.volatileSeen = false;
+            UiRetain.noteWrite(t, "fresh", 1.0);    // a new key
+            assert r.volatileSeen && r.reads.size() == 0;   // the check read itself was not noted
+        } finally { UiRetain.closeForTest(); }
+    }
+
+    // enter/exit stay balanced and nothing is kept when an error was logged or the render threw
+    static void retainBalanceOnErrorAndThrow() {
+        zombie.ui.UIElement root = new zombie.ui.UIElement(), kid = new zombie.ui.UIElement();
+        GenericSpriteRenderState s = state();
+        put(s, 0, TextureDraw.Type.glDraw, 1f);
+        s.numSprites = 1;
+        var saved = UiRetain.populating;
+        boolean savedAny = UiRetain.any;
+        UiRetain.populating = () -> s;
+        UiRetain.any = true;
+        try {
+            for (int mode = 0; mode < 3; mode++) {   // 0 clean, 1 error noted, 2 threw
+                UiRetain.Record r = new UiRetain.Record();
+                r.geometry = UiRetain.Geometry.of(root);
+                UiRetain.openForTest(r, root, s);
+                s.numSprites = 1;
+                assert !UiRetain.onRenderEnter(kid) && UiRetain.depthForTest() == 1;
+                if (mode == 1) UiRetain.noteError();
+                UiRetain.onRenderExit(kid, false);
+                assert UiRetain.depthForTest() == 0 && UiRetain.openForTest();
+                UiRetain.onRenderExit(root, mode == 2);
+                assert !UiRetain.openForTest() && UiRetain.depthForTest() == 0 && !UiRetain.noting;
+                assert (r.slice != null) == (mode == 0) : "mode " + mode;
+                assert r.nKids == 1;
+            }
+        } finally { UiRetain.populating = saved; UiRetain.any = savedAny; UiRetain.closeForTest(); }
     }
 
     static void retainExcludeAndModsFilter() {

@@ -112,6 +112,20 @@ public final class LuaPatches {
         }
     }
 
+    /** KahluaTableImpl.rawset entry (rawset(int, Object) ends here too): a write by the open UI window (uiRetained). */
+    public static void onRawset(Object table, Object key, Object value) {
+        if (!UiRetain.noting) return;
+        try { UiRetain.noteWrite(table, key, value); } catch (Throwable t) { UiRetain.fail(t); }
+    }
+
+    @Patch(className = "se.krka.kahlua.j2se.KahluaTableImpl", methodName = "rawset")
+    public static class Rawset {
+        @Patch.OnEnter
+        public static void enter(@Patch.This Object self, @Patch.Argument(0) Object key, @Patch.Argument(1) Object value) {
+            onRawset(self, key, value);
+        }
+    }
+
     @Patch(className = "se.krka.kahlua.j2se.KahluaTableImpl", methodName = "iterator")
     public static class Iterate {
         @Patch.OnEnter
