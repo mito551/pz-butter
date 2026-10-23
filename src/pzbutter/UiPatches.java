@@ -116,12 +116,14 @@ public final class UiPatches {
 
     /** UIElement.render entry: the element's window starts, or it is nested in one. */
     public static void onElementRenderEnter(Object element) {
+        if (UiCensus.guard.on) { try { UiCensus.elementEnter(element); } catch (Throwable t) { UiCensus.guard.fail(t); } }
         if (!UiTiming.guard.on) return;
         try { UiTiming.elementEnter(element, drawCount()); } catch (Throwable t) { UiTiming.guard.fail(t); }
     }
 
     /** UIElement.render exit, also when it threw. */
     public static void onElementRenderExit(Object element) {
+        if (UiCensus.guard.on) { try { UiCensus.elementExit(element); } catch (Throwable t) { UiCensus.guard.fail(t); } }
         if (!UiTiming.guard.on) return;
         try { UiTiming.elementExit(drawCount()); } catch (Throwable t) { UiTiming.guard.fail(t); }
     }
@@ -130,6 +132,71 @@ public final class UiPatches {
     private static int drawCount() {
         try { return SpriteRenderer.instance.states.getPopulatingActiveState().numSprites; }
         catch (Throwable t) { return -1; }
+    }
+
+    // ---- uiCensus ----
+
+    /** MethodCaller.call entry: a Java method called from Lua starts. */
+    public static void onJavaCallEnter(Object caller) {
+        if (!UiCensus.active()) return;
+        try { UiCensus.noteCall(UiCensus.methodName(caller)); } catch (Throwable t) { UiCensus.guard.fail(t); }
+    }
+
+    /** MethodCaller.call exit, also when it threw. */
+    public static void onJavaCallExit() {
+        if (!UiCensus.active()) return;
+        try { UiCensus.callExit(); } catch (Throwable t) { UiCensus.guard.fail(t); }
+    }
+
+    /** ReturnValues.push entry: a Java answer for Lua. An array is the varargs overload, which pushes each element itself. */
+    public static void onJavaAnswer(Object answer) {
+        if (!UiCensus.active() || answer instanceof Object[]) return;
+        try { UiCensus.noteRead(UiCensus.currentCall(), answer); } catch (Throwable t) { UiCensus.guard.fail(t); }
+    }
+
+    /** OsLib.call and RandomLib.call entry: the render reads the clock or random numbers. */
+    public static void onVolatileCall() {
+        if (!UiCensus.active()) return;
+        try { UiCensus.noteVolatile(); } catch (Throwable t) { UiCensus.guard.fail(t); }
+    }
+
+    /** UIElement.DrawItemIcon entry. */
+    public static void onItemIcon() {
+        if (!UiCensus.active()) return;
+        try { UiCensus.noteItemIcon(); } catch (Throwable t) { UiCensus.guard.fail(t); }
+    }
+
+    @Patch(className = "se.krka.kahlua.integration.expose.caller.MethodCaller", methodName = "call")
+    public static class JavaCall {
+        @Patch.OnEnter
+        public static void enter(@Patch.This Object caller) { onJavaCallEnter(caller); }
+
+        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
+        public static void exit() { onJavaCallExit(); }
+    }
+
+    @Patch(className = "se.krka.kahlua.integration.expose.ReturnValues", methodName = "push")
+    public static class JavaAnswer {
+        @Patch.OnEnter
+        public static void enter(@Patch.Argument(0) Object answer) { onJavaAnswer(answer); }
+    }
+
+    @Patch(className = "se.krka.kahlua.stdlib.OsLib", methodName = "call")
+    public static class OsCall {
+        @Patch.OnEnter
+        public static void enter() { onVolatileCall(); }
+    }
+
+    @Patch(className = "se.krka.kahlua.stdlib.RandomLib", methodName = "call")
+    public static class RandomCall {
+        @Patch.OnEnter
+        public static void enter() { onVolatileCall(); }
+    }
+
+    @Patch(className = "zombie.ui.UIElement", methodName = "DrawItemIcon")
+    public static class ItemIcon {
+        @Patch.OnEnter
+        public static void enter() { onItemIcon(); }
     }
 
     @Patch(className = "zombie.ui.UIManager", methodName = "render")

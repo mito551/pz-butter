@@ -61,6 +61,8 @@ public final class Settings {
       + "luaTiming=false\n"
       + "# uiTiming: once a minute, the UI's time per frame and the 15 slowest windows go to the console and ui.out (diagnostic).\n"
       + "uiTiming=false\n"
+      + "# uiCensus: diagnostic; with uiTiming on, also counts what each UI window reads per frame and how often it read the same values twice in a row (Plan 3c).\n"
+      + "uiCensus=false\n"
       + "# luaRawgetFast: Lua table reads do one hash lookup instead of two (measured slower than stock; off).\n"
       + "luaRawgetFast=false\n"
       + "# luaInternConstants: string constants of loaded Lua are interned, so table lookups match by identity first.\n"

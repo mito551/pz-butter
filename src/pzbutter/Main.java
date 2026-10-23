@@ -22,6 +22,7 @@ public class Main {
         LuaFast.init();
         LuaTiming.init();
         UiTiming.init();
+        UiCensus.init();
         UiTick.init();
         TextWidths.init();
         MapFast.init();

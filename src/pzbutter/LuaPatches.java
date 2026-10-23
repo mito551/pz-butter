@@ -82,6 +82,18 @@ public final class LuaPatches {
         catch (Throwable t) { /* interning is an optimisation only */ }
     }
 
+    /** rawget's answer, after the fast path: a table read counts for the open UI element (uiCensus). */
+    public static void onRawgetAnswer(Object key, Object value) {
+        if (!UiCensus.active()) return;
+        try { UiCensus.noteRead(key, value); } catch (Throwable t) { UiCensus.guard.fail(t); }
+    }
+
+    /** KahluaTableImpl.iterator entry: iterating a table makes the open UI element live (uiCensus). */
+    public static void onIterate() {
+        if (!UiCensus.active()) return;
+        try { UiCensus.noteIterate(); } catch (Throwable t) { UiCensus.guard.fail(t); }
+    }
+
     @Patch(className = "se.krka.kahlua.j2se.KahluaTableImpl", methodName = "rawget")
     public static class Rawget {
         @Patch.OnEnter(skipOn = true)
@@ -91,9 +103,17 @@ public final class LuaPatches {
         }
 
         @Patch.OnExit
-        public static void exit(@Patch.Return(readOnly = false) Object ret, @Patch.Local("v") Object v) {
+        public static void exit(@Patch.Argument(0) Object key, @Patch.Return(readOnly = false) Object ret,
+                                @Patch.Local("v") Object v) {
             if (v != NOT_FAST) ret = v;
+            onRawgetAnswer(key, ret);
         }
+    }
+
+    @Patch(className = "se.krka.kahlua.j2se.KahluaTableImpl", methodName = "iterator")
+    public static class Iterate {
+        @Patch.OnEnter
+        public static void enter() { onIterate(); }
     }
 
     @Patch(className = "se.krka.kahlua.luaj.compiler.LuaCompiler", methodName = "loadis")

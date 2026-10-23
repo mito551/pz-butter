@@ -21,7 +21,7 @@ import zombie.ui.UIManager;
  * another element), inclusive and self, with the sprites queued while it drew. Once a minute the total, the rest and
  * the 15 slowest windows go to the console and, with frameLog, to Zomboid/pzbutter/ui.out. The rest is the total
  * minus every window: OnPreUIDraw / OnPostUIDraw, fades, tooltips and modals, and Java windows whose render() never
- * calls super.render().
+ * calls super.render(). With uiCensus, the census lines follow the window lines.
  */
 final class UiTiming {
     static final Guard guard = new Guard("uiTiming");
@@ -106,7 +106,8 @@ final class UiTiming {
         depth++;
     }
 
-    private static String nameOf(Object element) {
+    /** The window name for a top-level element, cached per element (uiCensus names windows the same way). */
+    static String nameOf(Object element) {
         String name = names.get(element);
         if (name == null) {
             UIElement e = (UIElement) element;
@@ -140,6 +141,7 @@ final class UiTiming {
 
     private static void report(long now) {
         List<String> lines = reportLines(stats.values(), now - windowStartNs, uiNs, frames);
+        if (UiCensus.guard.on) lines.addAll(UiCensus.report(stats, now - windowStartNs));
         for (String l : lines) System.out.println(l);
         if (Settings.frameLog) {
             try (FileWriter w = new FileWriter(new File(System.getProperty("user.home"), "Zomboid/pzbutter/ui.out"), true)) {
