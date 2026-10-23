@@ -47,6 +47,33 @@ The mod creates `~/Zomboid/PZButter.properties` on first start and reads it once
 | `uiRetainedMods` | With `false`, only the game's own windows are reused; windows from mods always run. |
 | `uiRetainExclude` | Windows that always run live, by Java class name or Lua `Type`, comma separated. Default `ObjectTooltip,ISToolTip,ISToolTipInv`. |
 | `uiRetainCheck` | Diagnostic: never reuses a window, but compares each draw list it would have reused with the live one and logs the first differences per window. |
+| `soundTickHz` | `0` is stock. `60` refreshes ambience and zombie sound parameters at 60 Hz. |
+| `emitterIdleSkip` | A silent zombie skips its sound parameters and emitter ticks. |
+| `worldSoundCleanupFast` | World sounds are cleaned up with fewer chunk scans per frame. The same sounds are heard. |
+| `hearingHoist` | Zombies pick the loudest sound they hear with less repeated work. The same sound is picked. |
+| `worldSoundFast` | Fish scaring is worked out once per game minute for each sound position, so repeated sounds cost less. |
+| `soundZoneCache` | Ambient zone sound levels are reused while you stay on one square, so the zone lookup costs less each frame. |
+| `electricityLevelRange` | The power check scans only the height range of loaded chunks, so the same result comes back with less work. |
+| `fliesToggleFix` | Moving between chunks next to an unchanged corpse pile no longer redraws that chunk, which removes a hitch. |
+| `fmodNullHandleFix` | When FMOD is out of event slots, the emitter sound is dropped instead of crashing the game. |
+| `corpseFliesCap` | Flies around corpse piles are counted up to 12, which also lowers corpse sickness next to piles above 12. |
+| `audioLimiter` | Changes what you hear: loud peaks are held under the ceiling, using FMOD's own limiter on the master output. |
+| `audioLimiterCeilingDb` | The highest level the limiter lets through, in dB (-12 to 0; default -2). |
+| `audioLimiterStereoFold` | With a stereo output, the limiter works on the stereo mix. Only acts together with `audioLimiter`. |
+| `occlusionSkipLightingOnly` | The wall occlusion grid is rebuilt only when something other than light changed. Light updates cost less. |
+| `lightInfoOncePerFrame` | A clean square's light is read once per lighting update, so the light lookups cost less. |
+| `lightSwitchCheckFrames` | `0` is stock. `15` lets a light switch reuse its power answer for 15 frames (0.25 s at 60 fps). |
+| `lightingFps` | `0` leaves the game's lighting rate. `1` to `120` sets the lighting thread's rate; it changes lighting smoothness, not main-frame time. |
+| `gridStackInterval` | `0` is stock. `8` runs the buildings-in-front scan every 8 frames while you stay put. |
+| `roofHideDebounceFrames` | `0` is stock. `8` holds a carport roof's hide or show for 8 frames, so it doesn't flicker. |
+| `cutawayInvalidateChanged` | Only chunks where a wall's cutaway actually changed are redrawn. |
+| `cutawayVisitPrefilter` | Walls that cannot cut away are skipped before the cutaway walk, so it costs less. |
+| `cutawayRadius` | `0` is stock. `6` limits cutaway wall checks to chunks near you; only far zoomed-out views change. |
+| `cutawayFast` | Clean chunks reuse their stored cutaway occluder masks instead of testing every square again. |
+| `rainSplashesFast` | Rain splashes start with fewer random-number calls. The same odds. |
+| `weatherMaskIdleSkip` | With no clouds, fog or precipitation active (and none fading out), the weather mask is not drawn. |
+| `puddleEarlyZ` | Hidden puddles are rejected before the costly shader. The look is the same. |
+| `fogEarlyZ` | Hidden fog is rejected before the costly shader. The look is the same. |
 
 Each line of `frames.out` has five fields:
 
@@ -83,6 +110,7 @@ PZ Butter is inspired by the mods below and aims to cover what they do, in one m
 | VRAM Steady | VRAM Steady authors | [3819844505](https://steamcommunity.com/sharedfiles/filedetails/?id=3819844505) |
 | Character Texture VRAM Leak Fix [ZombieBuddy] | syeon | [3821525282](https://steamcommunity.com/sharedfiles/filedetails/?id=3821525282) |
 | Project Zomboid Optimiser (PZO) | prop11 | [3787481250](https://steamcommunity.com/sharedfiles/filedetails/?id=3787481250) |
+| Tempo - A Performance & FPS Optimizer | Vyper | [3736629791](https://steamcommunity.com/sharedfiles/filedetails/?id=3736629791) |
 | Lua Budget | mito551 | not on the Workshop; merged into PZ Butter (its rules stay in `Zomboid/LuaBudget.properties`; remove the LuaBudget mod from the mod list) |
 
 The table lists what the project aims to cover; not everything each mod does is covered yet. The Viewpoint add-ons above need the Viewpoint mod itself ([3809306528](https://steamcommunity.com/sharedfiles/filedetails/?id=3809306528)). PZ Butter covers what the add-ons do, not Viewpoint.

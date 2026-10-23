@@ -27,6 +27,15 @@ public class Main {
         UiTick.init();
         TextWidths.init();
         MapFast.init();
+        SoundTick.init();
+        WorldSounds.init();
+        SoundFixes.init();
+        LightChecks.init();
+        GridGate.init();
+        Cutaways.init();
+        Weather.init();
+        AudioLimiter.init();
+        SoundPatches.onFmodInit();
         LuaPatches.uiLuaFast = Settings.flag("uiLuaFast");
     }
 

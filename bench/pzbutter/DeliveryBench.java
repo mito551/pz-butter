@@ -14,6 +14,13 @@ import java.util.Arrays;
  *          10 % entries with a 4-float vars array); prints a checksum of the replayed state, which must not change.
  * readset: ns per read for UiRetain.ReadSet: add (recording), stillSame with every value unchanged, and stillSame with
  *          the value changed whose first read comes last; 200 and 2000 reads over real Kahlua tables, each (table, key) read 4 times per render.
+ * soundgate: ns per SoundPatches.skipTick() call with soundTickHz=60, at 2000 calls a frame (a horde's sound parameters)
+ *          and at 3 calls a frame (ambience only); frames advance every N calls.
+ * cutaway: ns per cutawayFast replay (Cutaways.replayable + replay, as occludingEnter) over 256 chunk levels, for sparse,
+ *          dense and box-clipped masks; prints a grid checksum, which must not change.
+ * splash:  ns per Weather.updateSplashes (SplittableRandom overload) per 64-square chunk level, after warm-up to the
+ *          steady state, for light rain (n 2000), heavy rain (n 400) and heavy rain at 30 fps (n 100); prints the
+ *          trigger rate per idle square, which must stay near 1/n.
  */
 public final class DeliveryBench {
     static final com.sun.management.ThreadMXBean MX = (com.sun.management.ThreadMXBean) ManagementFactory.getThreadMXBean();
@@ -27,7 +34,10 @@ public final class DeliveryBench {
             case "rawget" -> rawget();
             case "uislice" -> uislice();
             case "readset" -> readset();
-            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | uislice | readset");
+            case "soundgate" -> soundgate();
+            case "cutaway" -> cutaway();
+            case "splash" -> splash();
+            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | uislice | readset | soundgate | cutaway | splash");
         }
     }
 
@@ -277,6 +287,105 @@ public final class DeliveryBench {
             System.out.printf("readset %4d add    : %6.2f ns/read (min %.2f, max %.2f)%n", reads, add[3], add[0], add[6]);
             System.out.printf("readset %4d same   : %6.2f ns/read (min %.2f, max %.2f)%n", reads, same[3], same[0], same[6]);
             System.out.printf("readset %4d changed: %6.2f ns/read (min %.2f, max %.2f), checksum %x%n", reads, changed[3], changed[0], changed[6], check);
+        }
+    }
+
+    static void soundgate() throws Exception {
+        java.io.File f = java.io.File.createTempFile("pzb-bench", ".properties");
+        f.deleteOnExit();
+        try (java.io.FileWriter w = new java.io.FileWriter(f)) { w.write("enabled=true\nsoundTickHz=60\n"); }
+        Settings.load(f);
+        SoundTick.init();
+        FrameClock.on = true;   // the gate reads a frame counter only while it runs
+        for (int perFrame : new int[] {2000, 3}) {
+            int n = 30_000_000;
+            double[] ns = new double[7];
+            long skipped = 0;
+            for (int r = -1; r < 7; r++) {
+                long sk = 0, t0 = System.nanoTime();
+                for (int i = 0; i < n; i++) {
+                    if (i % perFrame == 0) FrameClock.frameNo++;
+                    if (SoundPatches.skipTick()) sk++;
+                }
+                if (r >= 0) ns[r] = (System.nanoTime() - t0) / (double) n;
+                skipped = sk;
+            }
+            Arrays.sort(ns);
+            System.out.printf("soundgate %4d/frame: %6.3f ns/call (min %.3f, max %.3f), skipped %d%n", perFrame, ns[3], ns[0], ns[6], skipped);
+        }
+    }
+
+    static void cutaway() {
+        int levels = 256, gw = 60;
+        // scenario: name, bits set per mask, box x origin (0 = chunk inside the box, 20 = box cuts the chunk)
+        Object[][] scen = {{"sparse", 8, 0}, {"dense", 48, 0}, {"clipped", 24, 20}};
+        for (Object[] s : scen) {
+            int bits = (Integer) s[1], gx1 = (Integer) s[2], gy1 = 0, gx2 = gx1 + gw - 1, gy2 = gw - 1;
+            java.util.Random r = new java.util.Random(7);
+            Cutaways.Fast[] fs = new Cutaways.Fast[levels];
+            long[] stored = new long[levels];
+            int[] wx = new int[levels], wy = new int[levels], z = new int[levels];
+            for (int l = 0; l < levels; l++) {
+                long t = 0;
+                while (Long.bitCount(t) < bits) t |= 1L << r.nextInt(64);
+                Cutaways.Fast f = new Cutaways.Fast();
+                int p = l & 3;
+                Cutaways.beginCompute(f, p, gx1, gy1, gx2, gy2);
+                f.truth[p] = t;
+                Cutaways.endCompute(f, p);
+                fs[l] = f;
+                stored[l] = Cutaways.lossy(t);
+                wx[l] = 2 + (l & 3); wy[l] = 2 + ((l >> 2) & 3); z[l] = (l >> 4) % 3;
+            }
+            int[] grid = new int[gw * gw];
+            int n = 40_000;
+            double[] ns = new double[7];
+            long sum = 0;
+            for (int run = -2; run < 7; run++) {
+                long t0 = System.nanoTime();
+                for (int k = 0; k < n; k++) {
+                    for (int l = 0; l < levels; l++) {
+                        int p = l & 3;
+                        if (Cutaways.replayable(fs[l], p, gx1, gy1, gx2, gy2, stored[l]))
+                            Cutaways.replay(fs[l].truth[p], wx[l], wy[l], z[l], gx1, gy1, gx2, gy2, gx2 - gx1 + 1, grid);
+                    }
+                    if ((k & 63) == 0) Arrays.fill(grid, -32);
+                }
+                if (run >= 0) ns[run] = (System.nanoTime() - t0) / (double) n / levels;
+                sum = 0;
+                for (int i = 0; i < grid.length; i++) sum = sum * 31 + grid[i];
+            }
+            Arrays.sort(ns);
+            System.out.printf("cutaway %-7s: %6.3f ns/level (min %.3f, max %.3f), checksum %x%n", s[0], ns[3], ns[0], ns[6], sum);
+        }
+    }
+
+    static void splash() {
+        int levels = 256;
+        for (int n : new int[] {2000, 400, 100}) {
+            java.util.SplittableRandom r = new java.util.SplittableRandom(11);
+            float step = 0.08f * (30.0f / 120f);
+            float[][] frame = new float[levels][64];
+            byte[][] flags = new byte[levels][64];
+            for (float[] f : frame) Arrays.fill(f, -1f);
+            for (int k = 0; k < 2000; k++) for (int l = 0; l < levels; l++) Weather.updateSplashes(frame[l], flags[l], n, step, r);
+            int frames = 4000;
+            double[] ns = new double[7];
+            long idle = 0, trig = 0;
+            for (int run = -2; run < 7; run++) {
+                long t0 = System.nanoTime();
+                for (int k = 0; k < frames; k++) for (int l = 0; l < levels; l++) Weather.updateSplashes(frame[l], flags[l], n, step, r);
+                if (run >= 0) ns[run] = (System.nanoTime() - t0) / (double) frames / levels;
+            }
+            for (int k = 0; k < 200; k++) for (int l = 0; l < levels; l++) {   // rate check, outside the timing
+                float[] f = frame[l];
+                int before = 0; for (float v : f) if (v < 0) before++;
+                Weather.updateSplashes(f, flags[l], n, step, r);
+                idle += before;
+                for (float v : f) if (v == 0f) trig++;
+            }
+            Arrays.sort(ns);
+            System.out.printf("splash n %4d: %6.3f ns/level (min %.3f, max %.3f), rate x n %.3f%n", n, ns[3], ns[0], ns[6], trig * (double) n / idle);
         }
     }
 }

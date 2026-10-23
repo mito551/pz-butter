@@ -15,7 +15,7 @@ public final class SelfTest {
         catch (IOException e) { throw new RuntimeException(e); }
     }
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
         boolean ea = false;
         assert ea = true;
         if (!ea) throw new IllegalStateException("run with -ea");
@@ -33,6 +33,8 @@ public final class SelfTest {
         pzbutter.luabudget.BudgetTest.run();
         LuaUiTest.run();
         UiRetainTest.run();
+        SoundTest.run();
+        WorldTest.run();
         delete(DIR);
         System.out.println("ok");
     }
