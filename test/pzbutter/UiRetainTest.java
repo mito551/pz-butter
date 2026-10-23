@@ -1,8 +1,22 @@
 package pzbutter;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+import java.util.Arrays;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+
+import zombie.core.Styles.AlphaOp;
+import zombie.core.Styles.GeometryData;
+import zombie.core.Styles.Style;
+import zombie.core.profiling.PerformanceProfileProbe;
+import zombie.core.sprite.GenericSpriteRenderState;
+import zombie.core.textures.Texture;
+import zombie.core.textures.TextureDraw;
 
 /** Plan 3c checks (uiCensus first). Run from SelfTest.main; failures are AssertionErrors. */
 final class UiRetainTest {
@@ -26,6 +40,13 @@ final class UiRetainTest {
         censusReusableThreeLevels();
         censusReusableMixedThreeLevels();
         censusChildReportLine();
+        sliceCopyIsComplete();
+        sliceCopyDoesNotAliasVars();
+        sliceReplayableTypes();
+        sliceRejectsUnreadyTexture();
+        sliceRejectsDrawerFutureProbe();
+        sliceRecordReplayRoundTrip();
+        sliceRecordReusesEntries();
     }
 
     static void censusKinds() {
@@ -302,5 +323,172 @@ final class UiRetainTest {
         assert children.size() == 1;
         assert children.get(0).contains("ms/s  stable  50.0%  W > C");
         UiTiming.clock = System::nanoTime;
+    }
+
+    // a state whose first slots are objects (CheckSpriteSlots only fills the slot at numSprites)
+    private static GenericSpriteRenderState state() {
+        GenericSpriteRenderState s = new GenericSpriteRenderState(0) { };
+        for (int i = 0; i < 8; i++) {
+            s.numSprites = i;
+            s.CheckSpriteSlots();
+        }
+        s.numSprites = 0;
+        return s;
+    }
+
+    private static void put(GenericSpriteRenderState s, int i, TextureDraw.Type t, float x) {
+        TextureDraw d = s.sprite[i];
+        d.type = t;
+        d.x0 = x;
+        d.vars = new float[] {x};
+        d.tex = null;
+    }
+
+    private static Style style(int id) {
+        return new Style() {
+            public void setupState() { }
+            public void resetState() { }
+            public int getStyleID() { return id; }
+            public AlphaOp getAlphaOp() { return null; }
+            public boolean getRenderSprite() { return true; }
+            public GeometryData build() { return null; }
+            public void render(int a, int b) { }
+        };
+    }
+
+    // copy carries every instance field: set each to a distinct value by reflection, copy, compare
+    static void sliceCopyIsComplete() {
+        try { copyCarriesEveryField(); } catch (ReflectiveOperationException e) { throw new AssertionError(e); }
+    }
+
+    private static void copyCarriesEveryField() throws ReflectiveOperationException {
+        TextureDraw a = new TextureDraw(), b = new TextureDraw();
+        b.drawer = new TextureDraw.GenericDrawer() { public void render() { } };
+        b.future = CompletableFuture.completedFuture(null);
+        b.probe = new PerformanceProfileProbe("copy-test");
+        int i = 1;
+        for (Field f : TextureDraw.class.getDeclaredFields()) {
+            if (Modifier.isStatic(f.getModifiers())) continue;
+            String n = f.getName();
+            // handles a kept slice never holds: copy leaves them null (ImDrawData needs native imgui, so it is never set)
+            if (n.equals("drawer") || n.equals("future") || n.equals("probe") || n.equals("imDrawData")) continue;
+            f.setAccessible(true);
+            Class<?> t = f.getType();
+            if (t == float.class) f.setFloat(a, i++);
+            else if (t == int.class) f.setInt(a, i++);
+            else if (t == boolean.class) f.setBoolean(a, true);
+            else if (t == byte.class) f.setByte(a, (byte) i++);
+            else if (t == TextureDraw.Type.class) f.set(a, TextureDraw.Type.glStencilFunc);
+            else if (t == float[].class) f.set(a, new float[] {i++});
+            else if (t == Texture.class) f.set(a, new Texture());
+        }
+        UiSlice.copy(a, b);
+        assert b.drawer == null && b.future == null && b.probe == null && b.imDrawData == null;
+        for (Field f : TextureDraw.class.getDeclaredFields()) {
+            if (Modifier.isStatic(f.getModifiers())) continue;
+            f.setAccessible(true);
+            Object x = f.get(a), y = f.get(b);
+            assert java.util.Objects.equals(x, y) || (x instanceof float[] fa && Arrays.equals(fa, (float[]) y)) : f.getName();
+        }
+    }
+
+    static void sliceCopyDoesNotAliasVars() {
+        TextureDraw src = new TextureDraw(), dst = new TextureDraw();
+        src.vars = new float[] {1f, 2f};
+        UiSlice.copy(src, dst);
+        assert dst.vars != src.vars && Arrays.equals(dst.vars, new float[] {1f, 2f});
+        src.vars[0] = 9f;
+        assert dst.vars[0] == 1f;
+        float[] kept = dst.vars;
+        UiSlice.copy(src, dst);   // same length: the destination keeps its own array
+        assert dst.vars == kept;
+        src.vars = new float[3];
+        UiSlice.copy(src, dst);   // other length: a fresh array of the source's length
+        assert dst.vars.length == 3 && dst.vars != src.vars;
+        src.vars = null;
+        UiSlice.copy(src, dst);
+        assert dst.vars == null;
+    }
+
+    static void sliceReplayableTypes() {
+        Set<TextureDraw.Type> want = EnumSet.of(TextureDraw.Type.glDraw, TextureDraw.Type.glStencilFunc,
+                TextureDraw.Type.glStencilOp, TextureDraw.Type.glStencilMask, TextureDraw.Type.glColorMask,
+                TextureDraw.Type.glAlphaFunc, TextureDraw.Type.glBlendFunc, TextureDraw.Type.glBlendFuncSeparate,
+                TextureDraw.Type.glEnable, TextureDraw.Type.glDisable);
+        for (TextureDraw.Type t : TextureDraw.Type.values()) assert UiSlice.replayable(t) == want.contains(t) : t;
+    }
+
+    // a texture still loading (EMPTY) makes the range unkept; no texture is fine. A READY Texture cannot be built
+    // headless (its constructors reach GL), so the accept branch for a ready texture is not exercised here.
+    static void sliceRejectsUnreadyTexture() {
+        GenericSpriteRenderState s = state();
+        put(s, 0, TextureDraw.Type.glDraw, 1f);
+        s.sprite[0].tex = new Texture();
+        assert UiSlice.record(s, 0, 1, null) == null;
+        s.sprite[0].tex = null;
+        assert UiSlice.record(s, 0, 1, null) != null;
+    }
+
+    // record refuses any range holding a non-null drawer, future, probe, or a non-replayable entry
+    static void sliceRejectsDrawerFutureProbe() {
+        GenericSpriteRenderState s = state();
+        put(s, 0, TextureDraw.Type.glDraw, 1f);
+        put(s, 1, TextureDraw.Type.glEnable, 2f);
+        assert UiSlice.record(s, 0, 2, null) != null;
+        s.sprite[0].drawer = new TextureDraw.GenericDrawer() { public void render() { } };
+        assert UiSlice.record(s, 0, 2, null) == null;
+        s.sprite[0].drawer = null;
+        s.sprite[0].future = CompletableFuture.completedFuture(null);
+        assert UiSlice.record(s, 0, 2, null) == null;
+        s.sprite[0].future = null;
+        s.sprite[0].probe = new PerformanceProfileProbe("reject-test");
+        assert UiSlice.record(s, 0, 2, null) == null;
+        s.sprite[0].probe = null;
+        assert UiSlice.record(s, 0, 2, null) != null;
+        put(s, 1, TextureDraw.Type.DrawModel, 2f);
+        assert UiSlice.record(s, 0, 2, null) == null;
+    }
+
+    // record copies a range, replay writes it into another state's own slots, and the kept slice aliases nothing
+    static void sliceRecordReplayRoundTrip() {
+        GenericSpriteRenderState src = state();
+        put(src, 0, TextureDraw.Type.glEnable, 0f);   // outside the recorded range
+        put(src, 1, TextureDraw.Type.glDraw, 1f);
+        src.sprite[1].flipped = true;
+        src.sprite[1].col0 = 7;
+        src.style[1] = style(11);
+        put(src, 2, TextureDraw.Type.glStencilFunc, 2f);
+        put(src, 3, TextureDraw.Type.glDraw, 3f);
+        src.style[3] = style(13);
+        UiSlice sl = UiSlice.record(src, 1, 4, null);
+        assert sl != null && sl.n == 3;
+        assert sl.styles[0] == src.style[1] && sl.styles[2] == src.style[3];
+        assert sl.entries[0] != src.sprite[1];   // the slice owns its entries
+
+        GenericSpriteRenderState dst = state();
+        UiSlice.replay(sl, dst);
+        assert dst.numSprites == 3 && UiSlice.sameAs(sl, dst, 0, 3);
+        assert UiSlice.sameAs(sl, src, 1, 4);
+        for (int i = 0; i < 3; i++) assert dst.sprite[i] != sl.entries[i];   // the state's own slots
+        dst.sprite[0].vars[0] = 99f;
+        assert sl.entries[0].vars[0] == 1f;
+        UiSlice.replay(sl, dst);   // replay appends
+        assert dst.numSprites == 6 && UiSlice.sameAs(sl, dst, 3, 6);
+    }
+
+    // a second record into the same slice reuses its entries, and sameAs sees a changed field
+    static void sliceRecordReusesEntries() {
+        GenericSpriteRenderState s = state();
+        put(s, 0, TextureDraw.Type.glDraw, 1f);
+        put(s, 1, TextureDraw.Type.glDraw, 2f);
+        UiSlice sl = UiSlice.record(s, 0, 2, null);
+        TextureDraw first = sl.entries[0];
+        put(s, 0, TextureDraw.Type.glDraw, 5f);
+        assert UiSlice.record(s, 0, 2, sl) == sl;
+        assert sl.entries[0] == first && first.x0 == 5f;
+        assert UiSlice.sameAs(sl, s, 0, 2);
+        assert !UiSlice.sameAs(sl, s, 0, 1);
+        s.sprite[1].y2 = 9f;
+        assert !UiSlice.sameAs(sl, s, 0, 2);
     }
 }
