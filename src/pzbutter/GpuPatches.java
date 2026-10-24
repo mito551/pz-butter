@@ -17,6 +17,7 @@ public final class GpuPatches {
         QuadWriter.init();
         PersistentVbo.init();
         NoSync.init();
+        GpuTimer.init();
     }
 
     /** True on the thread that owns the GL context: the render thread, once the first swap has set it. */
@@ -149,8 +150,19 @@ public final class GpuPatches {
         catch (Throwable t) { PersistentVbo.guard.fail(t); PersistentVbo.batchFailed(); }
     }
 
+    /** SpriteRenderer.postRender entry, render thread: the GPU timer's frame start (bakeBudgetGpu). */
+    public static void onRenderFrameStart() {
+        if (!GpuTimer.guard.on || !glThread()) return;
+        try { GpuTimer.frameBegin(); }
+        catch (Throwable t) { GpuTimer.guard.fail(t); }
+    }
+
     /** Display.swapBuffers entry, render thread (after DeliveryPatches' own thread test). */
     public static void onSwapBegin() {
+        if (GpuTimer.guard.on && glThread()) {
+            try { GpuTimer.frameEnd(); }
+            catch (Throwable t) { GpuTimer.guard.fail(t); }
+        }
         if (NoSync.guard.on) {
             try { NoSync.topUp(); }
             catch (Throwable t) { NoSync.guard.fail(t); }

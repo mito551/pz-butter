@@ -204,6 +204,7 @@ public final class DeliveryPatches {
 
     /** SpriteRenderer.postRender entry (render thread): the cursor move. */
     public static void onPostRenderStart() {
+        GpuPatches.onRenderFrameStart();
         if (CursorLatch.guard.on) moveCursor();
     }
 

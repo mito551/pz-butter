@@ -86,7 +86,7 @@ final class ModCompat {
         Map.entry("DeliveryPatches.KeyboardPolled", INPUT),
         Map.entry("DeliveryPatches.CursorRecord", k("cursorLatch")),
         Map.entry("DeliveryPatches.RightDelay", k("aimHoldMs")),
-        Map.entry("DeliveryPatches.PostRender", k("cursorLatch")),
+        Map.entry("DeliveryPatches.PostRender", k("cursorLatch", "bakeBudgetGpu")),
         Map.entry("DeliveryPatches.SpriteNotify", k("renderIdleWait")),
         Map.entry("DeliveryPatches.RenderNotify", k("renderIdleWait")),
         Map.entry("DeliveryPatches.ContextWake", k("renderIdleWait")),
@@ -99,7 +99,7 @@ final class ModCompat {
         Map.entry("DeliveryPatches.DisplayModeSet", k("borderlessFullscreen")),
         Map.entry("DeliveryPatches.IsFullscreen", k("borderlessFullscreen")),
         Map.entry("DeliveryPatches.Swap", k("gpuMaxFrames", "presentPacing", "vblankLock", "frameStartGate", "reflexSleep", "vrrCap",
-            "vsyncAdaptive", "vrr", "borderlessFullscreen", "persistentVbo", "bakeNoSync")),
+            "vsyncAdaptive", "vrr", "borderlessFullscreen", "persistentVbo", "bakeNoSync", "bakeBudgetGpu")),
         // Lua
         Map.entry("LuaPatches.Rawget", k("luaRawgetFast", "uiCensus", "uiRetained", "uiRetainCheck")),
         Map.entry("LuaPatches.Rawset", UI_RETAIN),

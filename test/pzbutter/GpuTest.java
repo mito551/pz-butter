@@ -67,6 +67,12 @@ final class GpuTest {
         noSyncStalePendingIsNotTaken();
         noSyncInitReadsKeys();
         noSyncHoldersTargetStock();
+        gpuTimerReadsThreeFramesLate();
+        gpuTimerSkipsUnavailable();
+        gpuLoadFeedsBudget();
+        gpuTimerIncompleteAndNotCapable();
+        gpuTimerShimsGateOnThreadAndKey();
+        gpuTimerInitNeedsAdaptive();
     }
 
     static final String[] PLAN9_FLAGS = {"persistentVbo", "vboFastQuads", "smartTextureRelease", "bakeNoSync", "bakeNoSyncCheck", "bakeBudgetGpu", "gpuStats"};
@@ -866,5 +872,118 @@ final class GpuTest {
         java.lang.reflect.Method init = zombie.core.textures.TextureFBO.class.getDeclaredMethod("initInternal",
             zombie.interfaces.ITexture.class, zombie.interfaces.ITexture.class, boolean.class);
         assert java.lang.reflect.Modifier.isPrivate(init.getModifiers());
+    }
+
+    // ---- Task 10: GPU frame time ----
+
+    static final class FakeQueries implements GpuTimer.Queries {
+        final java.util.Map<Integer, Long> v = new java.util.HashMap<>();
+        final java.util.Set<Integer> ready = new java.util.HashSet<>();
+        long clock;
+        boolean capable = true;
+        public boolean capable() { return capable; }
+        public void stamp(int id) { v.put(id, clock); }
+        public boolean available(int id) { return ready.contains(id); }
+        public long value(int id) { return v.get(id); }
+        public int[] gen(int n) { int[] a = new int[n]; for (int i = 0; i < n; i++) a[i] = 10 + i; return a; }
+    }
+
+    static void gpuTimerReadsThreeFramesLate() {
+        GpuTimer.resetForTest(); FakeQueries q = new FakeQueries(); GpuTimer.q = q; GpuTimer.guard.on = true;
+        for (int f = 0; f < 3; f++) { q.clock = f * 10_000_000L; GpuTimer.frameBegin(); q.clock += 4_000_000L; GpuTimer.frameEnd(); }
+        assert GpuTimer.lastGpuMs == -1;                                          // nothing readable before frame 3
+        q.ready.addAll(q.v.keySet());
+        q.clock = 30_000_000L; GpuTimer.frameBegin();
+        assert Math.abs(GpuTimer.lastGpuMs - 4.0) < 1e-9;                          // frame 0's begin-to-end
+        assert GpuTimer.samples == 1 && GpuTimer.skipped == 0;
+        assert GpuTimer.slot(5) == 1 && GpuTimer.slot(4) == 0 && GpuTimer.readable(5) == 2 && GpuTimer.readable(2) < 0;
+        GpuTimer.resetForTest();
+    }
+
+    static void gpuTimerSkipsUnavailable() {
+        GpuTimer.resetForTest(); FakeQueries q = new FakeQueries(); GpuTimer.q = q; GpuTimer.guard.on = true;
+        for (int f = 0; f < 6; f++) { GpuTimer.frameBegin(); GpuTimer.frameEnd(); }  // never available: never waits, never reads
+        assert GpuTimer.lastGpuMs == -1 && GpuTimer.skipped >= 3;
+        // the end of a pair that was not ready is not read later either (its slot was cleared), a later ready pair is
+        q.ready.addAll(q.v.keySet());
+        for (int f = 0; f < 4; f++) { GpuTimer.frameBegin(); GpuTimer.frameEnd(); q.ready.addAll(q.v.keySet()); }
+        assert GpuTimer.lastGpuMs >= 0 && GpuTimer.samples >= 1;
+        GpuTimer.resetForTest();
+    }
+
+    static void gpuLoadFeedsBudget() {
+        GpuTimer.resetForTest();
+        assert GpuTimer.loadMs(5.0) == 5.0;
+        GpuTimer.guard.on = true; GpuTimer.lastGpuMs = 12.5;
+        assert GpuTimer.loadMs(5.0) == 12.5 && GpuTimer.loadMs(20.0) == 20.0;
+        assert BakeHold.adaptive(8, 8, GpuTimer.loadMs(5.0), 1000.0 / 120) == 4;   // a GPU-bound frame halves the bake budget
+        GpuTimer.guard.on = false;
+        assert GpuTimer.loadMs(5.0) == 5.0;                                        // key off: the game thread's step alone
+        GpuTimer.resetForTest();
+    }
+
+    static void gpuTimerIncompleteAndNotCapable() {
+        GpuTimer.resetForTest(); FakeQueries q = new FakeQueries(); GpuTimer.q = q; GpuTimer.guard.on = true;
+        // frame 0 never ended (a second frame start replaces it); frames 1 and 2 complete and ready
+        GpuTimer.frameBegin(); GpuTimer.frameBegin(); GpuTimer.frameEnd();
+        GpuTimer.frameBegin(); GpuTimer.frameEnd();
+        q.ready.addAll(q.v.keySet());
+        GpuTimer.frameBegin();                                                     // frame 3 reads frame 0: incomplete, skipped
+        assert GpuTimer.lastGpuMs == -1 && GpuTimer.skipped == 1;
+        GpuTimer.frameEnd(); GpuTimer.frameEnd();                                  // a stray end does nothing
+        GpuTimer.resetForTest();
+        FakeQueries none = new FakeQueries(); none.capable = false; GpuTimer.q = none; GpuTimer.guard.on = true;
+        GpuTimer.frameBegin();
+        assert !GpuTimer.guard.on && none.v.isEmpty();                              // no timer queries on this driver: off, nothing stamped
+        GpuTimer.frameEnd();
+        GpuTimer.resetForTest();
+    }
+
+    static void gpuTimerShimsGateOnThreadAndKey() throws Exception {
+        GpuTimer.resetForTest(); FakeQueries q = new FakeQueries(); GpuTimer.q = q;
+        GpuPatches.onRenderFrameStart(); GpuPatches.onSwapBegin();               // key off
+        assert q.v.isEmpty();
+        GpuTimer.guard.on = true;
+        Thread was = PresentLog.renderThread;
+        try {
+            PresentLog.renderThread = null;
+            GpuPatches.onRenderFrameStart();
+            assert q.v.isEmpty();                                                   // before the first swap there is no render thread
+            PresentLog.renderThread = new Thread(() -> { });
+            GpuPatches.onRenderFrameStart();
+            assert q.v.isEmpty();                                                   // another thread passes through
+            PresentLog.renderThread = Thread.currentThread();
+            GpuPatches.onRenderFrameStart();
+            assert q.v.size() == 1;
+            GpuPatches.onSwapBegin();
+            assert q.v.size() == 2;
+            GpuTimer.q = new GpuTimer.Queries() {                                    // a throwing driver counts into the guard, never into the game
+                public boolean capable() { throw new IllegalStateException("x"); }
+                public void stamp(int id) { }
+                public boolean available(int id) { return false; }
+                public long value(int id) { return 0; }
+                public int[] gen(int n) { return null; }
+            };
+            GpuTimer.resetForTestKeepQueries();
+            GpuTimer.guard.on = true;
+            for (int i = 0; i < 6; i++) GpuPatches.onRenderFrameStart();
+            assert !GpuTimer.guard.on;
+        } finally {
+            PresentLog.renderThread = was; GpuTimer.resetForTest();
+        }
+    }
+
+    static void gpuTimerInitNeedsAdaptive() {
+        try {
+            Settings.load(SelfTest.write("enabled=true\nbakeBudgetGpu=true\nbakeBudgetAdaptive=false\n"));
+            GpuTimer.init();
+            assert !GpuTimer.guard.on;
+            Settings.load(SelfTest.write("enabled=true\nbakeBudgetGpu=true\nbakeBudgetAdaptive=true\n"));
+            GpuTimer.init();
+            assert GpuTimer.guard.on;
+        } finally {
+            Settings.load(SelfTest.write("enabled=true\n"));
+            GpuTimer.init(); GpuTimer.resetForTest();
+        }
     }
 }

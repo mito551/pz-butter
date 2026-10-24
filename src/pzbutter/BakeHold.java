@@ -444,7 +444,7 @@ final class BakeHold {
             for (int i = 0; i < n; i++) if (pCls[i] == STRONG) pCls[i] = LIGHT;
         }
         Budget b = budgets[p];
-        b.total = adaptiveOn ? (adaptiveTotal[p] = adaptive(adaptiveTotal[p], frameBudget, FrameClock.stepMs, capMs())) : frameBudget;
+        b.total = adaptiveOn ? (adaptiveTotal[p] = adaptive(adaptiveTotal[p], frameBudget, GpuTimer.loadMs(FrameClock.stepMs), capMs())) : frameBudget;
         b.rebake = rebakeBudget;
         b.strong = strongCap(strongBudget, FrameClock.stepMs, strongFrameMs);
         b.light = lightBudget;
