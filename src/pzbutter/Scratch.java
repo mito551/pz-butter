@@ -4,7 +4,6 @@ import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.lang.invoke.VarHandle;
 import java.lang.reflect.Array;
-import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -24,6 +23,7 @@ public final class Scratch {
         volatile VarHandle handle;
         volatile Object original;
         volatile boolean warned;
+        volatile boolean failed;   // no copy path, or the owner field cannot be resolved
 
         Entry(String owner, String field, String desc) { this.owner = owner; this.field = field; this.desc = desc; }
     }
@@ -45,6 +45,33 @@ public final class Scratch {
 
     /** Copies made so far, for the status line. */
     static int copies() { return copies.get(); }
+
+    /** Entries whose copy failed or whose field could not be resolved: a worker reading those shares the original. */
+    static int uncopyable() {
+        int n = 0;
+        for (Entry e : entries) if (e.failed) n++;
+        return n;
+    }
+
+    /**
+     * Resolves every entry and makes one trial copy of each; call it on the game thread after the game classes load,
+     * never from {@link #init}. Returns "" when all succeed, else the first failure as {@code owner.field: reason}.
+     */
+    static String probe() {
+        String first = "";
+        for (Entry e : entries) {
+            String why = null;
+            try {
+                Object o = e.original != null ? e.original : resolve(e);
+                if (o == null) why = "unresolved";
+                else makeCopy(o);
+            } catch (Throwable t) { why = t.toString(); }
+            if (why == null) continue;
+            e.failed = true;
+            if (first.isEmpty()) first = e.owner + "." + e.field + ": " + why;
+        }
+        return first;
+    }
 
     /** Never throws. Null only when the original cannot be resolved (logged once). */
     public static Object get(int k) {
@@ -84,6 +111,7 @@ public final class Scratch {
             if (o != null) e.original = o;   // null during a class-init cycle: ask again next time
             return o;
         } catch (Throwable t) {
+            e.failed = true;
             warn(e, t);
             return null;
         }
@@ -92,30 +120,34 @@ public final class Scratch {
     /** An exact shallow copy: arrays and public clone() types are cloned, other value types are rebuilt field by field. */
     private static Object copyOf(Entry e, Object o) {
         try {
-            Class<?> c = o.getClass();
-            Object r;
-            if (c.isArray()) {
-                int n = Array.getLength(o);
-                r = Array.newInstance(c.getComponentType(), n);
-                System.arraycopy(o, 0, r, 0, n);
-            } else if (o instanceof Cloneable && publicClone(c) != null) {
-                r = publicClone(c).invoke(o);
-            } else {
-                Constructor<?> ctor = c.getConstructor();
-                r = ctor.newInstance();
-                for (Class<?> t = c; t != null && t != Object.class; t = t.getSuperclass())
-                    for (Field f : t.getDeclaredFields()) {
-                        if (Modifier.isStatic(f.getModifiers())) continue;
-                        f.setAccessible(true);
-                        f.set(r, f.get(o));
-                    }
-            }
+            Object r = makeCopy(o);
             copies.incrementAndGet();
             return r;
         } catch (Throwable t) {
+            e.failed = true;
             warn(e, t);
             return o;   // stock behaviour: the shared object
         }
+    }
+
+    private static Object makeCopy(Object o) throws Exception {
+        Class<?> c = o.getClass();
+        if (c.isArray()) {
+            int n = Array.getLength(o);
+            Object r = Array.newInstance(c.getComponentType(), n);
+            System.arraycopy(o, 0, r, 0, n);
+            return r;
+        }
+        Method clone = o instanceof Cloneable ? publicClone(c) : null;
+        if (clone != null) return clone.invoke(o);
+        Object r = c.getConstructor().newInstance();
+        for (Class<?> t = c; t != null && t != Object.class; t = t.getSuperclass())
+            for (Field f : t.getDeclaredFields()) {
+                if (Modifier.isStatic(f.getModifiers())) continue;
+                f.setAccessible(true);
+                f.set(r, f.get(o));
+            }
+        return r;
     }
 
     private static Method publicClone(Class<?> c) {

@@ -30,6 +30,8 @@ final class WorkerTest {
         scratchGivesEachWorkerItsCopy();
         scratchKeepsOriginalForOtherThreads();
         scratchCopiesArrays();
+        scratchProbeReportsUncopyable();
+        scratchUnresolvableOwner();
     }
 
     static void workersResourceInJar() {
@@ -188,7 +190,7 @@ final class WorkerTest {
     private static ClassLoader loaderFor(byte[] b) {
         return new ClassLoader(WorkerTest.class.getClassLoader()) {
             @Override protected Class<?> findClass(String n) throws ClassNotFoundException {
-                if (!n.equals("t.A") && !n.equals("t.Arr")) throw new ClassNotFoundException(n);
+                if (!n.equals("t.A") && !n.equals("t.Arr") && !n.equals("t.Bad")) throw new ClassNotFoundException(n);
                 return defineClass(n, b, 0, b.length);
             }
         };
@@ -253,6 +255,44 @@ final class WorkerTest {
             int[][] seen = new int[1][];
             Thread w = LuaGate.worker(() -> seen[0] = (int[]) Scratch.get(0), "w"); w.start(); w.join(5000);
             assert seen[0] != null && seen[0] != original && seen[0].length == 3 && seen[0][1] == 5;
+        } finally { Scratch.loader = ClassLoader.getSystemClassLoader(); }
+    }
+
+    /** t.Bad with `static final Optional F` (no public constructor, not Cloneable). */
+    private static byte[] classBad() {
+        var self = java.lang.constant.ClassDesc.of("t.Bad"); var opt = java.lang.constant.ClassDesc.of("java.util.Optional");
+        return java.lang.classfile.ClassFile.of().build(self, cb -> {
+            cb.withFlags(java.lang.classfile.ClassFile.ACC_PUBLIC);
+            cb.withField("F", opt, java.lang.classfile.ClassFile.ACC_PUBLIC | java.lang.classfile.ClassFile.ACC_STATIC | java.lang.classfile.ClassFile.ACC_FINAL);
+            cb.withMethodBody("<clinit>", java.lang.constant.MethodTypeDesc.of(java.lang.constant.ConstantDescs.CD_void), java.lang.classfile.ClassFile.ACC_STATIC, b -> b
+                .invokestatic(opt, "empty", java.lang.constant.MethodTypeDesc.of(opt)).putstatic(self, "F", opt).return_());
+        });
+    }
+
+    static void scratchProbeReportsUncopyable() throws Exception {
+        Scratch.init(WorkerList.parse("revision r\nclass t.Bad\nscratch 0 t/Bad F Ljava/util/Optional;\n"));
+        Scratch.loader = loaderFor(classBad());
+        try {
+            assert Scratch.uncopyable() == 0;
+            String p = Scratch.probe();
+            assert p.startsWith("t/Bad.F: ") : p;
+            assert Scratch.uncopyable() == 1;
+            Object original = Scratch.get(0);
+            Object[] seen = new Object[1];
+            Thread w = LuaGate.worker(() -> seen[0] = Scratch.get(0), "w"); w.start(); w.join(5000);
+            assert seen[0] == original && Scratch.copies() == 0;   // a worker still gets the shared object, never a throw
+        } finally { Scratch.loader = ClassLoader.getSystemClassLoader(); }
+    }
+
+    static void scratchUnresolvableOwner() throws Exception {
+        Scratch.init(WorkerList.parse("revision r\nclass t.Nope\nscratch 0 t/Nope F Ljava/util/ArrayList;\n"));
+        Scratch.loader = loaderFor(classBad());
+        try {
+            assert Scratch.get(0) == null;
+            Object[] seen = {"x"};
+            Thread w = LuaGate.worker(() -> seen[0] = Scratch.get(0), "w"); w.start(); w.join(5000);
+            assert seen[0] == null;
+            assert Scratch.probe().startsWith("t/Nope.F: ") && Scratch.uncopyable() == 1;
         } finally { Scratch.loader = ClassLoader.getSystemClassLoader(); }
     }
 }
