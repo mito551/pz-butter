@@ -50,6 +50,7 @@ final class ModCompat {
     private static final String ARGUMENT = "Lme/zed_0xff/zombie_buddy/Patch$Argument;";
     private static final String THIS = "Lme/zed_0xff/zombie_buddy/Patch$This;";
     private static final String ALL_ARGUMENTS = "Lme/zed_0xff/zombie_buddy/Patch$AllArguments;";
+    private static final String THROWN = "Lme/zed_0xff/zombie_buddy/Patch$Thrown;";
     private static final byte[] PATCH_ASCII = "me/zed_0xff/zombie_buddy/Patch".getBytes(StandardCharsets.US_ASCII);
 
     // ---- the keys each holder's advice reaches (the feature switches only: never enabled or frameLog) ----
@@ -219,7 +220,7 @@ final class ModCompat {
                     for (List<Annotation> one : rpa.parameterAnnotations())
                         for (Annotation an : one) {
                             String n = an.className().stringValue();
-                            if ((n.equals(RETURN) || n.equals(ARGUMENT) || n.equals(THIS) || n.equals(ALL_ARGUMENTS)) && flagIs(an, "readOnly", false, true)) replaces = true;
+                            if ((n.equals(RETURN) || n.equals(ARGUMENT) || n.equals(THIS) || n.equals(ALL_ARGUMENTS) || n.equals(THROWN)) && flagIs(an, "readOnly", false, true)) replaces = true;
                         }
                 }
             }

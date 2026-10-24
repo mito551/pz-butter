@@ -1116,6 +1116,11 @@ final class LuaGateTest {
     @me.zed_0xff.zombie_buddy.Patch(className = "a.B", methodName = "m")
     static class AllArgsRo { @me.zed_0xff.zombie_buddy.Patch.OnEnter public static void e(@me.zed_0xff.zombie_buddy.Patch.AllArguments Object[] all) { } }
 
+    @me.zed_0xff.zombie_buddy.Patch(className = "a.B", methodName = "m")
+    static class ThrownRw { @me.zed_0xff.zombie_buddy.Patch.OnExit(onThrowable = Throwable.class) public static void e(@me.zed_0xff.zombie_buddy.Patch.Thrown(readOnly = false) Throwable t) { } }
+    @me.zed_0xff.zombie_buddy.Patch(className = "a.B", methodName = "m")
+    static class ThrownRo { @me.zed_0xff.zombie_buddy.Patch.OnExit(onThrowable = Throwable.class) public static void e(@me.zed_0xff.zombie_buddy.Patch.Thrown Throwable t) { } }
+
     /** The four ways a @Patch replaces stock, and the ones that do not; the last is a class built here (isAdvice = false). */
     static void scanReadsEveryReplacingForm() throws Exception {
         java.util.function.Function<Class<?>, Boolean> replaces = c -> {
@@ -1132,6 +1137,7 @@ final class LuaGateTest {
         assert !replaces.apply(DeliveryPatches.Acquire.class);                      // Return with the default readOnly
         assert replaces.apply(ThisRw.class) && replaces.apply(AllArgsRw.class);     // This / AllArguments with readOnly = false
         assert !replaces.apply(ThisRo.class) && !replaces.apply(AllArgsRo.class);
+        assert replaces.apply(ThrownRw.class) && !replaces.apply(ThrownRo.class);   // Thrown(readOnly = false) can swallow or swap stock's exception
         java.lang.constant.ClassDesc patch = java.lang.constant.ClassDesc.of("me.zed_0xff.zombie_buddy.Patch");
         java.util.function.Function<Boolean, byte[]> fake = isAdvice -> java.lang.classfile.ClassFile.of().build(java.lang.constant.ClassDesc.of("x.Fake"),
             cb -> cb.with(java.lang.classfile.attribute.RuntimeVisibleAnnotationsAttribute.of(java.lang.classfile.Annotation.of(patch,
