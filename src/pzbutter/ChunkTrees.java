@@ -133,8 +133,28 @@ final class ChunkTrees {
         ArrayList<IsoChunk> list = new ArrayList<>(marks.keySet());
         marks.clear();
         for (int i = 0; i < list.size(); i++) {
-            FBORenderLevels levels = list.get(i).getRenderLevels(p);
-            if (levels.isOnScreen(0)) levels.invalidateLevel(0, FBORenderChunk.DIRTY_TREES);
+            IsoChunk c = list.get(i);
+            if (c.getRenderLevels(p).isOnScreen(0)) invalidateTrees(c, IsoTree::getRenderSquare);
+        }
+    }
+
+    /**
+     * Level 0 of the chunk, and of the chunk each of its corner trees is drawn into, gets DIRTY_TREES for all four players
+     * (IsoChunk.invalidateRenderChunkLevel). Stock draws a jumbo tree into the texture of its getRenderSquare(): the square to the
+     * south of a tree at local (0, 7), to the east of one at local (7, 0), which lies in the next chunk, and the tree is skipped
+     * by the bake of its own chunk. So that chunk has to be baked again too. {@code renderSquare} is IsoTree::getRenderSquare.
+     */
+    static void invalidateTrees(IsoChunk c, java.util.function.Function<IsoTree, IsoGridSquare> renderSquare) {
+        c.invalidateRenderChunkLevel(0, FBORenderChunk.DIRTY_TREES);
+        for (int k = 0; k < 2; k++) {
+            IsoGridSquare sq = k == 0 ? c.getGridSquare(0, 7, 0) : c.getGridSquare(7, 0, 0);
+            if (sq == null) continue;
+            var objs = sq.getObjects();
+            for (int i = 0; i < objs.size(); i++) {
+                if (!(objs.get(i) instanceof IsoTree t)) continue;
+                IsoGridSquare rs = renderSquare.apply(t);
+                if (rs != null && rs.chunk != null && rs.chunk != c) rs.chunk.invalidateRenderChunkLevel(0, FBORenderChunk.DIRTY_TREES);
+            }
         }
     }
 

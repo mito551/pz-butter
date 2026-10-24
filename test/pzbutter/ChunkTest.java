@@ -63,6 +63,7 @@ final class ChunkTest {
         releaseAfterQuietSecond();
         treeRateKeyNeedsTreeBake();
         treeMarksFollowArrivalRate();
+        treeReleaseReachesRenderSquareChunks();
     }
 
     static void bakeableOnlyFlagReason() {
@@ -889,6 +890,8 @@ final class ChunkTest {
     static void treeMarksFollowArrivalRate() {
         zombie.iso.fboRenderChunk.FBORenderChunkManager mgrWas = zombie.iso.fboRenderChunk.FBORenderChunkManager.instance;
         zombie.iso.fboRenderChunk.FBORenderChunkManager.instance = new zombie.iso.fboRenderChunk.FBORenderChunkManager();
+        boolean fboWas = zombie.core.PerformanceSettings.fboRenderChunk;
+        zombie.core.PerformanceSettings.fboRenderChunk = true;                       // invalidateRenderChunkLevel does nothing without it
         IsoCamera.frameState.playerIndex = 0;
         try {
             Settings.load(SelfTest.write("enabled=true\ntreesInChunkTexture=true\ntreeBakeMaxChunksPerSec=2\n"));
@@ -936,9 +939,44 @@ final class ChunkTest {
             ChunkTrees.release(0, 5_200_000_000L);
             assert !ChunkTrees.isMarked(gone) && !gone.getRenderLevels(0).isDirty(0, 4096L, 1f);
         } finally {
+            zombie.core.PerformanceSettings.fboRenderChunk = fboWas;
             zombie.iso.fboRenderChunk.FBORenderChunkManager.instance = mgrWas;
             Settings.load(SelfTest.write("enabled=true\n"));
             ChunkTrees.init();
+        }
+    }
+
+    /**
+     * Stock draws a corner jumbo tree into the chunk of its render square (south of local (0, 7), east of local (7, 0)) and skips
+     * it in its own chunk's bake: the release re-bakes that chunk too, for all four players. A tree elsewhere asks nothing.
+     */
+    static void treeReleaseReachesRenderSquareChunks() {
+        boolean fboWas = zombie.core.PerformanceSettings.fboRenderChunk;
+        zombie.core.PerformanceSettings.fboRenderChunk = true;
+        try {
+            IsoChunk a = holdChunk(0, 0, true), south = holdChunk(0, 1, true), east = holdChunk(1, 0, true), other = holdChunk(0, 2, true);
+            for (IsoChunk c : new IsoChunk[] {a, south, east, other})
+                for (int z = 0; z < 2; z++) for (int i = 0; i < 64; i++) c.squares[z][i].chunk = c;
+            zombie.iso.objects.IsoTree sTree = new zombie.iso.objects.IsoTree(), eTree = new zombie.iso.objects.IsoTree(), plain = new zombie.iso.objects.IsoTree();
+            IsoGridSquare sq07 = a.getGridSquare(0, 7, 0), sq70 = a.getGridSquare(7, 0, 0), sq33 = a.getGridSquare(3, 3, 0);
+            sq07.getObjects().add(sTree); sq70.getObjects().add(eTree); sq33.getObjects().add(plain);
+            java.util.function.Function<zombie.iso.objects.IsoTree, IsoGridSquare> rs = t ->
+                t == sTree ? south.getGridSquare(0, 0, 0) : t == eTree ? east.getGridSquare(0, 0, 0) : (IsoGridSquare) null;
+            for (IsoChunk c : new IsoChunk[] {a, south, east, other}) c.getRenderLevels(0).clearDirty(0, 1f);
+            ChunkTrees.invalidateTrees(a, rs);
+            for (int p = 0; p < 4; p++) {
+                assert a.getRenderLevels(p).isDirty(0, 4096L, 1f) : "the marked chunk, player " + p;
+                assert south.getRenderLevels(p).isDirty(0, 4096L, 1f) : "the chunk of the (0, 7) tree's render square, player " + p;
+                assert east.getRenderLevels(p).isDirty(0, 4096L, 1f) : "the chunk of the (7, 0) tree's render square, player " + p;
+            }
+            assert !other.getRenderLevels(0).isDirty(0, 1f) : "an unrelated chunk is left alone";
+            // a chunk with no corner tree: only itself; a corner tree drawn into its own chunk adds nothing
+            for (IsoChunk c : new IsoChunk[] {a, south, east}) c.getRenderLevels(0).clearDirty(0, 1f);
+            sq07.getObjects().remove(sTree);
+            ChunkTrees.invalidateTrees(a, t -> a.getGridSquare(7, 0, 0));
+            assert a.getRenderLevels(0).isDirty(0, 4096L, 1f) && !south.getRenderLevels(0).isDirty(0, 1f) && !east.getRenderLevels(0).isDirty(0, 1f);
+        } finally {
+            zombie.core.PerformanceSettings.fboRenderChunk = fboWas;
         }
     }
 }
