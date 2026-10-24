@@ -172,19 +172,109 @@ public final class LuaPatches {
         public static void exit() { onTriggerExit(); }
     }
 
+    // ---- luaWorkerGate: the Lua token (Task 3) ----
+
+    /**
+     * Entry of every gated Lua entry point: true when this call took the Lua token (the exit must release it).
+     * kt is the call's KahluaThread, or null for the static entries (they use LuaManager.thread).
+     */
+    public static boolean gateEnter(Object kt) {
+        if (!LuaGate.guard.on) return false;
+        try { return LuaGate.enter(kt instanceof se.krka.kahlua.vm.KahluaThread k ? k : zombie.Lua.LuaManager.thread); }
+        catch (Throwable t) { LuaGate.guard.fail(t); return false; }
+    }
+
+    /** Releases one hold taken by gateEnter; never checks the key (a hold taken before a switch-off is still released). */
+    public static void gateExit() {
+        try { LuaGate.exit(); } catch (Throwable t) { LuaGate.guard.fail(t); }
+    }
+
+    /** GameWindow.frameStep entry (game thread): claim the token, hand it to stray waiters. */
+    public static void onFrameYield() {
+        if (LuaGate.guard.on) try { LuaGate.frameYield(); } catch (Throwable t) { LuaGate.guard.fail(t); }
+    }
+
     // every overload: (thread, fn, arg) ... (thread, fn, Object[]); the third argument is typed Object for all
     @Patch(className = "se.krka.kahlua.integration.LuaCaller", methodName = "protectedCallVoid")
     public static class Call {
         @Patch.OnEnter(skipOn = true)
-        public static boolean enter(@Patch.Argument(1) Object fn, @Patch.Argument(2) Object a2) { return onCall(fn, a2); }
+        public static boolean enter(@Patch.Argument(0) Object kt, @Patch.Argument(1) Object fn, @Patch.Argument(2) Object a2,
+                                    @Patch.Local("g") boolean g) {
+            g = gateEnter(kt);
+            return onCall(fn, a2);
+        }
 
         @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
-        public static void exit() { onCallExit(); }
+        public static void exit(@Patch.Local("g") boolean g) {
+            onCallExit();
+            if (g) gateExit();
+        }
     }
 
     @Patch(className = "se.krka.kahlua.integration.LuaCaller", methodName = "pcallvoid")
     public static class Pcall {
         @Patch.OnEnter(skipOn = true)
-        public static boolean enter(@Patch.Argument(1) Object fn) { return onPcall(fn); }
+        public static boolean enter(@Patch.Argument(0) Object kt, @Patch.Argument(1) Object fn, @Patch.Local("g") boolean g) {
+            g = gateEnter(kt);
+            return onPcall(fn);
+        }
+
+        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
+        public static void exit(@Patch.Local("g") boolean g) { if (g) gateExit(); }
+    }
+
+    // the other LuaCaller names and the two static entries: gate only, bound to Object so every overload matches
+    @Patch(className = "se.krka.kahlua.integration.LuaCaller", methodName = "pcallBoolean")
+    public static class PcallBoolean {
+        @Patch.OnEnter
+        public static void enter(@Patch.Argument(0) Object kt, @Patch.Local("g") boolean g) { g = gateEnter(kt); }
+
+        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
+        public static void exit(@Patch.Local("g") boolean g) { if (g) gateExit(); }
+    }
+
+    @Patch(className = "se.krka.kahlua.integration.LuaCaller", methodName = "pcall")
+    public static class PcallReturn {
+        @Patch.OnEnter
+        public static void enter(@Patch.Argument(0) Object kt, @Patch.Local("g") boolean g) { g = gateEnter(kt); }
+
+        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
+        public static void exit(@Patch.Local("g") boolean g) { if (g) gateExit(); }
+    }
+
+    @Patch(className = "se.krka.kahlua.integration.LuaCaller", methodName = "protectedCallBoolean")
+    public static class ProtectedBoolean {
+        @Patch.OnEnter
+        public static void enter(@Patch.Argument(0) Object kt, @Patch.Local("g") boolean g) { g = gateEnter(kt); }
+
+        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
+        public static void exit(@Patch.Local("g") boolean g) { if (g) gateExit(); }
+    }
+
+    @Patch(className = "se.krka.kahlua.integration.LuaCaller", methodName = "protectedCall")
+    public static class ProtectedCall {
+        @Patch.OnEnter
+        public static void enter(@Patch.Argument(0) Object kt, @Patch.Local("g") boolean g) { g = gateEnter(kt); }
+
+        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
+        public static void exit(@Patch.Local("g") boolean g) { if (g) gateExit(); }
+    }
+
+    @Patch(className = "zombie.Lua.LuaEventManager", methodName = "triggerEvent")
+    public static class TriggerEvent {
+        @Patch.OnEnter
+        public static void enter(@Patch.Local("g") boolean g) { g = gateEnter(null); }
+
+        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
+        public static void exit(@Patch.Local("g") boolean g) { if (g) gateExit(); }
+    }
+
+    @Patch(className = "zombie.Lua.LuaHookManager", methodName = "TriggerHook")
+    public static class TriggerHook {
+        @Patch.OnEnter
+        public static void enter(@Patch.Local("g") boolean g) { g = gateEnter(null); }
+
+        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
+        public static void exit(@Patch.Local("g") boolean g) { if (g) gateExit(); }
     }
 }

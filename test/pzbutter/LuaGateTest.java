@@ -32,6 +32,9 @@ final class LuaGateTest {
         gateKeyOffByDefault();
         gateInitResolvesSlot();
         awaitYieldingWakesAndRetakes();
+        gateHoldersBalanced();
+        gateShimOffReadsNothing();
+        gateShimRoutesWorker();
     }
 
     static void plan7KeysDefaults() {
@@ -270,6 +273,52 @@ final class LuaGateTest {
         o.start();
         try { o.join(5000); } catch (InterruptedException e) { throw new RuntimeException(e); }
         assert ok.get() && !o.isAlive();
+        LuaGate.resetForTest();
+    }
+
+    // ---- Task 3: the hooks ----
+
+    static void gateHoldersBalanced() throws Exception {
+        java.util.Set<String> want = java.util.Set.of(
+            "se.krka.kahlua.integration.LuaCaller.pcallvoid", "se.krka.kahlua.integration.LuaCaller.protectedCallVoid",
+            "se.krka.kahlua.integration.LuaCaller.pcallBoolean", "se.krka.kahlua.integration.LuaCaller.pcall",
+            "se.krka.kahlua.integration.LuaCaller.protectedCallBoolean", "se.krka.kahlua.integration.LuaCaller.protectedCall",
+            "zombie.Lua.LuaEventManager.triggerEvent", "zombie.Lua.LuaHookManager.TriggerHook");
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (Class<?> c : LuaPatches.class.getDeclaredClasses()) {
+            me.zed_0xff.zombie_buddy.Patch p = c.getAnnotation(me.zed_0xff.zombie_buddy.Patch.class);
+            if (p == null || !want.contains(p.className() + "." + p.methodName())) continue;
+            assert seen.add(p.className() + "." + p.methodName()) : "two holders for " + p.methodName();
+            boolean exitOk = false, localOk = false;
+            for (java.lang.reflect.Method m : c.getDeclaredMethods()) {
+                me.zed_0xff.zombie_buddy.Patch.OnExit x = m.getAnnotation(me.zed_0xff.zombie_buddy.Patch.OnExit.class);
+                if (x != null) {
+                    boolean exitLocal = false;
+                    for (java.lang.annotation.Annotation[] as : m.getParameterAnnotations())
+                        for (java.lang.annotation.Annotation a : as)
+                            if (a instanceof me.zed_0xff.zombie_buddy.Patch.Local loc && loc.value().equals("g")) exitLocal = true;
+                    exitOk = x.onThrowable() == Throwable.class && x.suppress() == Throwable.class && exitLocal;
+                }
+                if (m.isAnnotationPresent(me.zed_0xff.zombie_buddy.Patch.OnEnter.class))
+                    for (java.lang.annotation.Annotation[] as : m.getParameterAnnotations())
+                        for (java.lang.annotation.Annotation a : as)
+                            if (a instanceof me.zed_0xff.zombie_buddy.Patch.Local loc && loc.value().equals("g")) localOk = true;
+            }
+            assert exitOk && localOk : c.getName();
+        }
+        assert seen.equals(want) : seen;
+    }
+
+    static void gateShimOffReadsNothing() {
+        LuaGate.resetForTest(); LuaGate.guard.on = false;
+        assert !LuaPatches.gateEnter(null);                                         // must not touch LuaManager
+    }
+
+    static void gateShimRoutesWorker() {
+        Lua l = new Lua("function f() end"); setUp(l);
+        boolean[] took = new boolean[1];
+        runWorkers(1, () -> { took[0] = LuaPatches.gateEnter(l.kt); if (took[0]) LuaPatches.gateExit(); });
+        assert took[0] && LuaGate.gatedCalls == 1 && fakeGame != null;
         LuaGate.resetForTest();
     }
 }
