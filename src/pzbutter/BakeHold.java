@@ -98,38 +98,53 @@ final class BakeHold {
         }
     }
 
-    // sort scratch: cls << 48 | dist << 32 | index, game thread only, grown when a plan is larger
-    private static long[] keys = new long[512];
-
     /**
      * Decides every dirty on-screen pair of one player for this frame. Fills {@code grant[0..n)}, sets the {@code left*}
      * counts in {@code b} (what the gate may still hand out) and returns the number of counted grants. NEW and OBJECT
      * go and are not counted; overdue pairs go first and are counted even past the caps (the counts stop at 0); then
      * the eligible ones in (class, distance, index) order while the total and their class cap have room.
+     * (Variant stub: implement this method. The helpers above are settled.)
      */
+    // variant scratch: per-class singly linked lists of candidate indices, threaded through vNext
+    private static int[] vNext = new int[256];
+    private static final int[] vHead = new int[LIGHT + 1];
+
     static int plan(int n, int[] cls, int[] dist, int[] held, long[] dirtySinceMs, long[] lastBakeMs, long nowMs, Budget b, boolean[] grant) {
         reset(b);
-        int counted = 0, m = 0;
-        long[] k = keys;
-        if (k.length < n) keys = k = new long[Math.max(n, k.length * 2)];
+        if (vNext.length < n) vNext = new int[n + (n >> 1)];
+        for (int c = 0; c <= LIGHT; c++) vHead[c] = -1;
+        int counted = 0;
+        // pass A: class <= OBJECT and overdue are granted and counted; the rest start ungranted
         for (int i = 0; i < n; i++) {
             int c = cls[i];
-            grant[i] = false;
             if (c <= OBJECT) { grant[i] = true; continue; }
             if (overdue(c, held[i], b)) { grant[i] = true; count(c, b); counted++; continue; }
-            if (!eligible(c, dirtySinceMs[i], lastBakeMs[i], nowMs, b)) continue;
-            long key = (long) c << 48 | (long) Math.min(dist[i], 0x7fff) << 32 | i;
-            int j = m++;
-            while (j > 0 && k[j - 1] > key) { k[j] = k[j - 1]; j--; }
-            k[j] = key;
+            grant[i] = false;
         }
-        for (int r = 0; r < m; r++) {
-            long key = k[r];
-            int c = (int) (key >>> 48);
-            if (!roomIn(c, b)) continue;   // a later pair of another class may still fit
-            grant[(int) key] = true;
-            count(c, b);
-            counted++;
+        // pass B: link the eligible candidates; prepending leaves each list in descending index
+        for (int i = 0; i < n; i++) {
+            if (grant[i]) continue;
+            int c = cls[i];
+            if (!eligible(c, dirtySinceMs[i], lastBakeMs[i], nowMs, b)) continue;
+            vNext[i] = vHead[c];
+            vHead[c] = i;
+        }
+        // pass C: per class, ascending; repeatedly take the minimum (dist, index) and grant it while the class has room
+        for (int c = CUTAWAY; c <= LIGHT; c++) {
+            if (b.leftTotal <= 0) break;
+            for (;;) {
+                int best = -1, bestPrev = -1, bestD = 0, prev = -1;
+                for (int j = vHead[c]; j != -1; prev = j, j = vNext[j]) {
+                    int d = Math.min(dist[j], 0x7fff);
+                    if (best < 0 || d <= bestD) { best = j; bestPrev = prev; bestD = d; }
+                }
+                if (best < 0 || !roomIn(c, b)) break;
+                grant[best] = true;
+                count(c, b);
+                counted++;
+                if (bestPrev < 0) vHead[c] = vNext[best];
+                else vNext[bestPrev] = vNext[best];
+            }
         }
         return counted;
     }
