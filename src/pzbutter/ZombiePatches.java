@@ -49,7 +49,7 @@ public final class ZombiePatches {
         }
         if (ZombieLod.blendGuard.on || ZombieLod.capGuard.on || ZombieLod.budgetGuard.on) {
             try { ZombieLod.enterCull(); }
-            catch (Throwable t) { ZombieLod.capGuard.fail(t); }
+            catch (Throwable t) { ZombieLod.cullGuard().fail(t); }
         }
     }
 
@@ -58,7 +58,7 @@ public final class ZombiePatches {
         if (ZombieLod.inCull) {
             try {
                 if (Thread.currentThread() == ZombieLod.cullThread) ZombieLod.exitCull();
-            } catch (Throwable t) { ZombieLod.capGuard.fail(t); }
+            } catch (Throwable t) { ZombieLod.cullGuard().fail(t); }
         }
         if (EntityTiming.guard.on) {
             try {
@@ -83,12 +83,12 @@ public final class ZombiePatches {
                 return true;
             }
             if (!added && ZombieLod.budgetGuard.on) {
-                ZombieLod.inflightAdded = false;
-                ZombieLod.inflightT0 = System.nanoTime();
+                try { ZombieLod.inflightT0 = System.nanoTime(); }
+                catch (Throwable t) { ZombieLod.budgetGuard.fail(t); }
             }
             return false;
         } catch (Throwable t) {
-            ZombieLod.capGuard.fail(t);
+            ZombieLod.cullGuard().fail(t);
             ZombieLod.inflightRewrite = false;
             ZombieLod.inflightT0 = 0;
             return culled;
@@ -104,7 +104,6 @@ public final class ZombiePatches {
             boolean rewritten = ZombieLod.inflightRewrite;
             long t0 = ZombieLod.inflightT0;
             if (!rewritten && t0 == 0) return;
-            boolean added = ZombieLod.inflightAdded;
             ZombieLod.inflightRewrite = false;
             ZombieLod.inflightT0 = 0;
             if (rewritten) {
@@ -112,9 +111,11 @@ public final class ZombiePatches {
                 zombie.characters.IsoGameCharacter c = (zombie.characters.IsoGameCharacter) self;
                 if (c.hasAnimationPlayer()) c.getAnimationPlayer().doBlending = false;
             } else {
-                ZombieLod.granted(added, System.nanoTime() - t0);
+                // the clock is armed only for a zombie not yet in the model manager, so this is always a first-time add
+                try { ZombieLod.granted(false, System.nanoTime() - t0); }
+                catch (Throwable t) { ZombieLod.budgetGuard.fail(t); }
             }
-        } catch (Throwable t) { ZombieLod.capGuard.fail(t); }
+        } catch (Throwable t) { ZombieLod.cullGuard().fail(t); }
     }
 
     @Patch(className = "zombie.iso.IsoWorld", methodName = "sceneCullZombies")

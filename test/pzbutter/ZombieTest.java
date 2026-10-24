@@ -26,6 +26,7 @@ final class ZombieTest {
         cullNestedAndOutsidePassThrough();
         cullHoldersTargetStock();
         cullShimsOpenAndCloseOnGameThread();
+        cullFailuresChargeTheRunningFeature();
         cullOtherThreadPassesThrough();
         cullCulledCallsPassAndBalance();
         simLodSteps();
@@ -239,6 +240,27 @@ final class ZombieTest {
             }
             assert exitOk : e.getKey();
         }
+    }
+
+    // m2: a failure in the cull shims is charged to the feature that is running, so five budget failures switch the budget off, not the cap
+    static void cullFailuresChargeTheRunningFeature() {
+        Thread saved = FrameClock.mainThread;
+        FrameClock.mainThread = Thread.currentThread();
+        try {
+            ZombieLod.resetForTest();
+            ZombieLod.budgetGuard.on = true; ZombieLod.budgetNs = 500_000;
+            ZombiePatches.onCullEnter();
+            assert ZombieLod.inCull;
+            for (int i = 0; i < 5; i++) { ZombieLod.depth = 0; assert !ZombiePatches.onCulledEnter(new Object(), false); }   // not a character: the shim catches
+            assert !ZombieLod.budgetGuard.on && !ZombieLod.capGuard.on : "budget guard charged";
+            ZombiePatches.onCullExit();
+            ZombieLod.resetForTest();
+            ZombieLod.capGuard.on = true; ZombieLod.cap = 50; ZombieLod.budgetGuard.on = true; ZombieLod.budgetNs = 500_000;
+            ZombiePatches.onCullEnter();
+            for (int i = 0; i < 5; i++) { ZombieLod.depth = 0; assert !ZombiePatches.onCulledEnter(new Object(), false); }
+            assert !ZombieLod.capGuard.on && ZombieLod.budgetGuard.on : "cap charged first while it is on";
+            ZombiePatches.onCullExit();
+        } finally { FrameClock.mainThread = saved; ZombieLod.resetForTest(); }
     }
 
     // mine: the entry shim opens a cull only on the game thread with a key on, the exit shim closes it whatever the keys say by then

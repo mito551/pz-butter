@@ -31,7 +31,7 @@ final class ZombieLod {
     static long addNs;
 
     /** The setSceneCulled call in flight (set by the enter shim, read and cleared by the exit shim). */
-    static boolean inflightRewrite, inflightAdded;
+    static boolean inflightRewrite;
     static long inflightT0;
 
     /** Rewrites by the cap and by the budget since start. */
@@ -62,6 +62,12 @@ final class ZombieLod {
         return lvl;
     }
 
+    /**
+     * The guard a failure of the shared cull code is charged to: the cap's while it is on, else the budget's, else the blend count's
+     * (the code that threw serves all three; the budget's own clock reads are charged to its guard where they happen).
+     */
+    static Guard cullGuard() { return capGuard.on ? capGuard : budgetGuard.on ? budgetGuard : blendGuard; }
+
     /** sceneCullZombies entry: the blend count, then (when the cap or the budget is on) the cull's counters. */
     static void enterCull() {
         culls++;
@@ -72,7 +78,7 @@ final class ZombieLod {
     static void beginCull(int blendNow) {
         grants = adds = depth = 0;
         addNs = 0;
-        inflightRewrite = inflightAdded = false;
+        inflightRewrite = false;
         inflightT0 = 0;
         effCap = effectiveCap(capGuard.on ? cap : 0, blendNow);
         cullThread = Thread.currentThread();
@@ -117,7 +123,7 @@ final class ZombieLod {
         cullThread = null;
         grants = adds = effCap = depth = 0;
         addNs = 0;
-        inflightRewrite = inflightAdded = false;
+        inflightRewrite = false;
         inflightT0 = 0;
         capped = deferred = culls = grantsTotal = 0;
     }
