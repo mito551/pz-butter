@@ -82,6 +82,11 @@ import zombie.iso.IsoGridSquare;
  *          (2) orphan, two buffer objects alternating, 4 KB batches (every call a same-size respec + sub): ns per call (5 M calls a run);
  *          (3) subdata, batch sizes from a fixed-seed list between 1 KB and 1 MB over four buffer objects: ns per call (5 M calls a run).
  *          The checksum of the Uploader calls of (2) and (3) is fixed and must not change between versions.
+ * vboquad: VBORenderer.addQuad(24 floats) into a headless renderer (mode 7, position-colour-uv, 1 MB batch buffers, so no flush; the batch is
+ *          rewound every 7,000 quads, the same in every case), 20,000 quads a run over 1,024 fixed-seed quads, median of 7 runs after a warm-up.
+ *          (1) key off: ns per GpuPatches.onAddQuad(null, ...) (50 M calls a run); (2) ns per quad for the game's addQuad, for
+ *          QuadWriter.tryQuad(renderer, float[]), and for GpuPatches.onAddQuad (the hooked path: pack + tryQuad). Prints a CRC of the
+ *          vertex and index bytes after each run, equal for all three (checked) and fixed between versions.
  */
 public final class DeliveryBench {
     static final com.sun.management.ThreadMXBean MX = (com.sun.management.ThreadMXBean) ManagementFactory.getThreadMXBean();
@@ -111,7 +116,8 @@ public final class DeliveryBench {
             case "cullsort" -> { try { cullsort(); } catch (Throwable t) { throw new RuntimeException(t); } }
             case "statsget" -> statsget();
             case "vbosize" -> vbosize();
-            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | uislice | readset | soundgate | cutaway | splash | edge | plan | gate | luagate | replay | luafiles | dedupe | scenecull | simlod | spotted | cullsort | statsget | vbosize");
+            case "vboquad" -> vboquad();
+            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | uislice | readset | soundgate | cutaway | splash | edge | plan | gate | luagate | replay | luafiles | dedupe | scenecull | simlod | spotted | cullsort | statsget | vbosize | vboquad");
         }
     }
 
@@ -1331,6 +1337,111 @@ public final class DeliveryBench {
             zombie.core.VBO.GLVertexBufferObject.funcs = was;
             PresentLog.renderThread = wasThread;
             UploadSizer.resetForTest();
+        }
+    }
+
+    static void benchSet(Object o, String f, Object v) throws Exception { java.lang.reflect.Field x = o.getClass().getDeclaredField(f); x.setAccessible(true); x.set(o, v); }
+
+    /** A headless mode 7 VBORenderer with kb KB vertex buffers (as the batch-size installer leaves them); never flushes. */
+    static zombie.core.opengl.VBORenderer benchRenderer(int kb) throws Exception {
+        zombie.core.opengl.VBORenderer r = new zombie.core.opengl.VBORenderer();
+        benchSet(r, "elements", java.nio.ByteBuffer.allocateDirect(BatchSize.elementBytes(kb)).order(java.nio.ByteOrder.nativeOrder()));
+        benchSet(r, "indices", java.nio.ByteBuffer.allocateDirect(BatchSize.indexBytes(kb)).order(java.nio.ByteOrder.nativeOrder()));
+        Class<?> rc = Class.forName("zombie.core.opengl.VBORenderer$Run");
+        java.lang.reflect.Constructor<?> c = rc.getDeclaredConstructors()[0]; c.setAccessible(true);
+        Object run = c.getParameterCount() == 0 ? c.newInstance() : c.newInstance(r);
+        benchSet(run, "mode", 7);
+        benchSet(run, "format", r.formatPositionColorUv);
+        java.lang.reflect.Method sf = zombie.core.opengl.VBORenderer.class.getDeclaredMethod("setFormat", zombie.core.skinnedmodel.model.VertexBufferObject.VertexFormat.class);
+        sf.setAccessible(true); sf.invoke(r, r.formatPositionColorUv);
+        benchSet(r, "runInProgress", run);
+        benchSet(r, "numElements", BatchSize.elementBytes(kb) / (int) benchGet(r, "elementSize"));
+        r.setOffset(0.25f, -0.5f, 1f);
+        return r;
+    }
+
+    static Object benchGet(Object o, String f) throws Exception { java.lang.reflect.Field x = o.getClass().getDeclaredField(f); x.setAccessible(true); return x.get(o); }
+
+    static long benchCrc(zombie.core.opengl.VBORenderer r) throws Exception {
+        java.util.zip.CRC32 c = new java.util.zip.CRC32();
+        for (String f : new String[] {"elements", "indices"}) {
+            java.nio.ByteBuffer b = ((java.nio.ByteBuffer) benchGet(r, f)).duplicate().flip();
+            c.update(b);
+        }
+        return c.getValue();
+    }
+
+    static void vboquad() throws Exception {
+        final int offCalls = 50_000_000, quads = 20_000, batch = 7_000;
+        QuadWriter.resetForTest();
+        double[] ns = new double[7];
+        for (int r = 0; r < 3 + 7; r++) {
+            long t0 = System.nanoTime();
+            int hits = 0;
+            for (int i = 0; i < offCalls; i++)
+                if (GpuPatches.onAddQuad(null, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)) hits++;
+            long dt = System.nanoTime() - t0;
+            if (hits != 0) throw new IllegalStateException("vboquad: key off took a quad");
+            if (r >= 3) ns[r - 3] = dt / (double) offCalls;
+        }
+        System.out.printf("vboquad key off      : %6.2f ns/call (min %.2f, max %.2f)%n", median(ns), ns[0], ns[6]);
+
+        java.util.Random rnd = new java.util.Random(13);
+        float[][] q = new float[1024][24];
+        for (float[] a : q) for (int j = 0; j < 24; j++) a[j] = (float) (rnd.nextGaussian() * Math.pow(10, rnd.nextInt(4) - 1));
+        long[] crc = new long[3];
+        String[] names = {"game addQuad", "QuadWriter.tryQuad", "onAddQuad (hooked)"};
+        QuadWriter.guard.on = true;
+        try {
+            for (int kind = 0; kind < 3; kind++) {
+                zombie.core.opengl.VBORenderer r = benchRenderer(1024);
+                java.nio.ByteBuffer el = (java.nio.ByteBuffer) benchGet(r, "elements"), ix = (java.nio.ByteBuffer) benchGet(r, "indices");
+                Object run = benchGet(r, "runInProgress");
+                java.lang.reflect.Field vc = run.getClass().getDeclaredField("vertexCount"); vc.setAccessible(true);
+                double[] t = new double[7];
+                long sum = 0;
+                for (int rep = 0; rep < 30 + 7; rep++) {
+                    el.clear(); ix.clear(); vc.setInt(run, 0);
+                    long t0 = System.nanoTime();
+                    quadLoop(kind, r, q, el, ix, run, vc, quads, batch);
+                    long dt = System.nanoTime() - t0;
+                    long c = benchCrc(r);
+                    if (rep == 0) sum = c;
+                    else if (c != sum) throw new IllegalStateException("vboquad: bytes changed between runs");
+                    if (rep >= 30) t[rep - 30] = dt / (double) quads;
+                }
+                crc[kind] = sum;
+                System.out.printf("vboquad %-19s: %6.2f ns/quad (min %.2f, max %.2f), crc %d%n", names[kind], median(t), t[0], t[6], sum);
+            }
+        } finally { QuadWriter.resetForTest(); }
+        if (crc[0] != crc[1] || crc[0] != crc[2]) throw new IllegalStateException("vboquad: the bytes differ from the game's");
+    }
+
+    /** The three vboquad loops, one method each so the JIT profiles do not mix. */
+    static void quadLoop(int kind, zombie.core.opengl.VBORenderer r, float[][] q, java.nio.ByteBuffer el, java.nio.ByteBuffer ix, Object run, java.lang.reflect.Field vc, int quads, int batch)
+            throws Exception {
+        switch (kind) {
+            case 0 -> {
+                for (int i = 0; i < quads; i++) {
+                    if (i % batch == 0) { el.clear(); ix.clear(); vc.setInt(run, 0); }
+                    float[] a = q[i & 1023];
+                    r.addQuad(a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7], a[8], a[9], a[10], a[11], a[12], a[13], a[14], a[15], a[16], a[17], a[18], a[19], a[20], a[21], a[22], a[23]);
+                }
+            }
+            case 1 -> {
+                for (int i = 0; i < quads; i++) {
+                    if (i % batch == 0) { el.clear(); ix.clear(); vc.setInt(run, 0); }
+                    if (!QuadWriter.tryQuad(r, q[i & 1023])) throw new IllegalStateException("vboquad: tryQuad refused");
+                }
+            }
+            default -> {
+                for (int i = 0; i < quads; i++) {
+                    if (i % batch == 0) { el.clear(); ix.clear(); vc.setInt(run, 0); }
+                    float[] a = q[i & 1023];
+                    if (!GpuPatches.onAddQuad(r, a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7], a[8], a[9], a[10], a[11], a[12], a[13], a[14], a[15], a[16], a[17], a[18], a[19], a[20], a[21], a[22], a[23]))
+                        throw new IllegalStateException("vboquad: onAddQuad refused");
+                }
+            }
         }
     }
 }
