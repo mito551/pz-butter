@@ -4,6 +4,7 @@ import zombie.iso.IsoChunk;
 import zombie.iso.IsoGridSquare;
 import zombie.iso.IsoObject;
 import zombie.iso.fboRenderChunk.FBORenderChunk;
+import zombie.iso.fboRenderChunk.ObjectRenderLayer;
 import me.zed_0xff.zombie_buddy.Patch;
 
 /**
@@ -19,6 +20,7 @@ public final class ChunkPatches {
     static final Guard bloodFadeGuard = new Guard("bloodFadeFix");
     static final Guard mipGuard = new Guard("bakeMipLevels");
     static final Guard edgeGuard = new Guard("edgeTestFast");
+    static final Guard translucentGuard = new Guard("translucentTilesInChunkTexture");
 
     /** FBORenderCell.isTreeRenderedEveryFrame entry: the answer when treesInChunkTexture is on; null runs stock. */
     public static Boolean onTreeEveryFrame(Object obj) {
@@ -53,6 +55,13 @@ public final class ChunkPatches {
         if (!mipGuard.on) return;
         try { BakeMisc.mipBeforeGenerate((FBORenderChunk) self); }
         catch (Throwable t) { mipGuard.fail(t); }
+    }
+
+    /** FBORenderCell.calculateObjectRenderLayer exit: the layer to use; the stock answer when the key is off or on failure. */
+    public static ObjectRenderLayer onObjectLayer(IsoObject obj, ObjectRenderLayer stock) {
+        if (!translucentGuard.on) return stock;
+        try { return TranslucentBake.layer(obj, stock); }
+        catch (Throwable t) { translucentGuard.fail(t); return stock; }
     }
 
     /**
@@ -112,6 +121,15 @@ public final class ChunkPatches {
         @Patch.OnExit
         public static void exit(@Patch.Return(readOnly = false) boolean ret, @Patch.Local("v") Object v) {
             if (v != null) ret = (Boolean) v;
+        }
+    }
+
+    /** Private single-overload method; the object is argument 0 and the stock layer is the return value. */
+    @Patch(className = "zombie.iso.fboRenderChunk.FBORenderCell", methodName = "calculateObjectRenderLayer")
+    public static class ObjectLayer {
+        @Patch.OnExit
+        public static void exit(@Patch.Argument(0) IsoObject obj, @Patch.Return(readOnly = false) ObjectRenderLayer ret) {
+            ret = onObjectLayer(obj, ret);
         }
     }
 }

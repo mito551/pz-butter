@@ -37,6 +37,7 @@ public class Main {
         ChunkTrees.init();
         BakeMisc.init();
         EdgeTest.init();
+        TranslucentBake.init();
         AudioLimiter.init();
         SoundPatches.onFmodInit();
         LuaPatches.uiLuaFast = Settings.flag("uiLuaFast");

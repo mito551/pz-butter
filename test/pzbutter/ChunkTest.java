@@ -25,6 +25,68 @@ final class ChunkTest {
         edgeOrderMatchesStock();
         edgeKeyOffByDefault();
         edgeAnswersMatchStock();
+        bakeableOnlyFlagReason();
+        glassAndLightRules();
+        minusFloorRestOrder();
+        translucentKeysDefaults();
+    }
+
+    static void bakeableOnlyFlagReason() {
+        int T = TranslucentBake.TRANS;
+        assert TranslucentBake.bakeable(T, true, true);
+        assert !TranslucentBake.bakeable(0, true, true);                                  // no Translucent flag: not ours
+        for (int r : new int[] {TranslucentBake.FIRE, TranslucentBake.ANIM, TranslucentBake.WIND, TranslucentBake.TREE,
+                                TranslucentBake.FX, TranslucentBake.WINDOW, TranslucentBake.DOOR_TRANS, TranslucentBake.SOLID,
+                                TranslucentBake.CURTAIN, TranslucentBake.MANNEQUIN})
+            assert !TranslucentBake.bakeable(T | r, false, false) : r;
+        assert !TranslucentBake.bakeable(T | TranslucentBake.GLASS, true, false) && TranslucentBake.bakeable(T | TranslucentBake.GLASS, false, false);
+        assert !TranslucentBake.bakeable(T | TranslucentBake.LIGHT, false, true) && TranslucentBake.bakeable(T | TranslucentBake.LIGHT, false, false);
+        // the rest flags are not reasons: a bakeable object may carry any of them
+        assert TranslucentBake.bakeable(T | TranslucentBake.FLOORISH | TranslucentBake.SE_WALL | TranslucentBake.BUSHLIKE, true, true);
+    }
+
+    static void glassAndLightRules() {
+        assert TranslucentBake.isGlass("walls_exterior_glass_01", false, false, false, false);
+        assert TranslucentBake.isGlass("fixtures_windows_01", false, false, false, false);
+        assert TranslucentBake.isGlass("Walls_Exterior_GLASS_01", false, false, false, false);
+        assert TranslucentBake.isGlass("walls_decoration_02", true, false, false, false);
+        assert TranslucentBake.isGlass("walls_decoration_02", false, false, false, true);
+        assert !TranslucentBake.isGlass("fencing_damaged_01", false, false, false, false);
+        assert !TranslucentBake.isGlass(null, false, false, false, false);
+        assert TranslucentBake.isLight("lighting_outdoor_01", false, false) && TranslucentBake.isLight("signs_one-off_03_on", false, false);
+        assert TranslucentBake.isLight("walls_decoration_02", true, false) && TranslucentBake.isLight("x", false, true);
+        assert !TranslucentBake.isLight("signs_one-off_03", false, false) && !TranslucentBake.isLight(null, false, false);
+    }
+
+    static void minusFloorRestOrder() {
+        assert TranslucentBake.minusFloorRest(0, 0, 0);
+        assert !TranslucentBake.minusFloorRest(TranslucentBake.FLOORISH, 0, 0);
+        assert TranslucentBake.minusFloorRest(TranslucentBake.FLOORISH | TranslucentBake.CLIMBING_NOT_SOLIDFLOOR, 0, 0);   // stock override
+        assert !TranslucentBake.minusFloorRest(TranslucentBake.CLIMBING_NOT_SOLIDFLOOR | TranslucentBake.SE_WALL, 0, 0);    // later rule wins
+        assert !TranslucentBake.minusFloorRest(TranslucentBake.BUSHLIKE | TranslucentBake.FLATTEN | TranslucentBake.CLIMBING_NOT_SOLIDFLOOR, 0, 0); // early return
+        assert TranslucentBake.minusFloorRest(TranslucentBake.BUSHLIKE, 0, 0) && TranslucentBake.minusFloorRest(TranslucentBake.FLATTEN, 0, 0);
+        assert !TranslucentBake.minusFloorRest(TranslucentBake.MANNEQUIN_EACH_FRAME, 0, 0);
+        assert !TranslucentBake.minusFloorRest(TranslucentBake.FIRE, 0, 0);
+        assert !TranslucentBake.minusFloorRest(0, 1000, 0) && TranslucentBake.minusFloorRest(TranslucentBake.ALWAYS_DRAW, 1000, 0);
+        assert !TranslucentBake.minusFloorRest(TranslucentBake.WEST_ROOF, 999, 999) && TranslucentBake.minusFloorRest(TranslucentBake.WEST_ROOF, 999, 0);
+        assert TranslucentBake.minusFloorRest(TranslucentBake.WEST_ROOF, 5, 5);
+        assert !TranslucentBake.minusFloorRest(TranslucentBake.WINDOWISH, 0, 0);
+        assert !TranslucentBake.minusFloorRest(TranslucentBake.CLIMBING_NOT_SOLIDFLOOR | TranslucentBake.WINDOWISH, 0, 0);
+    }
+
+    static void translucentKeysDefaults() {
+        Settings.load(SelfTest.write("enabled=true\n"));
+        TranslucentBake.init();
+        assert !ChunkPatches.translucentGuard.on && TranslucentBake.glassPerFrame && TranslucentBake.lightsPerFrame;
+        Settings.load(SelfTest.write("enabled=true\ntranslucentTilesInChunkTexture=true\nglassTilesPerFrame=false\n"));
+        TranslucentBake.init();
+        assert ChunkPatches.translucentGuard.on && !TranslucentBake.glassPerFrame && TranslucentBake.lightsPerFrame;
+        Settings.load(SelfTest.write("enabled=false\ntranslucentTilesInChunkTexture=true\n"));
+        TranslucentBake.init();
+        assert !ChunkPatches.translucentGuard.on;
+        // key off: the hook hands back whatever stock answered
+        assert ChunkPatches.onObjectLayer(null, zombie.iso.fboRenderChunk.ObjectRenderLayer.Translucent)
+            == zombie.iso.fboRenderChunk.ObjectRenderLayer.Translucent;
     }
 
     static void fadingSplatsDropped() {
