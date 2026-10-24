@@ -11,9 +11,12 @@ rm -rf "$B/classes" "$B/test-classes" "$B/mod"
 mapfile -t SRC < <(find "$HERE/src" -name '*.java')
 "$JDK/bin/javac" --release 25 -cp "$CP" -d "$B/classes" "${SRC[@]}"
 "$JDK/bin/javac" --release 25 -cp "$CP" -d "$B/test-classes" "${SRC[@]}" $(find "$HERE/test" -name '*.java')
+cp "$HERE"/src/pzbutter/workers-*.txt "$B/classes/pzbutter/"
+cp "$HERE"/src/pzbutter/workers-*.txt "$B/test-classes/pzbutter/"
 "$JDK/bin/java" -ea -cp "$B/test-classes:$CP" pzbutter.SelfTest
 
-"$JDK/bin/jar" --create --file "$B/PZButter.jar" -C "$B/classes" .
+printf 'ZB-Preload: true\n' > "$B/MANIFEST.MF"
+"$JDK/bin/jar" --create --file "$B/PZButter.jar" --manifest "$B/MANIFEST.MF" -C "$B/classes" .
 cp -r "$HERE/mod" "$B/mod"
 mkdir -p "$B/mod/PZButter/42/media/java/client"
 cp "$B/PZButter.jar" "$B/mod/PZButter/42/media/java/client/"

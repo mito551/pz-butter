@@ -39,6 +39,7 @@ public final class SelfTest {
         LuaGateTest.run();
         ChunkShimTest.run();
         ZombieTest.run();
+        WorkerTest.run();
         GpuTest.run();
         delete(DIR);
         System.out.println("ok");

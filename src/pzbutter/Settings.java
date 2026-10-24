@@ -237,6 +237,8 @@ public final class Settings {
       + "statsNoBox=false\n"
       + "# entityTiming: diagnostic; once a minute, the time per frame of the zombie update phases goes to the console (and entity.out with frameLog).\n"
       + "entityTiming=false\n"
+      + "# frameThreads: width of PZ Butter's frame worker pool for the zombie update on workers. Needs luaWorkerGate and one restart after it changes (0 or 1 = no pool, no class changes). Max 32.\n"
+      + "frameThreads=0\n"
       + "#\n"
       + "# Sprite buffers and GPU (Plan 9). Every key is off or at the game's value until its in-game check.\n"
       + "# persistentVbo: the sprite and puddle ring buffers keep persistently mapped storage (OpenGL 4.4) instead of new storage and a map per 64 KB batch.\n"

@@ -6,3 +6,4 @@ versionMin=42.21
 require=\ZombieBuddy
 javaJarFile=media/java/client/PZButter.jar
 javaPkgName=pzbutter
+javaPreload=true
