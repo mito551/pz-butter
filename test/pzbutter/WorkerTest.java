@@ -24,6 +24,8 @@ final class WorkerTest {
         transformRewritesScratchRead();
         scratchListFindsMutableStatics();
         workerListRepeatedK();
+        transformRewritesArrayRead();
+        transformVerifiesOnGameClasses();
     }
 
     static void workersResourceInJar() {
@@ -135,5 +137,35 @@ final class WorkerTest {
         catch (IllegalArgumentException e) { assert e.getMessage().contains("3"); }
         try { WorkerList.parse("revision r\nscratch 0 a/B V La/V;\nscratch 0 a/C V La/W;\n"); assert false; }
         catch (IllegalArgumentException e) { assert e.getMessage().contains("3"); }
+    }
+
+    static void transformRewritesArrayRead() {
+        byte[] b = WorkerTransform.transform(WorkerTestSynth.classArr(), WorkerList.parse(WorkerTestSynth.ARR_LIST));
+        assert b != null;
+        boolean cast = false;
+        for (java.lang.classfile.MethodModel mm : java.lang.classfile.ClassFile.of().parse(b).methods()) {
+            if (!mm.methodName().equalsString("len")) continue;
+            for (java.lang.classfile.CodeElement e : mm.code().orElseThrow())
+                if (e instanceof java.lang.classfile.instruction.TypeCheckInstruction t && t.opcode() == java.lang.classfile.Opcode.CHECKCAST
+                    && t.type().asSymbol().descriptorString().equals("[I")) cast = true;
+        }
+        assert cast;
+        assert java.lang.classfile.ClassFile.of().verify(b).isEmpty();
+    }
+
+    /** Every listed game class, transformed, passes the class file verifier. */
+    static void transformVerifiesOnGameClasses() throws Exception {
+        WorkerList list = WorkerList.load("4a0e9546ec");
+        java.lang.classfile.ClassFile cf = java.lang.classfile.ClassFile.of(java.lang.classfile.ClassFile.ClassHierarchyResolverOption.of(
+            java.lang.classfile.ClassHierarchyResolver.ofResourceParsing(ClassLoader.getSystemClassLoader())
+                .orElse(java.lang.classfile.ClassHierarchyResolver.defaultResolver())));
+        for (String c : list.classes()) {
+            byte[] bytes;
+            try (java.io.InputStream in = ClassLoader.getSystemResourceAsStream(c.replace('.', '/') + ".class")) { bytes = in.readAllBytes(); }
+            byte[] out = WorkerTransform.transform(bytes, list);
+            assert out != null : c + " not transformed";
+            var errors = cf.verify(out);
+            assert errors.isEmpty() : c + ": " + errors.get(0).getMessage();
+        }
     }
 }

@@ -119,4 +119,19 @@ final class WorkerTestSynth {
         }
         return jar;
     }
+
+    static final String ARR_LIST = "revision r\nclass t.Arr\nscratch 0 t/Arr X [I\n";
+
+    /** t.Arr with `static final int[] X` and `static int len()` returning X.length. */
+    static byte[] classArr() {
+        ClassDesc self = ClassDesc.of("t.Arr"), ia = ConstantDescs.CD_int.arrayType();
+        return ClassFile.of().build(self, cb -> {
+            cb.withFlags(ClassFile.ACC_PUBLIC);
+            cb.withField("X", ia, ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC | ClassFile.ACC_FINAL);
+            cb.withMethodBody("<clinit>", MethodTypeDesc.of(ConstantDescs.CD_void), ClassFile.ACC_STATIC, b -> b
+                .iconst_3().newarray(java.lang.classfile.TypeKind.INT).putstatic(self, "X", ia).return_());
+            cb.withMethodBody("len", MethodTypeDesc.of(ConstantDescs.CD_int), ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC, b -> b
+                .getstatic(self, "X", ia).arraylength().ireturn());
+        });
+    }
 }

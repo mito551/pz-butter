@@ -114,10 +114,10 @@ final class ScratchList {
         }
 
         /** The lookup result plus every override in a subtype. */
-        List<Ref> targets(String owner, String name, String desc, boolean virtual) {
+        List<Ref> targets(String owner, String name, String desc, boolean virtual, String[] walk) {
             List<Ref> out = new ArrayList<>();
             Ref r = lookup(owner, name, desc);
-            if (r != null) out.add(r);
+            if (r != null && walked(r.owner(), walk)) out.add(r);
             if (virtual) {
                 Set<String> seen = new HashSet<>();
                 Deque<String> todo = new ArrayDeque<>(subs.getOrDefault(owner, List.of()));
@@ -125,7 +125,7 @@ final class ScratchList {
                     String c = todo.poll();
                     if (!seen.add(c)) continue;
                     MethodModel mm = declared(c, name, desc);
-                    if (mm != null && mm.code().isPresent()) out.add(new Ref(c, name, desc));
+                    if (mm != null && mm.code().isPresent() && walked(c, walk)) out.add(new Ref(c, name, desc));
                     todo.addAll(subs.getOrDefault(c, List.of()));
                 }
             }
@@ -164,12 +164,13 @@ final class ScratchList {
         Set<Ref> seen = new HashSet<>();
         for (String root : roots) {
             int colon = root.indexOf(':'), dot = root.lastIndexOf('.', colon);
-            List<Ref> t = ix.targets(root.substring(0, dot).replace('.', '/'), root.substring(dot + 1, colon), root.substring(colon + 1), true);
+            List<Ref> t = ix.targets(root.substring(0, dot).replace('.', '/'), root.substring(dot + 1, colon), root.substring(colon + 1), true, new String[] {""});
             if (t.isEmpty()) throw new IllegalArgumentException("root not found: " + root);
             todo.addAll(t);
         }
         Map<Field, Set<String>> readers = new HashMap<>();      // field -> reader methods ("owner.name")
         Map<Field, Set<String>> writers = new HashMap<>();
+        Map<String, Set<Opcode>> stores = new HashMap<>();      // method -> array element stores it contains
         Map<Field, Set<String>> named = new HashMap<>();        // field -> owner names its reads use
         while (!todo.isEmpty()) {
             Ref r = todo.poll();
@@ -179,11 +180,13 @@ final class ScratchList {
             for (CodeElement e : mm.code().orElseThrow()) {
                 if (e instanceof InvokeInstruction i) {
                     String o = i.owner().asInternalName();
-                    if (walked(o, walk)) todo.addAll(ix.targets(o, i.name().stringValue(), i.type().stringValue(), i.opcode() != Opcode.INVOKESTATIC && i.opcode() != Opcode.INVOKESPECIAL));
+                    if (walked(o, walk)) todo.addAll(ix.targets(o, i.name().stringValue(), i.type().stringValue(), i.opcode() != Opcode.INVOKESTATIC && i.opcode() != Opcode.INVOKESPECIAL, walk));
                 } else if (e instanceof InvokeDynamicInstruction d) {
                     for (var arg : d.bootstrapArgs())
                         if (arg instanceof DirectMethodHandleDesc h && walked(hOwner(h), walk))
-                            todo.addAll(ix.targets(hOwner(h), h.methodName(), h.invocationType().descriptorString(), false));
+                            todo.addAll(ix.targets(hOwner(h), h.methodName(), h.invocationType().descriptorString(), false, walk));
+                } else if (e instanceof java.lang.classfile.instruction.ArrayStoreInstruction a) {
+                    stores.computeIfAbsent(who, k -> new HashSet<>()).add(a.opcode());
                 } else if (e instanceof FieldInstruction f && (f.opcode() == Opcode.GETSTATIC || f.opcode() == Opcode.PUTSTATIC)) {
                     String decl = ix.fieldOwner(f.owner().asInternalName(), f.name().stringValue(), f.type().stringValue());
                     if (decl == null) continue;
@@ -195,7 +198,7 @@ final class ScratchList {
         }
 
         TreeMap<String, Field> scratch = new TreeMap<>();
-        TreeSet<String> review = new TreeSet<>(), shared = new TreeSet<>(), unsupported = new TreeSet<>(), written = new TreeSet<>(), classes = new TreeSet<>();
+        TreeSet<String> readonly = new TreeSet<>(), review = new TreeSet<>(), shared = new TreeSet<>(), unsupported = new TreeSet<>(), written = new TreeSet<>(), classes = new TreeSet<>();
         for (var en : readers.entrySet()) {
             Field f = en.getKey();
             FieldModel fm = ix.classes.get(f.owner()).fields().stream().filter(x -> x.fieldName().equalsString(f.name())).findFirst().orElseThrow();
@@ -208,6 +211,10 @@ final class ScratchList {
             Set<String> rs = readers.get(f);
             String info = (type == null ? f.desc() : type.replace('/', '.')) + " " + rs.size() + " " + rs.iterator().next();
             if (type != null && (type.equals("java/lang/ThreadLocal") || type.startsWith("java/util/concurrent/"))) { shared.add(name + " " + info.substring(0, info.indexOf(' '))); continue; }
+            if (f.name().contains("$SwitchMap$") || type == null && primitiveArray(f.desc()) && !stored(f.desc(), rs, stores)) {
+                readonly.add(name + " " + f.desc());
+                continue;
+            }
             if (type == null && f.desc().replaceFirst("^\\[+", "").length() != 1) { review.add(name + " " + info); continue; }   // object arrays
             if (type != null && !value.test(type)) { review.add(name + " " + info); continue; }
             if (type != null && !hasPublicNoArg(ix, type)) { unsupported.add(name + " " + f.desc()); continue; }
@@ -236,11 +243,25 @@ final class ScratchList {
         out.add("# generated by pzbutter.ScratchList; roots: " + String.join(" ", roots));
         classes.forEach(c -> out.add("class " + c));
         out.addAll(lines);
+        readonly.forEach(u -> out.add("# readonly " + u));
         review.forEach(u -> out.add("# review " + u));
         shared.forEach(u -> out.add("# shared " + u));
         unsupported.forEach(u -> out.add("# unsupported " + u));
         written.forEach(w -> out.add("# written " + w));
         return out;
+    }
+
+    private static boolean primitiveArray(String desc) { return desc.startsWith("[") && desc.replaceFirst("^\\[+", "").length() == 1; }
+
+    /** Does any reader method store an element of the array's element type (bastore covers boolean and byte). */
+    private static boolean stored(String desc, Set<String> readers, Map<String, Set<Opcode>> stores) {
+        String el = desc.replaceFirst("^\\[+", "");
+        Opcode op = switch (el) {
+            case "I" -> Opcode.IASTORE; case "F" -> Opcode.FASTORE; case "B", "Z" -> Opcode.BASTORE; case "C" -> Opcode.CASTORE;
+            case "S" -> Opcode.SASTORE; case "J" -> Opcode.LASTORE; default -> Opcode.DASTORE;
+        };
+        for (String r : readers) if (stores.getOrDefault(r, Set.of()).contains(op)) return true;
+        return false;
     }
 
     private static boolean valueType(String t) {

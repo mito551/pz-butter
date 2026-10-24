@@ -39,7 +39,7 @@ final class WorkerTransform implements ClassFileTransformer {
             if (redefining != null || className == null || !list.listed(className)) return null;
             return transform(bytes, list, loader);
         } catch (Throwable t) {
-            try { if (log != null) log.begin(System.currentTimeMillis()).text("workerTransform " + className + " " + t).end(System.currentTimeMillis()); }
+            try { if (log != null) synchronized (log) { log.begin(System.currentTimeMillis()).text("workerTransform " + className + " " + t).end(System.currentTimeMillis()); } }
             catch (Throwable ignored) {}
             return null;
         }
