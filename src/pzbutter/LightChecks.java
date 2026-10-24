@@ -79,8 +79,11 @@ final class LightChecks {
     static Boolean anyDirty(Object cell, int p, long mask, boolean skipHeld) {
         ArrayList<?> chunks = onScreen(cell, p);
         if (chunks == null) return null;
-        float zoom = Core.getInstance().getZoom(p);
-        long frame = FrameClock.frameNo;
+        return anyDirty(chunks, p, mask, skipHeld, Core.getInstance().getZoom(p), FrameClock.frameNo);
+    }
+
+    /** The walk of {@link #anyDirty(Object, int, long, boolean)} over a given chunk list (the seam the tests use). */
+    static Boolean anyDirty(ArrayList<?> chunks, int p, long mask, boolean skipHeld, float zoom, long frame) {
         for (int i = 0; i < chunks.size(); i++) {
             IsoChunk c = (IsoChunk) chunks.get(i);
             FBORenderLevels levels = c.getRenderLevels(p);

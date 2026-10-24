@@ -36,6 +36,7 @@ public final class SelfTest {
         SoundTest.run();
         WorldTest.run();
         ChunkTest.run();
+        ChunkShimTest.run();
         delete(DIR);
         System.out.println("ok");
     }

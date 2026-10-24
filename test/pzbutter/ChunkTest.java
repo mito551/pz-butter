@@ -610,22 +610,37 @@ final class ChunkTest {
     }
 
     // a chunk with two levels, on screen, with a texture that has been baked once
-    private static IsoChunk holdChunk(int wx, int wy, boolean baked) {
+    static IsoChunk holdChunk(int wx, int wy, boolean baked) { return holdChunk(wx, wy, baked, 0, 1); }
+
+    /** A chunk with levels minLevel..maxLevel, every square lit 0.5, on screen; the pair that holds minLevel has a texture (initialised when baked) and is clean. */
+    static IsoChunk holdChunk(int wx, int wy, boolean baked, int minLevel, int maxLevel) {
         IsoChunk c = new IsoChunk((IsoCell) null);
-        c.minLevel = 0; c.maxLevel = 1; c.wx = wx; c.wy = wy;
-        c.squares = new zombie.iso.IsoGridSquare[2][64];
-        for (int z = 0; z < 2; z++)
+        c.minLevel = minLevel; c.maxLevel = maxLevel; c.wx = wx; c.wy = wy;
+        int n = maxLevel - minLevel + 1;
+        c.squares = new zombie.iso.IsoGridSquare[n][64];
+        for (int z = minLevel; z <= maxLevel; z++)
             for (int i = 0; i < 64; i++) {
                 zombie.iso.IsoGridSquare sq = new zombie.iso.IsoGridSquare(null, null, wx * 8 + i % 8, wy * 8 + i / 8, z);
                 sq.setLightInfoServerGUIOnly(new zombie.core.textures.ColorInfo(0.5f, 0.5f, 0.5f, 1f));
-                c.squares[z][i] = sq;
+                c.squares[z - minLevel][i] = sq;
             }
         zombie.iso.fboRenderChunk.FBORenderLevels lv = c.getRenderLevels(0);
-        lv.setOnScreen(0, true); lv.setOnScreen(1, true);
-        zombie.iso.fboRenderChunk.FBORenderChunk rc = lv.getOrCreateFBOForLevel(0, 1f);
+        for (int z = minLevel; z <= maxLevel; z++) lv.setOnScreen(z, true);
+        zombie.iso.fboRenderChunk.FBORenderChunk rc = lv.getOrCreateFBOForLevel(minLevel, 1f);
         rc.isInit = baked;
-        lv.clearDirty(0, 1f);
+        lv.clearDirty(minLevel, 1f);
         return c;
+    }
+
+    /** The IsoCamera frame state the headless tests change, so they can put it back. */
+    record Cam(int playerIndex, float x, float y) {
+        static Cam set(int playerIndex, float x, float y) {
+            IsoCamera.FrameState fs = IsoCamera.frameState;
+            Cam was = new Cam(fs.playerIndex, fs.camCharacterX, fs.camCharacterY);
+            fs.playerIndex = playerIndex; fs.camCharacterX = x; fs.camCharacterY = y;
+            return was;
+        }
+        void restore() { set(playerIndex, x, y); }
     }
 
     private static void setLight(IsoChunk c, float v) {
@@ -639,8 +654,7 @@ final class ChunkTest {
         zombie.iso.fboRenderChunk.FBORenderChunkManager mgrWas = zombie.iso.fboRenderChunk.FBORenderChunkManager.instance;
         zombie.iso.fboRenderChunk.FBORenderChunkManager mgr = new zombie.iso.fboRenderChunk.FBORenderChunkManager();
         zombie.iso.fboRenderChunk.FBORenderChunkManager.instance = mgr;
-        IsoCamera.frameState.playerIndex = 0;
-        IsoCamera.frameState.camCharacterX = 4f; IsoCamera.frameState.camCharacterY = 4f;
+        Cam cam = Cam.set(0, 4f, 4f);
         try {
             FrameClock.on = true;
             Settings.load(SelfTest.write("enabled=true\nbakeScheduler=true\nbakeFrameBudget=1\nrebakeBudget=0\nrebakeMaxFrames=3\n"));
@@ -697,6 +711,7 @@ final class ChunkTest {
             FrameClock.frameNo = frameNo;
             zombie.iso.fboRenderChunk.FBORenderChunkManager.instance = mgrWas;
             ChunkPatches.holdGuard.on = false;
+            cam.restore();
         }
     }
 
@@ -706,8 +721,7 @@ final class ChunkTest {
         zombie.iso.fboRenderChunk.FBORenderChunkManager mgrWas = zombie.iso.fboRenderChunk.FBORenderChunkManager.instance;
         zombie.iso.fboRenderChunk.FBORenderChunkManager mgr = new zombie.iso.fboRenderChunk.FBORenderChunkManager();
         zombie.iso.fboRenderChunk.FBORenderChunkManager.instance = mgr;
-        IsoCamera.frameState.playerIndex = 0;
-        IsoCamera.frameState.camCharacterX = 4f; IsoCamera.frameState.camCharacterY = 4f;
+        Cam cam = Cam.set(0, 4f, 4f);
         try {
             FrameClock.on = true;
             Settings.load(SelfTest.write("enabled=true\nbakeScheduler=true\nlightingStrongDelta=6\nlightingGlobalDeltaPct=2\nlightingRebakeMs=250\n"));
@@ -743,6 +757,7 @@ final class ChunkTest {
             FrameClock.on = clock;
             zombie.iso.fboRenderChunk.FBORenderChunkManager.instance = mgrWas;
             ChunkPatches.holdGuard.on = false;
+            cam.restore();
         }
     }
 
@@ -756,9 +771,7 @@ final class ChunkTest {
         zombie.iso.fboRenderChunk.FBORenderChunkManager mgrWas = zombie.iso.fboRenderChunk.FBORenderChunkManager.instance;
         zombie.iso.fboRenderChunk.FBORenderChunkManager mgr = new zombie.iso.fboRenderChunk.FBORenderChunkManager();
         zombie.iso.fboRenderChunk.FBORenderChunkManager.instance = mgr;
-        IsoCamera.FrameState fs = IsoCamera.frameState;
-        int pi = fs.playerIndex; float cx = fs.camCharacterX, cy = fs.camCharacterY;
-        fs.playerIndex = 0; fs.camCharacterX = 4f; fs.camCharacterY = 4f;
+        Cam cam = Cam.set(0, 4f, 4f);
         try {
             FrameClock.on = true;
             Settings.load(SelfTest.write("enabled=true\nbakeScheduler=true\nlightingStrongDelta=6\nlightingRebakeMs=250\nlightingStrongBudget=1\n"));
@@ -821,7 +834,7 @@ final class ChunkTest {
             FrameClock.on = clock;
             zombie.iso.fboRenderChunk.FBORenderChunkManager.instance = mgrWas;
             ChunkPatches.holdGuard.on = false;
-            fs.playerIndex = pi; fs.camCharacterX = cx; fs.camCharacterY = cy;
+            cam.restore();
         }
     }
 
@@ -910,7 +923,7 @@ final class ChunkTest {
         zombie.iso.fboRenderChunk.FBORenderChunkManager.instance = new zombie.iso.fboRenderChunk.FBORenderChunkManager();
         boolean fboWas = zombie.core.PerformanceSettings.fboRenderChunk;
         zombie.core.PerformanceSettings.fboRenderChunk = true;                       // invalidateRenderChunkLevel does nothing without it
-        IsoCamera.frameState.playerIndex = 0;
+        Cam cam = Cam.set(0, IsoCamera.frameState.camCharacterX, IsoCamera.frameState.camCharacterY);
         try {
             Settings.load(SelfTest.write("enabled=true\ntreesInChunkTexture=true\ntreeBakeMaxChunksPerSec=2\n"));
             ChunkTrees.init();
@@ -959,6 +972,7 @@ final class ChunkTest {
         } finally {
             zombie.core.PerformanceSettings.fboRenderChunk = fboWas;
             zombie.iso.fboRenderChunk.FBORenderChunkManager.instance = mgrWas;
+            cam.restore();
             Settings.load(SelfTest.write("enabled=true\n"));
             ChunkTrees.init();
         }
