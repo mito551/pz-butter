@@ -33,6 +33,12 @@ final class GpuTest {
         fastQuadFallsBackBeforeFlush();
         fastQuadOtherModesStock();
         fastQuadFallsBackWhenIndicesFull();
+        slotWaitsForUnsignalledFrame();
+        slotSameFrameFencesNow();
+        perBatchFenceMode();
+        slotBudgetClamp();
+        fenceRingOrderAndWrap();
+        slotRotation();
     }
 
     static final String[] PLAN9_FLAGS = {"persistentVbo", "vboFastQuads", "smartTextureRelease", "bakeNoSync", "bakeNoSyncCheck", "bakeBudgetGpu", "gpuStats"};
@@ -327,5 +333,55 @@ final class GpuTest {
         setField(r, "indices", java.nio.ByteBuffer.allocateDirect(6).order(java.nio.ByteOrder.nativeOrder()));
         assert !QuadWriter.tryQuad(r, new float[24]) && ((java.nio.ByteBuffer) field(r, "elements")).position() == 0;
         QuadWriter.resetForTest();
+    }
+
+    // ---- Task 6: slot and fence cores ----
+
+    static void slotWaitsForUnsignalledFrame() {
+        assert SlotRing.decide(-1, 10, -1, true, false) == SlotRing.FREE;
+        assert SlotRing.decide(7, 10, 7, true, false) == SlotRing.FREE;
+        assert SlotRing.decide(8, 10, 7, true, false) == SlotRing.WAIT_FRAME;
+        assert SlotRing.decide(2, 10, -1, true, false) == SlotRing.FREE;          // 8 swaps old: reused without asking
+        assert SlotRing.decide(3, 10, -1, true, false) == SlotRing.WAIT_FRAME;
+    }
+
+    static void slotSameFrameFencesNow() {
+        assert SlotRing.decide(10, 10, 9, true, false) == SlotRing.FENCE_NOW;
+    }
+
+    static void perBatchFenceMode() {
+        assert SlotRing.decide(5, 10, -1, false, true) == SlotRing.FREE;
+        assert SlotRing.decide(5, 10, 9, false, false) == SlotRing.WAIT_BATCH;   // the frame fence does not count in per-batch mode
+        assert SlotRing.decide(-1, 10, -1, false, false) == SlotRing.FREE;
+    }
+
+    static void slotBudgetClamp() {
+        long mb = 1L << 20;
+        assert SlotRing.slots(4, 10 * mb, SlotRing.BUDGET) == 4 && SlotRing.slots(99, mb, SlotRing.BUDGET) == 8;
+        assert SlotRing.slots(8, 10 * mb, SlotRing.BUDGET) == 6 && SlotRing.slots(0, mb, SlotRing.BUDGET) == 1;
+        assert SlotRing.slots(4, 70 * mb, SlotRing.BUDGET) == 1;                 // never below one
+        long debug = 256L * (262144 + 21843);                                    // Core.debug: 256 x (256 KB + its index buffer)
+        assert SlotRing.slots(4, debug, SlotRing.BUDGET) == 1;
+        long normal = 128L * (65536 + 5460) + 48L * (65536 + 6144);              // the two rings of a normal run: 12.5 MB a slot
+        assert SlotRing.slots(4, normal, SlotRing.BUDGET) == 4 && SlotRing.slots(8, normal, SlotRing.BUDGET) == 5;
+    }
+
+    static void fenceRingOrderAndWrap() {
+        SlotRing.FenceRing r = new SlotRing.FenceRing();
+        for (long s = 0; s < 5; s++) assert r.put(s, 100 + s) == 0;
+        long[] out = new long[16];
+        assert r.pollOrder(out) == 5 && out[0] == 0 && out[4] == 4;
+        r.signalled(0); r.signalled(1);
+        assert r.completed == 1 && r.handleFor(1) == 0 && r.handleFor(2) == 102;
+        assert r.pollOrder(out) == 3 && out[0] == 2;
+        for (long s = 5; s < 18; s++) r.put(s, 100 + s);
+        assert r.put(18, 118) == 102 && r.handleFor(2) == 0;                     // 16 swaps later the old handle comes back for deletion
+    }
+
+    static void slotRotation() {
+        SlotRing.Buf b = new SlotRing.Buf(4);
+        int[] seen = new int[6];
+        for (int i = 0; i < 6; i++) { seen[i] = SlotRing.next(b); b.cur = seen[i]; }
+        assert java.util.Arrays.equals(seen, new int[] {0, 1, 2, 3, 0, 1});
     }
 }
