@@ -14,6 +14,7 @@ public final class ZombiePatches {
         FacingFix.init();
         ZombieLod.init();
         losGuard.on = Settings.flag("playerLosFast");
+        CullSort.init();
     }
 
     /** IsoGameCharacter.setForwardDirection(float, float) entry: true skips the body (the character keeps its facing). */
@@ -188,5 +189,47 @@ public final class ZombiePatches {
 
         @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
         public static void exit() { ZombiePatches.onLosExit(); }
+    }
+
+    // ---- zombieCullSortFast: the 3D-model sort ----
+
+    /**
+     * TimSort.doSort entry: the comparator the sort runs with. The game's {@code compScoreToPlayer} (found by its class the first
+     * time, bound once) on the game thread, for two or more elements, becomes a comparator over scores worked out once; every other
+     * comparator, thread and range is the caller's. A score that throws lets the game's own sort run (and throw as it would).
+     */
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    public static java.util.Comparator onSortEnter(Object[] a, java.util.Comparator c, int lo, int hi) {
+        if (!CullSort.guard.on) return c;
+        try {
+            java.util.Comparator s = CullSort.stock;
+            if (c != s && (s != null || c == null || c.getClass() != CullSort.scoreClass)) return c;
+            if (Thread.currentThread() != FrameClock.mainThread || hi - lo < 2) return c;
+            if (s == null) CullSort.bind(c);
+            return CullSort.prepare(a, lo, hi, CullSort.score);
+        } catch (Throwable t) {
+            CullSort.guard.fail(t);
+            return c;
+        }
+    }
+
+    /** TimSort.doSort exit (also on a throw): drops the stored scores of a comparator ours made. */
+    public static void onSortExit(java.util.Comparator c) {
+        if (!(c instanceof CullSort.Prepared)) return;
+        try { CullSort.done(c); }
+        catch (Throwable t) { CullSort.guard.fail(t); }
+    }
+
+    /** The only overload with a Comparator. Other callers (render code) pass other comparators and cost one compare. */
+    @Patch(className = "zombie.entity.util.TimSort", methodName = "doSort")
+    public static class CullSortHook {
+        @Patch.OnEnter
+        public static void enter(@Patch.Argument(0) Object[] a, @Patch.Argument(value = 1, readOnly = false) java.util.Comparator c,
+                                 @Patch.Argument(2) int lo, @Patch.Argument(3) int hi) {
+            c = ZombiePatches.onSortEnter(a, c, lo, hi);
+        }
+
+        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
+        public static void exit(@Patch.Argument(1) java.util.Comparator c) { ZombiePatches.onSortExit(c); }
     }
 }

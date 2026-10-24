@@ -5,6 +5,12 @@ final class ZombieTest {
     private ZombieTest() {}
 
     static void run() throws Exception {
+        try { runAll(); }
+        catch (Exception | Error e) { throw e; }
+        catch (Throwable t) { throw new Exception(t); }
+    }
+
+    static void runAll() throws Throwable {
         plan8KeysDefaults();
         settingsTemplateHasPlan8Keys();
         facingPredicateIsStock();
@@ -34,6 +40,12 @@ final class ZombieTest {
         losShimOffTouchesNothing();
         losShimSwapsOnce();
         losHolderTargetsStock();
+        cullSortOrderIsStock();
+        cullSortCompareArithmetic();
+        cullSortLeavesOtherSortsAlone();
+        cullSortShimPicksStockOnly();
+        cullSortInitFindsGameClass();
+        cullSortHolderTargetsStock();
     }
 
     static final String[] PLAN8_FLAGS = {"zeroFacingFix", "playerLosFast", "zombieCullSortFast", "statsNoBox", "popmanFlagsFlyweight", "entityTiming"};
@@ -424,6 +436,132 @@ final class ZombieTest {
         assert p.className().equals("zombie.characters.IsoPlayer") && p.methodName().equals("updateLOS");
         boolean exit = false;
         for (java.lang.reflect.Method m : ZombiePatches.UpdateLos.class.getDeclaredMethods()) {
+            me.zed_0xff.zombie_buddy.Patch.OnExit x = m.getAnnotation(me.zed_0xff.zombie_buddy.Patch.OnExit.class);
+            if (x != null) exit = x.onThrowable() == Throwable.class && x.suppress() == Throwable.class;
+        }
+        assert exit;
+    }
+
+    // ---- Task 7: cull sort memo ----
+
+    static void cullSortOrderIsStock() throws Throwable {
+        java.util.Random r = new java.util.Random(808);
+        int threw = 0;
+        for (int run = 0; run < 300; run++) {
+            int n = run < 12 ? run : r.nextInt(3000);
+            Object[] items = new Object[n];
+            java.util.IdentityHashMap<Object, Float> sc = new java.util.IdentityHashMap<>();
+            for (int i = 0; i < n; i++) {
+                items[i] = new Object();
+                float f = switch (r.nextInt(8)) { case 0 -> Float.NaN; case 1 -> 0f; case 2 -> -0f; case 3 -> (float) r.nextInt(5); default -> r.nextFloat() * 100f; };
+                sc.put(items[i], f);
+            }
+            if (run % 7 == 0) java.util.Arrays.sort(items, (x, y) -> Float.compare(sc.get(x), sc.get(y)));   // long ascending runs
+            if (run % 11 == 0) java.util.Collections.reverse(java.util.Arrays.asList(items));
+            int lo = n > 20 && run % 5 == 0 ? 5 : 0, hi = n > 20 && run % 5 == 0 ? n - 3 : n;
+            Object[] a = items.clone(), b = items.clone();
+            // with NaN scores (equal to everything) the game's TimSort may itself reject the comparator: then ours must reject it the same way
+            // and leave the array in the same half-sorted state, since the comparison sequence is the same
+            String stockEnd = null, fastEnd = null;
+            try { new zombie.entity.util.TimSort<Object>().doSort(a, (x, y) -> CullSort.compareScores(sc.get(x), sc.get(y)), lo, hi); }
+            catch (IllegalArgumentException e) { stockEnd = e.getMessage(); threw++; }
+            int[] calls = {0};
+            java.util.Comparator<Object> fast = CullSort.prepare(b, lo, hi, z -> { calls[0]++; return sc.get(z); });
+            try { new zombie.entity.util.TimSort<Object>().doSort(b, fast, lo, hi); }
+            catch (IllegalArgumentException e) { fastEnd = e.getMessage(); }
+            CullSort.done(fast);
+            assert java.util.Objects.equals(stockEnd, fastEnd) : run;
+            assert java.util.Arrays.equals(a, b) && calls[0] == hi - lo : run;
+        }
+        assert threw > 0 && threw < 300 : threw;                                           // both the accepted and the rejected case ran
+    }
+
+    static void cullSortCompareArithmetic() {
+        assert CullSort.compareScores(1f, 2f) == 1 && CullSort.compareScores(2f, 1f) == -1 && CullSort.compareScores(1f, 1f) == 0;
+        assert CullSort.compareScores(Float.NaN, 1f) == 0 && CullSort.compareScores(1f, Float.NaN) == 0 && CullSort.compareScores(0f, -0f) == 0;
+    }
+
+    static void cullSortLeavesOtherSortsAlone() {
+        CullSort.resetForTest(); CullSort.guard.on = true;
+        java.util.Comparator<Object> other = (x, y) -> 0;
+        assert ZombiePatches.onSortEnter(new Object[0], other, 0, 0) == other;
+        CullSort.guard.on = false;
+        assert ZombiePatches.onSortEnter(new Object[0], other, 0, 0) == other;
+        ZombiePatches.onSortExit(other);
+        CullSort.resetForTest();
+    }
+
+    // mine: the shim hands a stored-score comparator back for the game's comparator only (game thread, two or more elements); a score
+    // that throws leaves the game's comparator in place; the exit shim releases the table; elements outside the range cost a miss
+    static void cullSortShimPicksStockOnly() throws Throwable {
+        Thread saved = FrameClock.mainThread;
+        CullSort.resetForTest();
+        java.util.Comparator<Object> game = (x, y) -> 0, other = (x, y) -> 0;
+        Object[] a = {new Object(), new Object(), new Object()};
+        try {
+            FrameClock.mainThread = Thread.currentThread();
+            CullSort.guard.on = true; CullSort.stock = game;
+            int[] calls = {0};
+            CullSort.score = z -> { calls[0]++; return 1f; };
+            assert ZombiePatches.onSortEnter(a, other, 0, 3) == other && calls[0] == 0;
+            assert ZombiePatches.onSortEnter(a, game, 0, 1) == game && ZombiePatches.onSortEnter(a, game, 2, 2) == game && calls[0] == 0;
+            java.util.Comparator c = ZombiePatches.onSortEnter(a, game, 0, 3);
+            assert c instanceof CullSort.Prepared && c != game && calls[0] == 3;
+            assert c.compare(a[0], a[1]) == 0;
+            long m0 = CullSort.misses;
+            c.compare(new Object(), a[1]);                                                  // not in the range: scored again, counted
+            assert CullSort.misses == m0 + 1 && calls[0] == 4;
+            ZombiePatches.onSortExit(c);
+            c = ZombiePatches.onSortEnter(a, game, 1, 3);                                    // the table is reusable after done
+            assert c instanceof CullSort.Prepared && calls[0] == 6;
+            ZombiePatches.onSortExit(c);
+            // a nested prepare while one is open gets a table of its own
+            java.util.Comparator c1 = CullSort.prepare(a, 0, 3, CullSort.score), c2 = CullSort.prepare(a, 0, 3, CullSort.score);
+            assert c1 != c2;
+            CullSort.done(c1); CullSort.done(c2);
+            // a throwing score: the game's comparator stays, and the table is free again
+            CullSort.score = z -> { throw new IllegalStateException("score"); };
+            assert ZombiePatches.onSortEnter(a, game, 0, 3) == game && CullSort.guard.on;
+            CullSort.score = z -> 2f;
+            c = ZombiePatches.onSortEnter(a, game, 0, 3);
+            assert c instanceof CullSort.Prepared;
+            ZombiePatches.onSortExit(c);
+            // another thread
+            java.util.Comparator[] got = new java.util.Comparator[1];
+            Thread t = new Thread(() -> got[0] = ZombiePatches.onSortEnter(a, game, 0, 3));
+            t.start(); t.join(5000);
+            assert !t.isAlive() && got[0] == game;
+        } finally { FrameClock.mainThread = saved; CullSort.resetForTest(); }
+    }
+
+    // mine: with the key on, init finds the game's comparator class and getScore without starting IsoWorld; with it off nothing is looked up
+    static void cullSortInitFindsGameClass() throws Throwable {
+        Settings.load(SelfTest.write("enabled=true\nzombieCullSortFast=true\n"));
+        CullSort.resetForTest();
+        CullSort.init();
+        try {
+            assert CullSort.guard.on && CullSort.scoreClass != null && CullSort.getScore != null && CullSort.stock == null;
+            assert CullSort.scoreClass.getName().equals("zombie.iso.IsoWorld$CompScoreToPlayer");
+            java.lang.reflect.Constructor<?> k = CullSort.scoreClass.getDeclaredConstructor();
+            k.setAccessible(true);
+            @SuppressWarnings("rawtypes") java.util.Comparator game = (java.util.Comparator) k.newInstance();
+            CullSort.bind(game);
+            assert CullSort.stock == game && CullSort.score != null;
+            Settings.load(SelfTest.write("enabled=true\n"));
+            CullSort.resetForTest();
+            CullSort.init();
+            assert !CullSort.guard.on && CullSort.scoreClass == null;
+        } finally {
+            Settings.load(SelfTest.write("enabled=true\n"));
+            CullSort.resetForTest();
+        }
+    }
+
+    static void cullSortHolderTargetsStock() throws Exception {
+        me.zed_0xff.zombie_buddy.Patch p = ZombiePatches.CullSortHook.class.getAnnotation(me.zed_0xff.zombie_buddy.Patch.class);
+        assert p.className().equals("zombie.entity.util.TimSort") && p.methodName().equals("doSort");
+        boolean exit = false;
+        for (java.lang.reflect.Method m : ZombiePatches.CullSortHook.class.getDeclaredMethods()) {
             me.zed_0xff.zombie_buddy.Patch.OnExit x = m.getAnnotation(me.zed_0xff.zombie_buddy.Patch.OnExit.class);
             if (x != null) exit = x.onThrowable() == Throwable.class && x.suppress() == Throwable.class;
         }

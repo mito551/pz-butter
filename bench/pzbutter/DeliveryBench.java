@@ -70,6 +70,10 @@ import zombie.iso.IsoGridSquare;
  *          lastSpotted is pre-filled (untimed) with 0 / 500 / 2,000 of the objects. ms per frame (median of 7 runs of 10 frames after a
  *          warm-up) on a java.util.Stack and on a SpottedStack; prints the final size and a checksum of the contains answers, which
  *          are equal for both (checked) and must not change between versions.
+ * cullsort: zombie.entity.util.TimSort over 600 and 2,000 plain objects, the game's compare shape (two score calls per compare, stock
+ *          arithmetic) against CullSort.prepare; the score costs about a relevance score (4 iterations of two square roots and a
+ *          branch). Microseconds per sort (median of 7 runs of 20 sorts after a warm-up; the array copy is not timed); prints a
+ *          checksum of the sorted order, equal for both (checked) and fixed between versions, and the score calls per sort.
  */
 public final class DeliveryBench {
     static final com.sun.management.ThreadMXBean MX = (com.sun.management.ThreadMXBean) ManagementFactory.getThreadMXBean();
@@ -96,7 +100,8 @@ public final class DeliveryBench {
             case "scenecull" -> scenecull();
             case "simlod" -> simlod();
             case "spotted" -> spotted();
-            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | uislice | readset | soundgate | cutaway | splash | edge | plan | gate | luagate | replay | luafiles | dedupe | scenecull | simlod | spotted");
+            case "cullsort" -> { try { cullsort(); } catch (Throwable t) { throw new RuntimeException(t); } }
+            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | uislice | readset | soundgate | cutaway | splash | edge | plan | gate | luagate | replay | luafiles | dedupe | scenecull | simlod | spotted | cullsort");
         }
     }
 
@@ -1142,6 +1147,72 @@ public final class DeliveryBench {
                     "prefill " + fill[fi], kind == 0 ? "Stack" : "SpottedStack", median(ms), ms[0], ms[6], sum);
             }
             if (check[0] != check[1]) throw new IllegalStateException("spotted: the two stacks disagree");
+        }
+    }
+
+    static final class SortItem {
+        final float x, y;
+        final int id;
+        SortItem(float x, float y, int id) { this.x = x; this.y = y; this.id = id; }
+    }
+
+    static int scoreCalls;
+
+    /** About the cost of IsoPlayer.getZombieRelevenceScore: a short loop of square roots and a branch. */
+    static float benchScore(Object o) {
+        SortItem z = (SortItem) o;
+        scoreCalls++;
+        float v = z.x * z.x + z.y * z.y;
+        for (int i = 0; i < 4; i++) {
+            v = (float) Math.sqrt(v + z.x) + (float) Math.sqrt(v + z.y);
+            if (v > 90f) v -= 45f;
+        }
+        return v;
+    }
+
+    static long orderSum(Object[] a) {
+        long sum = 0;
+        for (Object o : a) sum = sum * 31 + ((SortItem) o).id;
+        return sum;
+    }
+
+    static void cullsort() throws Throwable {
+        final int sorts = 20;
+        for (int n : new int[] {600, 2_000}) {
+            java.util.Random rnd = new java.util.Random(n);
+            Object[] base = new Object[n];
+            for (int i = 0; i < n; i++) base[i] = new SortItem(rnd.nextFloat() * 60f, rnd.nextFloat() * 60f, i);
+            java.util.Comparator<Object> stockCmp = (p, q) -> CullSort.compareScores(benchScore(p), benchScore(q));
+            long[] check = new long[2];
+            long[] calls = new long[2];
+            for (int kind = 0; kind < 2; kind++) {
+                double[] us = new double[7];
+                long sum = 0, first = 0;
+                for (int r = 0; r < 3 + 7; r++) {
+                    long total = 0;
+                    scoreCalls = 0;
+                    for (int s = 0; s < sorts; s++) {
+                        Object[] a = base.clone();
+                        long t0 = System.nanoTime();
+                        if (kind == 0) new zombie.entity.util.TimSort<Object>().doSort(a, stockCmp, 0, n);
+                        else {
+                            java.util.Comparator<Object> c = CullSort.prepare(a, 0, n, DeliveryBench::benchScore);
+                            new zombie.entity.util.TimSort<Object>().doSort(a, c, 0, n);
+                            CullSort.done(c);
+                        }
+                        total += System.nanoTime() - t0;
+                        sum = orderSum(a);
+                    }
+                    if (r == 0) first = sum;
+                    else if (sum != first) throw new IllegalStateException("cullsort: checksum changed between runs");
+                    if (r >= 3) us[r - 3] = total / 1e3 / sorts;
+                    calls[kind] = scoreCalls / sorts;
+                }
+                check[kind] = sum;
+                System.out.printf("cullsort %-5d %-14s: %9.1f us/sort (min %.1f, max %.1f), checksum %d, %d score calls/sort%n",
+                    n, kind == 0 ? "stock compare" : "prepare", median(us), us[0], us[6], sum, calls[kind]);
+            }
+            if (check[0] != check[1]) throw new IllegalStateException("cullsort: the two orders differ");
         }
     }
 }
