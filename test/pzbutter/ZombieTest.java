@@ -51,6 +51,16 @@ final class ZombieTest {
         statsShimOffTouchesNothing();
         flagsFlyweightSameFlags();
         smallHoldersTargetStock();
+        entityTimingSumsOutermost();
+        entityTimingMinuteLine();
+        entityTimingIgnoresIdleFrames();
+        entityTimingUnbalancedEndsIgnored();
+        entityTimingMinuteRolls();
+        entityTimingWritesEntityOut();
+        entityTimingShimsCountPhases();
+        timingHoldersTargetStock();
+        frameHolderEndsEntityTiming();
+        zombieShimsOffTouchNothing();
     }
 
     static final String[] PLAN8_FLAGS = {"zeroFacingFix", "playerLosFast", "zombieCullSortFast", "statsNoBox", "popmanFlagsFlyweight", "entityTiming"};
@@ -666,5 +676,191 @@ final class ZombieTest {
             }
             assert enterSkips && exitReturns : h;
         }
+    }
+
+    // ---- Task 9: entity phase timing and the off-path check ----
+
+    static void entityTimingSumsOutermost() {
+        EntityTiming.resetForTest(); EntityTiming.guard.on = true;
+        EntityTiming.begin(EntityTiming.SIGHT, 1_000); EntityTiming.end(EntityTiming.SIGHT, 3_000);    // player 1
+        EntityTiming.begin(EntityTiming.SIGHT, 5_000); EntityTiming.begin(EntityTiming.SIGHT, 6_000);   // player 2, nested call inside
+        EntityTiming.end(EntityTiming.SIGHT, 7_000); EntityTiming.end(EntityTiming.SIGHT, 9_000);
+        assert EntityTiming.frameTotal(EntityTiming.SIGHT) == 6_000;
+        EntityTiming.resetForTest();
+    }
+
+    static void entityTimingMinuteLine() {
+        long[][] s = new long[EntityTiming.PHASES][];
+        for (int p = 0; p < EntityTiming.PHASES; p++) { s[p] = new long[100]; for (int i = 0; i < 100; i++) s[p][i] = (i + 1) * 10_000L * (p + 1); }
+        String l = EntityTiming.minuteLine(100, 1234.56, 2000, s, 100);
+        assert l.equals("[PZButter] entityTiming: 100 frames, zombies 1234.6/2000; ms p50/p95/max: classify 0.500/0.950/1.000, "
+            + "update 1.000/1.900/2.000, postupdate 1.500/2.850/3.000, cull 2.000/3.800/4.000, sight 2.500/4.750/5.000") : l;
+        // nearest rank on an unsorted prefix; entries past count are not read
+        long[][] u = new long[EntityTiming.PHASES][];
+        for (int p = 0; p < EntityTiming.PHASES; p++) u[p] = new long[] {3_000_000, 1_000_000, 2_000_000, 999_000_000};
+        String m = EntityTiming.minuteLine(3, 2.0, 5, u, 3);
+        assert m.startsWith("[PZButter] entityTiming: 3 frames, zombies 2.0/5; ms p50/p95/max: classify 2.000/3.000/3.000, update 2.000/3.000/3.000") : m;
+        assert EntityTiming.minuteLine(0, 0, 0, u, 0).contains("classify 0.000/0.000/0.000");
+    }
+
+    static void entityTimingIgnoresIdleFrames() {
+        EntityTiming.resetForTest(); EntityTiming.guard.on = true;
+        EntityTiming.frameEnd(1_000_000_000L, 1L, 1L);                  // a menu frame: no phase ran
+        assert EntityTiming.samples() == 0;
+        EntityTiming.begin(EntityTiming.UPDATE, 0); EntityTiming.end(EntityTiming.UPDATE, 500_000);
+        EntityTiming.frameEnd(1_016_000_000L, 2L, 2L);
+        assert EntityTiming.samples() == 1;
+        assert EntityTiming.frameTotal(EntityTiming.UPDATE) == 0;       // the frame was cleared
+        EntityTiming.frameEnd(1_033_000_000L, 3L, 3L);                  // idle again
+        assert EntityTiming.samples() == 1;
+        EntityTiming.resetForTest();
+    }
+
+    /** Mine: an end without its begin (the key went on inside the call) adds nothing and does not unbalance the next pair. */
+    static void entityTimingUnbalancedEndsIgnored() {
+        EntityTiming.resetForTest(); EntityTiming.guard.on = true;
+        EntityTiming.end(EntityTiming.CULL, 9_000);
+        assert EntityTiming.frameTotal(EntityTiming.CULL) == 0;
+        EntityTiming.begin(EntityTiming.CULL, 10_000); EntityTiming.end(EntityTiming.CULL, 12_000);
+        assert EntityTiming.frameTotal(EntityTiming.CULL) == 2_000;
+        EntityTiming.resetForTest();
+    }
+
+    /** Mine: the minute line goes out once 60 s have passed since the first frame, from the sampled frames, then the samples restart. */
+    static void entityTimingMinuteRolls() {
+        EntityTiming.resetForTest(); EntityTiming.guard.on = true;
+        java.io.PrintStream out = System.out;
+        java.io.ByteArrayOutputStream cap = new java.io.ByteArrayOutputStream();
+        System.setOut(new java.io.PrintStream(cap, true));
+        try {
+            long t = 5_000_000_000L;
+            EntityTiming.frameEnd(t, 0, 1);                                              // the first frame starts the minute
+            for (int i = 0; i < 3; i++) {
+                EntityTiming.begin(EntityTiming.UPDATE, 0); EntityTiming.end(EntityTiming.UPDATE, (i + 1) * 1_000_000L);
+                EntityTiming.zombies(100 * (i + 1));
+                EntityTiming.frameEnd(t + 1_000_000_000L * (i + 1), 0, i + 2);
+            }
+            assert cap.size() == 0 && EntityTiming.samples() == 3;
+            EntityTiming.frameEnd(t + EntityTiming.MINUTE_NS, 0, 9);                      // idle frame at 60 s: the line still comes
+            System.out.flush();
+            String l = cap.toString();
+            assert l.startsWith("[PZButter] entityTiming: 3 frames, zombies 200.0/300; ms p50/p95/max: classify 0.000/0.000/0.000, update 2.000/3.000/3.000") : l;
+            assert EntityTiming.samples() == 0;
+            EntityTiming.frameEnd(t + EntityTiming.MINUTE_NS + 1, 0, 10);
+            assert cap.toString().equals(l);                                             // nothing more until the next minute
+        } finally { System.setOut(out); EntityTiming.resetForTest(); }
+    }
+
+    /** Mine: one entity.out line per sampled frame, epoch ms first, three decimals. */
+    static void entityTimingWritesEntityOut() throws Exception {
+        java.io.File dir = java.nio.file.Files.createTempDirectory("pzb-entity").toFile();
+        EntityTiming.resetForTest(); EntityTiming.guard.on = true;
+        try {
+            EntityTiming.log = new LogSink(new java.io.File(dir, "entity.out"), 1 << 20);
+            EntityTiming.begin(EntityTiming.CLASSIFY, 0); EntityTiming.end(EntityTiming.CLASSIFY, 1_500_000);
+            EntityTiming.begin(EntityTiming.POSTUPDATE, 0); EntityTiming.end(EntityTiming.POSTUPDATE, 2_250_000);
+            EntityTiming.zombies(42);
+            EntityTiming.frameEnd(1_000_000_000L, 1700000000123L, 77);
+            EntityTiming.frameEnd(1_016_000_000L, 1700000000140L, 78);                   // idle: no line
+            EntityTiming.log.close();
+            String got = java.nio.file.Files.readString(new java.io.File(dir, "entity.out").toPath());
+            assert got.equals("1700000000123 77 42 1.500 0.000 2.250 0.000 0.000\n") : got;
+        } finally {
+            EntityTiming.resetForTest();
+            for (java.io.File f : dir.listFiles()) f.delete();
+            dir.delete();
+        }
+    }
+
+    /** Mine: the shims time only on the game thread, with the key on; the scheduler exit leaves the zombie count to the cell (none headless). */
+    static void entityTimingShimsCountPhases() throws Exception {
+        Thread saved = FrameClock.mainThread;
+        FrameClock.mainThread = Thread.currentThread();
+        EntityTiming.resetForTest(); EntityTiming.guard.on = true;
+        try {
+            ZombiePatches.onSchedEnter(EntityTiming.UPDATE);
+            ZombiePatches.onSchedExit(EntityTiming.UPDATE);
+            ZombiePatches.onSchedEnter(EntityTiming.POSTUPDATE);
+            ZombiePatches.onSchedExit(EntityTiming.POSTUPDATE);
+            assert EntityTiming.frameTotal(EntityTiming.UPDATE) >= 0 && EntityTiming.frameTotal(EntityTiming.POSTUPDATE) >= 0;
+            ZombiePatches.onFrameEnd();
+            assert EntityTiming.samples() == 1;
+            // another thread: nothing is recorded
+            Thread t = new Thread(() -> { ZombiePatches.onSchedEnter(EntityTiming.UPDATE); ZombiePatches.onSchedExit(EntityTiming.UPDATE); ZombiePatches.onFrameEnd(); });
+            t.start(); t.join(5000);
+            assert !t.isAlive() && EntityTiming.samples() == 1;
+            // cull and sight timing through their own shims, with every other cull key off
+            ZombieLod.resetForTest();
+            ZombiePatches.onCullEnter(); assert !ZombieLod.inCull;
+            ZombiePatches.onCullExit();
+            ZombiePatches.onLosEnter(null); ZombiePatches.onLosExit();                     // a null player with playerLosFast off is not read
+            ZombiePatches.onFrameEnd();
+            assert EntityTiming.samples() == 2;
+            // key off in the middle: the exit of a call whose entry was timed leaves no stray depth
+            ZombiePatches.onSchedEnter(EntityTiming.UPDATE);
+            EntityTiming.guard.on = false;
+            ZombiePatches.onSchedExit(EntityTiming.UPDATE);
+            EntityTiming.guard.on = true;
+            ZombiePatches.onFrameEnd();                                                     // clears the open phase
+            ZombiePatches.onSchedEnter(EntityTiming.UPDATE); ZombiePatches.onSchedExit(EntityTiming.UPDATE);
+            ZombiePatches.onFrameEnd();
+            assert EntityTiming.samples() == 4;
+        } finally { FrameClock.mainThread = saved; EntityTiming.resetForTest(); ZombieLod.resetForTest(); }
+    }
+
+    static void timingHoldersTargetStock() throws Exception {
+        java.util.Map<String, String> want = java.util.Map.of("SchedStart", "zombie.MovingObjectUpdateScheduler.startFrame",
+            "SchedUpdate", "zombie.MovingObjectUpdateScheduler.update", "SchedPost", "zombie.MovingObjectUpdateScheduler.postupdate");
+        for (java.util.Map.Entry<String, String> e : want.entrySet()) {
+            Class<?> c = null;
+            for (Class<?> x : ZombiePatches.class.getDeclaredClasses()) if (x.getSimpleName().equals(e.getKey())) c = x;
+            assert c != null : e.getKey();
+            me.zed_0xff.zombie_buddy.Patch p = c.getAnnotation(me.zed_0xff.zombie_buddy.Patch.class);
+            assert (p.className() + "." + p.methodName()).equals(e.getValue());
+            boolean exitOk = false, enter = false;
+            for (java.lang.reflect.Method m : c.getDeclaredMethods()) {
+                me.zed_0xff.zombie_buddy.Patch.OnExit x = m.getAnnotation(me.zed_0xff.zombie_buddy.Patch.OnExit.class);
+                if (x != null) exitOk = x.onThrowable() == Throwable.class && x.suppress() == Throwable.class;
+                if (m.getAnnotation(me.zed_0xff.zombie_buddy.Patch.OnEnter.class) != null) enter = true;
+            }
+            assert exitOk && enter : e.getKey();
+        }
+        for (String k : new String[] {"ZombiePatches.SchedStart", "ZombiePatches.SchedUpdate", "ZombiePatches.SchedPost"})
+            assert java.util.Arrays.asList(ModCompat.KEYS.get(k)).contains("entityTiming") : k;
+        assert java.util.Arrays.asList(ModCompat.KEYS.get("Patches.Frame")).contains("entityTiming");
+    }
+
+    /** Mine: the frame holder's exit ends with the entityTiming call (the class file calls it; the order is the source's). */
+    static void frameHolderEndsEntityTiming() throws Exception {
+        String src = java.nio.file.Files.readString(new java.io.File(System.getProperty("user.dir"), "src/pzbutter/Patches.java").toPath());
+        int exit = src.indexOf("public static void exit()");
+        assert exit > 0 && src.indexOf("ZombiePatches.onFrameEnd();", exit) > 0;
+        String line = src.substring(exit, src.indexOf('\n', exit));
+        assert line.trim().endsWith("ZombiePatches.onFrameEnd(); }") : line;
+    }
+
+    static void zombieShimsOffTouchNothing() {
+        FacingFix.resetForTest(); ZombieLod.resetForTest(); CullSort.resetForTest(); EntityTiming.resetForTest(); ZombieMisc.resetForTest();
+        ZombiePatches.losGuard.on = false;
+        assert !ZombiePatches.onForward(0f, 0f);
+        ZombiePatches.onCullEnter(); ZombiePatches.onCullExit();
+        assert !ZombiePatches.onCulledEnter(null, false); ZombiePatches.onCulledExit(null);
+        assert ZombiePatches.onSimLevel(null, null, zombie.UpdateSchedulerSimulationLevel.FULL) == zombie.UpdateSchedulerSimulationLevel.FULL;
+        ZombiePatches.onLosEnter(null); ZombiePatches.onLosExit();
+        java.util.Comparator<Object> c = (x, y) -> 0;
+        assert ZombiePatches.onSortEnter(null, c, 0, 0) == c; ZombiePatches.onSortExit(c);
+        assert ZombiePatches.onStatsGet(null, null) == -1 && ZombiePatches.onFromInt(1) == null;
+        ZombiePatches.onSchedEnter(0); ZombiePatches.onSchedExit(0); ZombiePatches.onFrameEnd();
+        assert EntityTiming.samples() == 0 && EntityTiming.frameTotal(0) == 0;
+        assert zombie.core.PerformanceSettings.numberZombiesBlended == 20;
+        // enabled=false answers the same through the inits
+        Settings.load(SelfTest.write("enabled=false\nzeroFacingFix=true\nplayerLosFast=true\nzombieCullSortFast=true\nstatsNoBox=true\n"
+            + "popmanFlagsFlyweight=true\nentityTiming=true\nnumberZombiesBlended=9\nzombieLodFixed3d=99\nzombieModelAddBudgetUs=9\nzombieSimLodTiles=9\n"));
+        ZombiePatches.init();
+        assert !FacingFix.guard.on && !ZombiePatches.losGuard.on && !CullSort.guard.on && !ZombieMisc.statsGuard.on && !ZombieMisc.flagsGuard.on
+            && !EntityTiming.guard.on && !ZombieLod.blendGuard.on && !ZombieLod.capGuard.on && !ZombieLod.budgetGuard.on && !ZombieLod.simGuard.on;
+        Settings.load(SelfTest.write("enabled=true\n"));
+        ZombiePatches.init();
+        assert !EntityTiming.guard.on && EntityTiming.log == null;
     }
 }

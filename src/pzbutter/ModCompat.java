@@ -71,7 +71,7 @@ final class ModCompat {
         // frame loop: everything driven by the frame counter, the main thread mark or the frame ticks
         Map.entry("Patches.Frame", k("luaWorkerGate", "luaFileWriteThrottle", "logDedupe", "luaBudget", "luaTiming", "frameStartGate",
             "presentPacing", "reflexSleep", "bakeScheduler", "lightSwitchCheckFrames", "gridStackInterval", "roofHideDebounceFrames",
-            "soundTickHz", "mapStreetMemo", "mapStreetCache", "textWidthCache", "uiTiming", "uiCensus", "uiRetained", "uiRetainCheck")),
+            "soundTickHz", "mapStreetMemo", "mapStreetCache", "textWidthCache", "uiTiming", "uiCensus", "uiRetained", "uiRetainCheck", "entityTiming")),
         // frame delivery
         Map.entry("DeliveryPatches.Step", k("limiterSleep", "reflexSleep")),
         Map.entry("DeliveryPatches.InvokeWake", k("limiterSleep", "reflexSleep")),
@@ -129,6 +129,9 @@ final class ModCompat {
         Map.entry("ZombiePatches.CullSortHook", k("zombieCullSortFast")),
         Map.entry("ZombiePatches.StatsGet", k("statsNoBox")),
         Map.entry("ZombiePatches.FlagsFromInt", k("popmanFlagsFlyweight")),
+        Map.entry("ZombiePatches.SchedStart", k("entityTiming")),
+        Map.entry("ZombiePatches.SchedUpdate", k("entityTiming")),
+        Map.entry("ZombiePatches.SchedPost", k("entityTiming")),
         // log
         Map.entry("LogPatches.Writeln", k("logDedupe")),
         Map.entry("LogPatches.PrefixLine", k("logDedupe")),

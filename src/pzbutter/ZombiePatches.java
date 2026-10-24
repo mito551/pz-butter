@@ -16,6 +16,7 @@ public final class ZombiePatches {
         losGuard.on = Settings.flag("playerLosFast");
         CullSort.init();
         ZombieMisc.init();
+        EntityTiming.init();
     }
 
     /** IsoGameCharacter.setForwardDirection(float, float) entry: true skips the body (the character keeps its facing). */
@@ -33,20 +34,36 @@ public final class ZombiePatches {
 
     // ---- numberZombiesBlended, zombieLodFixed3d, zombieModelAddBudgetUs: the cull loop ----
 
-    /** IsoWorld.sceneCullZombies entry: writes the blend count and opens the cull's counters (game thread, a key on). */
+    /**
+     * IsoWorld.sceneCullZombies entry: starts the cull's clock (entityTiming) and writes the blend count and opens the cull's counters
+     * (game thread, a key on).
+     */
     public static void onCullEnter() {
-        if (!ZombieLod.blendGuard.on && !ZombieLod.capGuard.on && !ZombieLod.budgetGuard.on) return;
-        try {
-            if (Thread.currentThread() == FrameClock.mainThread) ZombieLod.enterCull();
-        } catch (Throwable t) { ZombieLod.capGuard.fail(t); }
+        boolean timing = EntityTiming.guard.on;
+        if (!timing && !ZombieLod.blendGuard.on && !ZombieLod.capGuard.on && !ZombieLod.budgetGuard.on) return;
+        if (Thread.currentThread() != FrameClock.mainThread) return;
+        if (timing) {
+            try { EntityTiming.begin(EntityTiming.CULL, System.nanoTime()); }
+            catch (Throwable t) { EntityTiming.guard.fail(t); }
+        }
+        if (ZombieLod.blendGuard.on || ZombieLod.capGuard.on || ZombieLod.budgetGuard.on) {
+            try { ZombieLod.enterCull(); }
+            catch (Throwable t) { ZombieLod.capGuard.fail(t); }
+        }
     }
 
-    /** IsoWorld.sceneCullZombies exit (also on a throw): closes a cull this thread opened, whatever the keys say now. */
+    /** IsoWorld.sceneCullZombies exit (also on a throw): closes a cull this thread opened, whatever the keys say now, then the clock. */
     public static void onCullExit() {
-        if (!ZombieLod.inCull) return;
-        try {
-            if (Thread.currentThread() == ZombieLod.cullThread) ZombieLod.exitCull();
-        } catch (Throwable t) { ZombieLod.capGuard.fail(t); }
+        if (ZombieLod.inCull) {
+            try {
+                if (Thread.currentThread() == ZombieLod.cullThread) ZombieLod.exitCull();
+            } catch (Throwable t) { ZombieLod.capGuard.fail(t); }
+        }
+        if (EntityTiming.guard.on) {
+            try {
+                if (Thread.currentThread() == FrameClock.mainThread) EntityTiming.end(EntityTiming.CULL, System.nanoTime());
+            } catch (Throwable t) { EntityTiming.guard.fail(t); }
+        }
     }
 
     /**
@@ -170,6 +187,13 @@ public final class ZombiePatches {
      * once per player (the getter returns the new one; a Java mod holding the old object sees a list that no longer changes).
      */
     public static void onLosEnter(Object player) {
+        boolean timing = EntityTiming.guard.on;
+        if (!losGuard.on && !timing) return;
+        if (timing) {
+            try {
+                if (Thread.currentThread() == FrameClock.mainThread) EntityTiming.begin(EntityTiming.SIGHT, System.nanoTime());
+            } catch (Throwable t) { EntityTiming.guard.fail(t); }
+        }
         if (!losGuard.on) return;
         try {
             if (Thread.currentThread() != FrameClock.mainThread) return;
@@ -179,8 +203,13 @@ public final class ZombiePatches {
         } catch (Throwable t) { losGuard.fail(t); }
     }
 
-    /** IsoPlayer.updateLOS exit (also on a throw): nothing yet (the timing call joins it with entityTiming). */
-    public static void onLosExit() {}
+    /** IsoPlayer.updateLOS exit (also on a throw): ends the sight clock (entityTiming). */
+    public static void onLosExit() {
+        if (!EntityTiming.guard.on) return;
+        try {
+            if (Thread.currentThread() == FrameClock.mainThread) EntityTiming.end(EntityTiming.SIGHT, System.nanoTime());
+        } catch (Throwable t) { EntityTiming.guard.fail(t); }
+    }
 
     /** IsoAnimal declares its own updateLOS, so only IsoPlayer's body is instrumented. */
     @Patch(className = "zombie.characters.IsoPlayer", methodName = "updateLOS")
@@ -278,5 +307,70 @@ public final class ZombiePatches {
         public static void exit(@Patch.Return(readOnly = false) zombie.popman.ZombieStateFlags ret, @Patch.Local("f") Object f) {
             if (f != null) ret = (zombie.popman.ZombieStateFlags) f;
         }
+    }
+
+    // ---- entityTiming: the scheduler's phases and the frame's end ----
+
+    /** A scheduler phase starts (0 classify, 1 update, 2 postupdate). Game thread only. */
+    public static void onSchedEnter(int phase) {
+        if (!EntityTiming.guard.on) return;
+        try {
+            if (Thread.currentThread() == FrameClock.mainThread) EntityTiming.begin(phase, System.nanoTime());
+        } catch (Throwable t) { EntityTiming.guard.fail(t); }
+    }
+
+    /** A scheduler phase ends; the classify phase also reads the frame's zombie count (after its clock stopped). */
+    public static void onSchedExit(int phase) {
+        if (!EntityTiming.guard.on) return;
+        try {
+            if (Thread.currentThread() != FrameClock.mainThread) return;
+            EntityTiming.end(phase, System.nanoTime());
+            if (phase == EntityTiming.CLASSIFY) EntityTiming.zombies(zombieCount());
+        } catch (Throwable t) { EntityTiming.guard.fail(t); }
+    }
+
+    private static int zombieCount() {
+        zombie.iso.IsoWorld w = zombie.iso.IsoWorld.instance;
+        zombie.iso.IsoCell c = w == null ? null : w.getCell();
+        java.util.ArrayList<zombie.characters.IsoZombie> z = c == null ? null : c.getZombieList();
+        return z == null ? 0 : z.size();
+    }
+
+    /** GameWindow.frameStep exit (the Frame holder, last): stores the frame's phase totals, writes the log line, rolls the minute. */
+    public static void onFrameEnd() {
+        if (!EntityTiming.guard.on) return;
+        try {
+            if (Thread.currentThread() == FrameClock.mainThread) EntityTiming.frameEnd(System.nanoTime(), System.currentTimeMillis(), FrameClock.frameNo);
+        } catch (Throwable t) { EntityTiming.guard.fail(t); }
+    }
+
+    /** MovingObjectUpdateScheduler.startFrame: sorts every object into its update tier (the classify phase). */
+    @Patch(className = "zombie.MovingObjectUpdateScheduler", methodName = "startFrame")
+    public static class SchedStart {
+        @Patch.OnEnter
+        public static void enter() { ZombiePatches.onSchedEnter(EntityTiming.CLASSIFY); }
+
+        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
+        public static void exit() { ZombiePatches.onSchedExit(EntityTiming.CLASSIFY); }
+    }
+
+    /** MovingObjectUpdateScheduler.update: the four-step update of every due object. */
+    @Patch(className = "zombie.MovingObjectUpdateScheduler", methodName = "update")
+    public static class SchedUpdate {
+        @Patch.OnEnter
+        public static void enter() { ZombiePatches.onSchedEnter(EntityTiming.UPDATE); }
+
+        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
+        public static void exit() { ZombiePatches.onSchedExit(EntityTiming.UPDATE); }
+    }
+
+    /** MovingObjectUpdateScheduler.postupdate: movement commit and animation of every due object. */
+    @Patch(className = "zombie.MovingObjectUpdateScheduler", methodName = "postupdate")
+    public static class SchedPost {
+        @Patch.OnEnter
+        public static void enter() { ZombiePatches.onSchedEnter(EntityTiming.POSTUPDATE); }
+
+        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
+        public static void exit() { ZombiePatches.onSchedExit(EntityTiming.POSTUPDATE); }
     }
 }
