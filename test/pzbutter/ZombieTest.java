@@ -60,6 +60,9 @@ final class ZombieTest {
         entityTimingShimsCountPhases();
         timingHoldersTargetStock();
         frameHolderEndsEntityTiming();
+        zombieStatsLine();
+        zombieStatsCadence();
+        zombieStatsFrameEnd();
         zombieShimsOffTouchNothing();
     }
 
@@ -833,8 +836,77 @@ final class ZombieTest {
         assert line.trim().endsWith("ZombiePatches.onFrameEnd(); }") : line;
     }
 
+    // ---- the once-a-minute zombies line ----
+
+    static void zombieStatsLine() {
+        ZombieStats.resetForTest(); ZombieLod.resetForTest(); CullSort.resetForTest(); FacingFix.resetForTest();
+        assert ZombieStats.line(new long[] {1800, 90000, 12, 3, 60, 0, 1, 2, 4}).equals(
+            "[PZButter] zombies: culls 1800, grants 90000, capped 12, deferred 3, sorts 60/misses 0, los swaps 1/rebuilds 2, facing kept 4");
+        // the snapshot reads each counter from where it is kept
+        ZombieLod.capGuard.on = true; ZombieLod.cap = 50;
+        ZombieLod.enterCull();                                    // counts the cull and opens it
+        for (int i = 0; i < 52; i++) ZombieLod.decide(false, true);
+        ZombieLod.endCull();
+        CullSort.sorts = 7; CullSort.misses = 8; ZombiePatches.losSwaps = 9; FacingFix.kept = 10;
+        long[] s = ZombieStats.snapshot();
+        assert s[0] == 1 && s[1] == 52 && s[2] == 2 && s[3] == 0 && s[4] == 7 && s[5] == 8 && s[6] == 9 && s[7] == SpottedStack.rebuilds && s[8] == 10 : java.util.Arrays.toString(s);
+        ZombieStats.resetForTest(); ZombieLod.resetForTest(); CullSort.resetForTest(); FacingFix.resetForTest();
+    }
+
+    // the caller's clock: the first call starts the minute, nothing before 60 s, a quiet minute prints nothing, a busy one prints its deltas
+    static void zombieStatsCadence() {
+        ZombieStats.resetForTest(); ZombieLod.resetForTest(); CullSort.resetForTest(); FacingFix.resetForTest();
+        java.util.List<String> got = new java.util.ArrayList<>();
+        ZombieStats.out = got::add;
+        long s = 5_000_000_000L, min = ZombieStats.MINUTE_NS;
+        ZombieLod.capped = 100;                                   // before the first tick: part of the baseline
+        ZombieStats.tick(s);
+        ZombieLod.capped = 130; ZombieLod.deferred = 2; CullSort.sorts = 5;
+        ZombieStats.tick(s + min - 1);
+        assert got.isEmpty();
+        ZombieStats.tick(s + min);
+        assert got.size() == 1 && got.get(0).equals("[PZButter] zombies: culls 0, grants 0, capped 30, deferred 2, sorts 5/misses 0, los swaps 0/rebuilds 0, facing kept 0") : got;
+        ZombieStats.tick(s + 2 * min - 1);                        // the next minute runs from the line, not from the first call
+        assert got.size() == 1;
+        ZombieStats.tick(s + 2 * min);                            // a quiet minute: nothing
+        assert got.size() == 1;
+        ZombieLod.capped = 131;
+        ZombieStats.tick(s + 3 * min - 1);
+        assert got.size() == 1;
+        ZombieStats.tick(s + 3 * min);
+        assert got.size() == 2 && got.get(1).contains("capped 1,") : got;
+        FacingFix.kept = 3;
+        ZombieStats.tick(s + 4 * min);
+        assert got.size() == 3 && got.get(2).endsWith("facing kept 3") && got.get(2).contains("capped 0,") : got;
+        ZombieStats.resetForTest(); ZombieLod.resetForTest(); CullSort.resetForTest(); FacingFix.resetForTest();
+    }
+
+    // the frame-end shim: off does nothing; a key on switches the line on through init; only the game thread ticks
+    static void zombieStatsFrameEnd() {
+        ZombieStats.resetForTest(); ZombieLod.resetForTest(); CullSort.resetForTest(); FacingFix.resetForTest(); EntityTiming.resetForTest();
+        java.util.List<String> got = new java.util.ArrayList<>();
+        ZombieStats.out = got::add;
+        ZombiePatches.onFrameEnd();
+        ZombieStats.init();
+        assert !ZombieStats.guard.on;
+        ZombieLod.capGuard.on = true;
+        ZombieStats.init();
+        assert ZombieStats.guard.on;
+        Thread saved = FrameClock.mainThread;
+        try {
+            FrameClock.mainThread = null;
+            ZombiePatches.onFrameEnd();                           // not the game thread: no baseline
+            ZombieLod.capped = 5;
+            FrameClock.mainThread = Thread.currentThread();
+            ZombiePatches.onFrameEnd();                           // the baseline (real nanoTime; the minute does not elapse here)
+            ZombiePatches.onFrameEnd();
+            assert got.isEmpty();
+        } finally { FrameClock.mainThread = saved; }
+        ZombieStats.resetForTest(); ZombieLod.resetForTest(); EntityTiming.resetForTest();
+    }
+
     static void zombieShimsOffTouchNothing() {
-        FacingFix.resetForTest(); ZombieLod.resetForTest(); CullSort.resetForTest(); EntityTiming.resetForTest(); ZombieMisc.resetForTest();
+        FacingFix.resetForTest(); ZombieLod.resetForTest(); CullSort.resetForTest(); EntityTiming.resetForTest(); ZombieMisc.resetForTest(); ZombieStats.resetForTest();
         ZombiePatches.losGuard.on = false;
         assert !ZombiePatches.onForward(0f, 0f);
         ZombiePatches.onCullEnter(); ZombiePatches.onCullExit();
@@ -852,9 +924,11 @@ final class ZombieTest {
             + "entityTiming=true\nnumberZombiesBlended=9\nzombieLodFixed3d=99\nzombieModelAddBudgetUs=9\nzombieSimLodTiles=9\n"));
         ZombiePatches.init();
         assert !FacingFix.guard.on && !ZombiePatches.losGuard.on && !CullSort.guard.on && !ZombieMisc.statsGuard.on 
-            && !EntityTiming.guard.on && !ZombieLod.blendGuard.on && !ZombieLod.capGuard.on && !ZombieLod.budgetGuard.on && !ZombieLod.simGuard.on;
+            && !EntityTiming.guard.on && !ZombieLod.blendGuard.on && !ZombieLod.capGuard.on && !ZombieLod.budgetGuard.on && !ZombieLod.simGuard.on
+            && !ZombieStats.guard.on;
         Settings.load(SelfTest.write("enabled=true\n"));
         ZombiePatches.init();
+        assert !ZombieStats.guard.on;
         assert !EntityTiming.guard.on && EntityTiming.log == null;
     }
 }

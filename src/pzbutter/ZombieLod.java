@@ -37,6 +37,9 @@ final class ZombieLod {
     /** Rewrites by the cap and by the budget since start. */
     static long capped, deferred;
 
+    /** Culls that ran with a key on and the grants of the culls that ended (the zombies line). */
+    static long culls, grantsTotal;
+
     static void init() {
         blended = Settings.enabled ? Settings.num("numberZombiesBlended", 0, 0, 64) : 0;
         int c = Settings.enabled ? Settings.num("zombieLodFixed3d", 0, 0, 510) : 0;
@@ -61,6 +64,7 @@ final class ZombieLod {
 
     /** sceneCullZombies entry: the blend count, then (when the cap or the budget is on) the cull's counters. */
     static void enterCull() {
+        culls++;
         if (blendGuard.on && PerformanceSettings.numberZombiesBlended != blended) PerformanceSettings.numberZombiesBlended = blended;
         if (capGuard.on || budgetGuard.on) beginCull(PerformanceSettings.numberZombiesBlended);
     }
@@ -75,7 +79,10 @@ final class ZombieLod {
         inCull = true;
     }
 
-    static void endCull() { inCull = false; }
+    static void endCull() {
+        grantsTotal += grants;
+        inCull = false;
+    }
 
     static void exitCull() { endCull(); }
 
@@ -112,6 +119,6 @@ final class ZombieLod {
         addNs = 0;
         inflightRewrite = inflightAdded = false;
         inflightT0 = 0;
-        capped = deferred = 0;
+        capped = deferred = culls = grantsTotal = 0;
     }
 }

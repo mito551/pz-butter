@@ -17,6 +17,7 @@ public final class ZombiePatches {
         CullSort.init();
         ZombieMisc.init();
         EntityTiming.init();
+        ZombieStats.init();
     }
 
     /** IsoGameCharacter.setForwardDirection(float, float) entry: true skips the body (the character keeps its facing). */
@@ -182,6 +183,9 @@ public final class ZombiePatches {
 
     static final Guard losGuard = new Guard("playerLosFast");
 
+    /** Stacks swapped for a SpottedStack since start (the zombies line; the first 8 are logged). */
+    static long losSwaps;
+
     /**
      * IsoPlayer.updateLOS entry: swaps the player's {@code lastSpotted} Stack for a {@link SpottedStack} holding the same elements,
      * once per player (the getter returns the new one; a Java mod holding the old object sees a list that no longer changes).
@@ -199,7 +203,10 @@ public final class ZombiePatches {
             if (Thread.currentThread() != FrameClock.mainThread) return;
             zombie.characters.IsoPlayer p = (zombie.characters.IsoPlayer) player;
             java.util.Stack<zombie.iso.IsoMovingObject> s = p.getLastSpotted();
-            if (s != null && !(s instanceof SpottedStack)) p.setLastSpotted(new SpottedStack<>(s));
+            if (s != null && !(s instanceof SpottedStack)) {
+                p.setLastSpotted(new SpottedStack<>(s));
+                if (losSwaps++ < 8) System.out.println("[PZButter] playerLosFast: player " + p.getPlayerNum() + " swapped");
+            }
         } catch (Throwable t) { losGuard.fail(t); }
     }
 
@@ -235,8 +242,13 @@ public final class ZombiePatches {
             java.util.Comparator s = CullSort.stock;
             if (c != s && (s != null || c == null || c.getClass() != CullSort.scoreClass)) return c;
             if (Thread.currentThread() != FrameClock.mainThread || hi - lo < 2) return c;
-            if (s == null) CullSort.bind(c);
-            return CullSort.prepare(a, lo, hi, CullSort.score);
+            if (s == null) {
+                CullSort.bind(c);
+                System.out.println("[PZButter] zombieCullSortFast: bound to the game's cull comparator");
+            }
+            java.util.Comparator r = CullSort.prepare(a, lo, hi, CullSort.score);
+            CullSort.sorts++;
+            return r;
         } catch (Throwable t) {
             CullSort.guard.fail(t);
             return c;
@@ -314,12 +326,23 @@ public final class ZombiePatches {
         return z == null ? 0 : z.size();
     }
 
-    /** GameWindow.frameStep exit (the Frame holder, last): stores the frame's phase totals, writes the log line, rolls the minute. */
+    /**
+     * GameWindow.frameStep exit (the Frame holder, last): entityTiming stores the frame's phase totals, writes its log line and rolls
+     * its minute; the zombies line (ZombieStats) rolls its own. Game thread only.
+     */
     public static void onFrameEnd() {
-        if (!EntityTiming.guard.on) return;
-        try {
-            if (Thread.currentThread() == FrameClock.mainThread) EntityTiming.frameEnd(System.nanoTime(), System.currentTimeMillis(), FrameClock.frameNo);
-        } catch (Throwable t) { EntityTiming.guard.fail(t); }
+        boolean timing = EntityTiming.guard.on;
+        if (!timing && !ZombieStats.guard.on) return;
+        if (Thread.currentThread() != FrameClock.mainThread) return;
+        long now = System.nanoTime();
+        if (timing) {
+            try { EntityTiming.frameEnd(now, System.currentTimeMillis(), FrameClock.frameNo); }
+            catch (Throwable t) { EntityTiming.guard.fail(t); }
+        }
+        if (ZombieStats.guard.on) {
+            try { ZombieStats.tick(now); }
+            catch (Throwable t) { ZombieStats.guard.fail(t); }
+        }
     }
 
     /** MovingObjectUpdateScheduler.startFrame: sorts every object into its update tier (the classify phase). */

@@ -29,6 +29,9 @@ final class CullSort {
     /** Scores computed outside the stored range during a sort (an element the table does not hold). */
     static long misses;
 
+    /** Sorts that ran through a prepared comparator (the zombies line); counted by the shim, not by prepare. */
+    static long sorts;
+
     static void init() {
         guard.on = false;
         if (!Settings.enabled || !Settings.flag("zombieCullSortFast")) return;
@@ -156,7 +159,7 @@ final class CullSort {
         getScore = null;
         stock = null;
         score = null;
-        misses = 0;
+        misses = sorts = 0;
         shared.release();
     }
 }

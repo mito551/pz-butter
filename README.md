@@ -115,6 +115,8 @@ The mod creates `~/Zomboid/PZButter.properties` on first start and reads it once
 | `statsNoBox` | Character stat reads skip a throwaway object per read. The same values. Off by default. |
 | `entityTiming` | Diagnostic. Once a minute the console gets the time per frame of the zombie update phases (sorting into update tiers, update, movement and animation, 3D model picking, the player's sight pass) and the zombie count; with `frameLog`, one line per frame in `Zomboid/pzbutter/entity.out`. Off by default. |
 
+With any of `zeroFacingFix`, `numberZombiesBlended`, `zombieLodFixed3d`, `zombieModelAddBudgetUs`, `playerLosFast` or `zombieCullSortFast` on, the console gets one `[PZButter] zombies:` line a minute when any of them did something: culls and grants counted, zombies the 3D cap and the model budget turned into sprites (`capped`, `deferred`), sorts done and score misses, sight-list swaps and rebuilds, and zero-length facings kept. `zombieCullSortFast` and `playerLosFast` also log one line when they start working (`bound`, `player N swapped`).
+
 Each line of `frames.out` has five fields:
 
 ```
