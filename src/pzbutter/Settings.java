@@ -225,7 +225,7 @@ public final class Settings {
       + "zombieLodFixed3d=0\n"
       + "# zombieModelAddBudgetUs: changes the simulation for a few frames. Microseconds a frame for zombies getting their 3D model; past it they stay sprites a frame longer (0 = no limit, as the game).\n"
       + "zombieModelAddBudgetUs=0\n"
-      + "# zombieSimLodTiles: changes the simulation. Zombies farther than this many tiles from every player update less often, one step more than the game's 30/60/80 (0 = off).\n"
+      + "# zombieSimLodTiles: changes the simulation. Zombies and animals farther than this many tiles from every player update less often, one step more than the game's 30/60/80 (0 = off).\n"
       + "zombieSimLodTiles=0\n"
       + "# zombieSimLodSteps: with zombieSimLodTiles, how many extra steps, each at twice the previous distance (1 to 3).\n"
       + "zombieSimLodSteps=1\n"
