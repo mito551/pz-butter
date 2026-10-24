@@ -21,6 +21,7 @@ public class Main {
         pzbutter.luabudget.Budget.init();
         LuaFast.init();
         LuaTiming.init();
+        LuaGate.init();
         UiTiming.init();
         UiCensus.init();
         UiRetain.init();

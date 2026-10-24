@@ -34,6 +34,12 @@ import zombie.iso.IsoGridSquare;
  *          BakeHold.gate for every level of every chunk, on real FBORenderLevels (no GL). Scenarios: 60 clean levels (gate
  *          cost only), 60 lighting-dirty levels, 200 levels at the widest zoom (10 % redraw, 60 % light, 30 % clean; the
  *          light drifts every frame). Prints the number of held gate answers and a checksum of them, which must not change.
+ * luagate: the Lua token (LuaGate), five scenarios, median of 5 runs after a warm-up. (1) ns per enter/exit pair on the game thread,
+ *          key on, no worker in existence (100 M pairs); (2) the same with the key off; (3) 8 workers x 20,000 gated calls of a
+ *          one-line Lua function while the holder waits in awaitYielding: total ms; (4) ns per yieldPoint() with no waiter;
+ *          (5) 2 workers x 5,000 gated calls, one per item, while the holder does its own Lua work (500 calls) between
+ *          yieldPoint() calls: total ms. Checked on every run: the Lua counter equals the number of calls and the owner fields
+ *          are restored; a failed check aborts.
  */
 public final class DeliveryBench {
     static final com.sun.management.ThreadMXBean MX = (com.sun.management.ThreadMXBean) ManagementFactory.getThreadMXBean();
@@ -53,7 +59,8 @@ public final class DeliveryBench {
             case "edge" -> edge();
             case "plan" -> plan();
             case "gate" -> gate();
-            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | uislice | readset | soundgate | cutaway | splash | edge | plan | gate");
+            case "luagate" -> luagate();
+            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | uislice | readset | soundgate | cutaway | splash | edge | plan | gate | luagate");
         }
     }
 
@@ -567,5 +574,153 @@ public final class DeliveryBench {
             System.out.printf("gate %-10s: %9.1f ns/frame (min %.1f, max %.1f), held answers per run %d, checksum %d%n", names[sc], ns[3], ns[0], ns[6], heldCount, chk);
         }
         FrameClock.on = false;
+    }
+
+    // ---- luagate ----
+
+    static volatile Thread benchGame;
+    static final java.lang.invoke.VarHandle BENCH_SLOT;
+    static {
+        try { BENCH_SLOT = java.lang.invoke.MethodHandles.lookup().findStaticVarHandle(DeliveryBench.class, "benchGame", Thread.class); }
+        catch (ReflectiveOperationException e) { throw new ExceptionInInitializerError(e); }
+    }
+
+    static final class BenchLua {
+        final se.krka.kahlua.j2se.KahluaTableImpl env = new se.krka.kahlua.j2se.KahluaTableImpl(new java.util.HashMap<>());
+        final se.krka.kahlua.vm.KahluaThread kt = new se.krka.kahlua.vm.KahluaThread(se.krka.kahlua.j2se.J2SEPlatform.getInstance(), env);
+        final se.krka.kahlua.integration.LuaCaller caller = new se.krka.kahlua.integration.LuaCaller(new se.krka.kahlua.converter.KahluaConverterManager());
+        final Object inc;
+
+        BenchLua() throws Exception {
+            kt.debugOwnerThread = Thread.currentThread();
+            caller.pcall(kt, se.krka.kahlua.luaj.compiler.LuaCompiler.loadstring("n = 0; function inc() n = n + 1 end", "b", env), new Object[0]);
+            inc = env.rawget("inc");
+        }
+
+        void call() { caller.pcallvoid(kt, inc, (Object) null); }
+        double n() { return (Double) env.rawget("n"); }
+        void reset() { env.rawset("n", 0.0); }
+    }
+
+    static void benchSetup(BenchLua l) {
+        LuaGate.resetForTest();
+        LuaGate.guard.on = true;
+        LuaGate.gameThreadSlot = BENCH_SLOT;
+        benchGame = Thread.currentThread();
+        LuaGate.luaThreads = () -> new se.krka.kahlua.vm.KahluaThread[] {l.kt};
+        LuaGate.claim();
+    }
+
+    static void benchCheck(BenchLua l, double calls, Thread main) {
+        if (l.n() != calls || l.kt.debugOwnerThread != main || benchGame != main)
+            throw new IllegalStateException("luagate check failed: counter " + l.n() + " of " + calls + ", owner restored " + (l.kt.debugOwnerThread == main) + ", game thread restored " + (benchGame == main));
+    }
+
+    static double median(double[] v) { Arrays.sort(v); return v[v.length / 2]; }
+
+    static void luagate() throws Exception {
+        BenchLua l = new BenchLua();
+        Thread main = Thread.currentThread();
+        final int pairs = 100_000_000;
+        // (1) key on, game thread, no worker; (2) key off
+        for (int sc = 1; sc <= 2; sc++) {
+            benchSetup(l);
+            LuaGate.guard.on = sc == 1;
+            double[] ns = new double[5];
+            long taken = 0;
+            for (int r = -1; r < 5; r++) {
+                long t0 = System.nanoTime();
+                taken += gatePairs(l.kt, pairs);
+                if (r >= 0) ns[r] = (System.nanoTime() - t0) / (double) pairs;
+            }
+            if (taken != 0 || LuaGate.strays != 0) throw new IllegalStateException("luagate: the game thread was gated or counted");
+            System.out.printf("luagate %-22s: %6.2f ns per enter/exit pair (min %.2f, max %.2f)%n", sc == 1 ? "1 key on, no worker" : "2 key off", median(ns), ns[0], ns[4]);
+            LuaGate.resetForTest();
+        }
+        // (3) 8 workers x 20,000 gated calls, the holder in awaitYielding
+        {
+            double[] ms = new double[5];
+            for (int r = -1; r < 5; r++) {
+                benchSetup(l); l.reset();
+                long t0 = System.nanoTime();
+                runBenchWorkers(l, 8, 20_000);
+                if (r >= 0) ms[r] = (System.nanoTime() - t0) / 1e6;
+                benchCheck(l, 160_000, main);
+                if (LuaGate.gatedCalls != 160_000) throw new IllegalStateException("luagate: gatedCalls " + LuaGate.gatedCalls);
+                LuaGate.resetForTest();
+            }
+            System.out.printf("luagate 3 8 workers x 20000    : %8.1f ms (min %.1f, max %.1f)%n", median(ms), ms[0], ms[4]);
+        }
+        // (4) yieldPoint with no waiter
+        {
+            benchSetup(l);
+            double[] ns = new double[5];
+            long sink = 0;
+            for (int r = -1; r < 5; r++) {
+                long t0 = System.nanoTime();
+                sink += yieldPoints(pairs);
+                if (r >= 0) ns[r] = (System.nanoTime() - t0) / (double) pairs;
+            }
+            if (sink != 0) throw new IllegalStateException("luagate: yieldPoint served a waiter that does not exist");
+            System.out.printf("luagate 4 yieldPoint, no waiter: %6.2f ns per call (min %.2f, max %.2f)%n", median(ns), ns[0], ns[4]);
+            LuaGate.resetForTest();
+        }
+        // (5) 2 workers, one gated call per item (5,000 each), the holder serves them between 500 calls of its own work
+        {
+            double[] ms = new double[5];
+            for (int r = -1; r < 5; r++) {
+                benchSetup(l); l.reset();
+                java.util.concurrent.atomic.AtomicInteger finished = new java.util.concurrent.atomic.AtomicInteger();
+                Thread[] w = new Thread[2];
+                for (int i = 0; i < 2; i++) {
+                    w[i] = LuaGate.worker(() -> {
+                        for (int k = 0; k < 5_000; k++) { boolean g = LuaGate.enter(l.kt); try { l.call(); } finally { if (g) LuaGate.exit(); } }
+                        finished.incrementAndGet();
+                    }, "bench-w" + i);
+                }
+                long own = 0;
+                long t0 = System.nanoTime();
+                for (Thread t : w) t.start();
+                while (finished.get() < 2) {
+                    for (int k = 0; k < 500; k++) { l.call(); own++; }       // the holder's own work (not gated)
+                    LuaGate.yieldPoint();
+                }
+                for (Thread t : w) t.join();
+                if (r >= 0) ms[r] = (System.nanoTime() - t0) / 1e6;
+                benchCheck(l, 10_000 + own, main);
+                LuaGate.resetForTest();
+            }
+            System.out.printf("luagate 5 2 workers, yield/500  : %8.1f ms (min %.1f, max %.1f)%n", median(ms), ms[0], ms[4]);
+        }
+    }
+
+    static long gatePairs(se.krka.kahlua.vm.KahluaThread kt, int n) {
+        long taken = 0;
+        for (int i = 0; i < n; i++) {
+            boolean g = LuaGate.enter(kt);
+            if (g) { taken++; LuaGate.exit(); }
+        }
+        return taken;
+    }
+
+    static long yieldPoints(int n) {
+        long sink = 0;
+        for (int i = 0; i < n; i++) sink += LuaGate.yieldPoint();
+        return sink;
+    }
+
+    static void runBenchWorkers(BenchLua l, int n, int calls) throws Exception {
+        java.util.concurrent.atomic.AtomicInteger finished = new java.util.concurrent.atomic.AtomicInteger();
+        Thread[] w = new Thread[n];
+        for (int i = 0; i < n; i++) {
+            w[i] = LuaGate.worker(() -> {
+                for (int k = 0; k < calls; k++) { boolean g = LuaGate.enter(l.kt); try { l.call(); } finally { if (g) LuaGate.exit(); } }
+                finished.incrementAndGet();
+                LuaGate.wakeOwner();
+            }, "bench-w" + i);
+            w[i].start();
+        }
+        LuaGate.awaitYielding(() -> finished.get() == n);
+        for (Thread t : w) t.join();
     }
 }
