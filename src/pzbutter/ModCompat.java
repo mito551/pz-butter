@@ -133,6 +133,7 @@ final class ModCompat {
         Map.entry("ZombiePatches.SchedPost", k("entityTiming")),
         // sprite buffers and GPU (Plan 9)
         Map.entry("GpuPatches.SmartCalculate", k("smartTextureRelease", "gpuStats")),
+        Map.entry("GpuPatches.VboFormat", k("vboBatchKb")),
         // log
         Map.entry("LogPatches.Writeln", k("logDedupe")),
         Map.entry("LogPatches.PrefixLine", k("logDedupe")),

@@ -1342,7 +1342,7 @@ final class LuaGateTest {
     /** Keys of the table that are numbers or modes (not switches); every one needs its stock answer checked below. */
     static final java.util.Set<String> VALUE_KEYS = java.util.Set.of("aimHoldMs", "bakeMipLevels", "borderlessFullscreen", "cutawayRadius", "gpuMaxFrames",
         "gridStackInterval", "lightSwitchCheckFrames", "lightingFps", "presentPacing", "roofHideDebounceFrames", "soundTickHz", "treeBakeMaxChunksPerSec", "vrr", "zoomEaseMs",
-        "numberZombiesBlended", "zombieLodFixed3d", "zombieModelAddBudgetUs", "zombieSimLodTiles", "zombieSimLodSteps");
+        "numberZombiesBlended", "zombieLodFixed3d", "zombieModelAddBudgetUs", "zombieSimLodTiles", "zombieSimLodSteps", "vboBatchKb");
 
     /**
      * Forced off answers stock for every key of the table: a switch is false (true for the stock-true ones), and each number or mode key
@@ -1364,21 +1364,22 @@ final class LuaGateTest {
         // the numbers and modes, through the features' own init, with values in the file that are not stock
         Settings.load(SelfTest.write("enabled=true\naimHoldMs=999\ncutawayRadius=9\ngridStackInterval=9\nroofHideDebounceFrames=9\nzoomEaseMs=9\n"
             + "bakeMipLevels=9\ntreeBakeMaxChunksPerSec=9\nsoundTickHz=9\nlightSwitchCheckFrames=9\nlightingFps=9\npresentPacing=on\nvrr=on\nborderlessFullscreen=on\n"
-            + "numberZombiesBlended=9\nzombieLodFixed3d=99\nzombieModelAddBudgetUs=9\nzombieSimLodTiles=9\nzombieSimLodSteps=3\n"));
+            + "numberZombiesBlended=9\nzombieLodFixed3d=99\nzombieModelAddBudgetUs=9\nzombieSimLodTiles=9\nzombieSimLodSteps=3\nvboBatchKb=512\n"));
         Settings.forcedOff.addAll(VALUE_KEYS);
         AimHold.init(); Cutaways.init(); GridGate.init(); ZoomEase.init(); BakeMisc.init(); ChunkTrees.init(); SoundTick.init();
-        LightChecks.init(); SwapHold.init(); Vrr.init(); ZombieLod.init();
+        LightChecks.init(); SwapHold.init(); Vrr.init(); ZombieLod.init(); BatchSize.init();
         try {
             assert AimHold.holdMs == 150 && Cutaways.radius == 0 && GridGate.interval == 0 && GridGate.roofFrames == 0 && ZoomEase.ms == 0;
             assert BakeMisc.mipLevels == 0 && ChunkTrees.maxPerSec == 0 && !SoundPatches.tickGuard.on && LightChecks.switchTtl == 0 && LightChecks.lightingFps == 0;
             assert SwapHold.pacing.equals("off") && Vrr.mode.equals("off") && Vrr.fullscreenWindow.equals("off") && !Vrr.guard.on;
             assert ZombieLod.blended == 0 && ZombieLod.cap == 0 && ZombieLod.budgetNs == 0 && !ZombieLod.blendGuard.on && !ZombieLod.capGuard.on && !ZombieLod.budgetGuard.on;
             assert ZombieLod.simTiles == 0 && ZombieLod.simSteps == 1 && !ZombieLod.simGuard.on;
+            assert BatchSize.kb == 0 && !BatchSize.guard.on;                       // vboBatchKb: stock 4 KB, nothing installed
             // gpuMaxFrames (stock-off means a different number) has its own test below
         } finally {
             Settings.load(SelfTest.write("enabled=true\n"));                         // back to the shipped values for the features that follow
             AimHold.init(); Cutaways.init(); GridGate.init(); ZoomEase.init(); BakeMisc.init(); ChunkTrees.init(); SoundTick.init();
-            LightChecks.init(); SwapHold.init(); Vrr.init(); ZombieLod.init();
+            LightChecks.init(); SwapHold.init(); Vrr.init(); ZombieLod.init(); BatchSize.init();
         }
     }
 
