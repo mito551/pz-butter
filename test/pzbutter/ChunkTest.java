@@ -10,6 +10,29 @@ final class ChunkTest {
         drivingRule();
         plan6aKeysDefaults();
         settingsTemplateHasPlan6Keys();
+        fadingSplatsDropped();
+        mipRules();
+        smallKeysOffByDefault();
+    }
+
+    static void fadingSplatsDropped() {
+        java.util.List<Object> fade = new java.util.ArrayList<>(java.util.List.of(new Object(), new Object()));
+        BakeMisc.dropFading(fade);
+        assert fade.isEmpty();
+    }
+
+    static void mipRules() {
+        assert BakeMisc.mipApplies(3, true, false) && BakeMisc.maxLevel(3) == 2;
+        assert !BakeMisc.mipApplies(0, true, false) && !BakeMisc.mipApplies(3, false, false) && !BakeMisc.mipApplies(3, true, true);
+    }
+
+    static void smallKeysOffByDefault() {
+        Settings.load(SelfTest.write("enabled=true\n"));
+        BakeMisc.init();
+        assert !ChunkPatches.bloodFadeGuard.on && !ChunkPatches.mipGuard.on;
+        Settings.load(SelfTest.write("enabled=true\nbakeMipLevels=3\n"));
+        BakeMisc.init();
+        assert ChunkPatches.mipGuard.on && BakeMisc.mipLevels == 3;
     }
 
     static void treePerFrameRules() {
