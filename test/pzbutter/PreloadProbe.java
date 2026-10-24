@@ -12,7 +12,7 @@ public final class PreloadProbe {
         if (System.getProperty("pzprobe.fail") != null) failCase(list);   // before any listed class is loaded here
         int have = 0;
         for (String c : list.classes()) {
-            boolean ok = Preload.hasMarker(c, ClassLoader.getSystemClassLoader(), list);
+            boolean ok = Preload.hasMarker(c, ClassLoader.getSystemClassLoader());
             if (ok) have++; else System.out.println("missing " + c);
         }
         System.out.println("markers=" + have + "/" + list.classes().size());

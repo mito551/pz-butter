@@ -3,7 +3,6 @@ package pzbutter;
 import java.lang.classfile.Attributes;
 import java.lang.classfile.ClassFile;
 import java.lang.classfile.attribute.ConstantValueAttribute;
-import java.lang.classfile.constantpool.IntegerEntry;
 import java.lang.classfile.constantpool.StringEntry;
 import java.lang.instrument.Instrumentation;
 import java.io.File;
@@ -88,7 +87,7 @@ final class Preload {
             var loader = ClassLoader.getSystemClassLoader();
             for (String c : list.classes()) Class.forName(c, false, loader);
             for (String c : list.classes()) {
-                if (!hasMarker(c, loader, list)) {
+                if (!hasMarker(c, loader)) {
                     inst.removeTransformer(t);
                     reason = c + " not transformed"; state = State.OFF;
                     return;
@@ -107,21 +106,11 @@ final class Preload {
         try (var in = ClassLoader.getSystemResourceAsStream(cls.replace('.', '/') + ".class")) { return in == null ? null : in.readAllBytes(); }
     }
 
-    /**
-     * The loaded class declares the marker, and the marker our transform writes for this class carries the list's hash.
-     * The value is read from the transformed bytes, not the field: Field.get on a static would initialise the class.
-     */
-    static boolean hasMarker(String cls, ClassLoader loader, WorkerList list) {
+    /** The loaded class declares the marker (only WorkerTransform adds it). getDeclaredField does not initialise the class. */
+    static boolean hasMarker(String cls, ClassLoader loader) {
         try {
             Class.forName(cls, false, loader).getDeclaredField(WorkerTransform.MARKER);
-            byte[] out = WorkerTransform.transform(resource(cls), list);
-            if (out == null) return false;
-            for (var f : ClassFile.of().parse(out).fields()) {
-                if (!f.fieldName().equalsString(WorkerTransform.MARKER)) continue;
-                var attr = f.findAttribute(Attributes.constantValue()).orElse(null);
-                return attr != null && attr.constant() instanceof IntegerEntry i && i.intValue() == list.textHash();
-            }
-            return false;
+            return true;
         } catch (Throwable e) {
             return false;
         }
