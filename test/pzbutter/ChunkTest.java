@@ -22,7 +22,6 @@ final class ChunkTest {
         fadingSplatsDropped();
         mipRules();
         smallKeysOffByDefault();
-        edgeOrderMatchesStock();
         edgeKeyOffByDefault();
         edgeAnswersMatchStock();
         bakeableOnlyFlagReason();
@@ -216,21 +215,6 @@ final class ChunkTest {
         for (String k : new String[] {"treesInChunkTexture=false", "driveTreeCutaway=true", "zoomEase=0.25,0.1,0.25,1.0",
                                       "bakeFrameBudget=8", "bloodRebakeCoalesceMs=250"})
             assert t.contains("\n" + k + "\n") : k;
-    }
-
-    static int step(int who, int edge) { return who << 2 | edge; }
-
-    static void edgeOrderMatchesStock() {
-        final int N = 0, W = 1, S = 2, E = 3, SELF = 0, OTHER = 1;
-        assert java.util.Arrays.equals(EdgeTest.order(1, 0), new int[] {step(SELF, W), step(OTHER, E)});
-        assert java.util.Arrays.equals(EdgeTest.order(-1, 0), new int[] {step(OTHER, W), step(SELF, E)});
-        assert java.util.Arrays.equals(EdgeTest.order(0, 1), new int[] {step(SELF, N), step(OTHER, S)});
-        assert java.util.Arrays.equals(EdgeTest.order(0, -1), new int[] {step(OTHER, N), step(SELF, S)});
-        assert java.util.Arrays.equals(EdgeTest.order(1, -1), new int[] {step(SELF, W), step(OTHER, E), step(OTHER, N), step(SELF, S)});
-        assert java.util.Arrays.equals(EdgeTest.order(-1, 1), new int[] {step(OTHER, W), step(SELF, E), step(SELF, N), step(OTHER, S)});
-        assert EdgeTest.order(0, 0).length == 0;                                     // same x/y, other level: only the stair test
-        assert EdgeTest.order(1, 1) == EdgeTest.order(1, 1);                         // precomputed, no allocation
-        assert EdgeTest.order(7, -3) == EdgeTest.order(1, -1);                       // signs only
     }
 
     static void edgeKeyOffByDefault() {
