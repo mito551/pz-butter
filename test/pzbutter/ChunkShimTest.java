@@ -34,6 +34,7 @@ final class ChunkShimTest {
     static void run() {
         heldGatePreambleMatchesStock();
         occlusionCompositionOverChunkList();
+        dirtyHolderMapsGuards();
         prepareStaleOnlyWhenPrepared();
         translucentLayerShim();
         translucentTreeMatchesStock();
@@ -130,7 +131,7 @@ final class ChunkShimTest {
                 assert mine.renderChunk != null && stock.renderChunk != null;
                 assert (float) xoff.get(mine) == (float) xoff.get(stock) && (float) xoff.get(mine) != 0f : "xoff, shape " + java.util.Arrays.toString(sh);
                 assert (float) yoff.get(mine) == (float) yoff.get(stock) : "yoff " + yoff.get(mine) + " vs " + yoff.get(stock) + ", shape " + java.util.Arrays.toString(sh);
-                if (sh[0] >= 0) assert (float) yoff.get(mine) != 0f;   // (a one-level basement pair is genuinely 0: (1 - 1) * 96 + extra)
+                if (level >= 0) assert (float) yoff.get(mine) != 0f;   // (a one-level basement pair, level -1, is genuinely 0: (1 - 1) * 96 + extra)
                 assert mine.renderChunk.w == stock.renderChunk.w && mine.renderChunk.getMinLevel() == stock.renderChunk.getMinLevel();
             }
         } finally {
@@ -174,6 +175,57 @@ final class ChunkShimTest {
         WorldPatches.occlusionGuard.on = false; ChunkPatches.holdGuard.on = false;
         try { assert WorldPatches.onDirtyEnter(null, 0) == null; }
         finally { WorldPatches.occlusionGuard.on = lightingWas; ChunkPatches.holdGuard.on = holdWas; }
+    }
+
+    /**
+     * WorldPatches.onDirtyEnter on the real cell's on-screen list: the guards pick the mask and skipHeld. The chunk list is
+     * [lighting-only dirt, a held redraw]; each key alone and both together leave a different answer.
+     */
+    static void dirtyHolderMapsGuards() {
+        boolean lightingWas = WorldPatches.occlusionGuard.on, holdWas = ChunkPatches.holdGuard.on, clock = FrameClock.on, grantedWas = BakeHold.occlusionGranted;
+        long frameNo = FrameClock.frameNo;
+        FBORenderCell cell = FBORenderCell.instance;
+        ArrayList<IsoChunk> list = null;
+        ArrayList<IsoChunk> saved = null;
+        try {
+            Settings.load(SelfTest.write("enabled=true\n"));
+            LightChecks.init();
+            assert LightChecks.hasChunkHandles();
+            @SuppressWarnings("unchecked")
+            ArrayList<IsoChunk> l = (ArrayList<IsoChunk>) LightChecks.onScreen(cell, 0);
+            list = l;
+            saved = new ArrayList<>(list);
+            IsoChunk lightOnly = ChunkTest.holdChunk(0, 0, true), heldRedraw = ChunkTest.holdChunk(1, 0, true);
+            lightOnly.getRenderLevels(0).invalidateLevel(0, 32);
+            heldRedraw.getRenderLevels(0).invalidateLevel(0, 1024);
+            BakeHold.PairState st = BakeHold.state(heldRedraw.getRenderLevels(0), 0);
+            FrameClock.on = true; FrameClock.frameNo = 50;
+            st.planFrame = 50; st.held = true;
+            BakeHold.occlusionGranted = true;
+            float zoom = zombie.core.Core.getInstance().getZoom(0);
+            assert zoom == 1f : "the chunk textures are made at zoom 1";
+            boolean[][] cases = {{false, false}, {true, false}, {false, true}, {true, true}};   // {lighting key, granted key}
+            // {lightOnly alone, heldRedraw alone} expected, null = stock runs
+            Boolean[][] want = {{null, null}, {Boolean.FALSE, Boolean.TRUE}, {Boolean.TRUE, Boolean.FALSE}, {Boolean.FALSE, Boolean.FALSE}};
+            for (int k = 0; k < cases.length; k++) {
+                WorldPatches.occlusionGuard.on = cases[k][0];
+                ChunkPatches.holdGuard.on = cases[k][1];
+                for (int which = 0; which < 2; which++) {
+                    list.clear();
+                    list.add(which == 0 ? lightOnly : heldRedraw);
+                    Boolean got = WorldPatches.onDirtyEnter(cell, 0);
+                    assert java.util.Objects.equals(got, want[k][which]) : "lighting " + cases[k][0] + ", granted " + cases[k][1] + ", chunk " + which + ": " + got;
+                }
+            }
+            // the granted key is off when the master switch of the hold is off (occlusionGranted false), whatever the guard says
+            BakeHold.occlusionGranted = false;
+            ChunkPatches.holdGuard.on = true; WorldPatches.occlusionGuard.on = false;
+            assert WorldPatches.onDirtyEnter(cell, 0) == null;
+        } finally {
+            if (list != null) { list.clear(); list.addAll(saved); }
+            WorldPatches.occlusionGuard.on = lightingWas; ChunkPatches.holdGuard.on = holdWas;
+            FrameClock.on = clock; FrameClock.frameNo = frameNo; BakeHold.occlusionGranted = grantedWas;
+        }
     }
 
     /** ChunkPrepared: a held pair is not prepared and its cutaway masks stay fresh; a prepared chunk's masks go stale. */
@@ -256,7 +308,7 @@ final class ChunkShimTest {
             TranslucentBake.init();
             assert ChunkPatches.onObjectLayer(glass, ObjectRenderLayer.Translucent) == ObjectRenderLayer.MinusFloor;
             assert ChunkPatches.onObjectLayer(lamp, ObjectRenderLayer.Translucent) == ObjectRenderLayer.MinusFloor;
-            // an object that stock renders each frame for another reason stays: an animating or render-effect object is out
+            // a window stays per frame under the new keys too (the window rule is not one of the keys)
             assert ChunkPatches.onObjectLayer(window, ObjectRenderLayer.Translucent) == ObjectRenderLayer.Translucent;
             // a square on the camera's level above the object's own floor: the climbing and floor rules of minusFloorRest are read from the square
             plain.square = new IsoGridSquare(null, null, 3, 3, 1000);
