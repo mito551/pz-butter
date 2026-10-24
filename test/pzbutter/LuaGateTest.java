@@ -57,6 +57,17 @@ final class LuaGateTest {
         fileHookShimsStockWhenOff();
         fileHoldersTargetStock();
         fileHoldersShape();
+        firstPrintedRepeatsDropped();
+        argsLinesNeverDropped();
+        otherStreamOrSeverityPrinted();
+        summaryPassesThrough();
+        keyCapPassesThrough();
+        concurrentCountsExact();
+        dedupeOffDropsNothing();
+        dedupeKeyOffByDefault();
+        summariesInFirstSeenOrder();
+        lateRepeatAfterRollPrints();
+        concurrentRollLosesNoCount();
     }
 
     static void plan7KeysDefaults() {
@@ -583,5 +594,133 @@ final class LuaGateTest {
                 if (e != null) assert e.skipOn() == p.methodName().equals("getFileWriter") : p.methodName();
             }
         }
+    }
+
+    // ---- Task 7: logDedupe core ----
+
+    static final Object S1 = new Object(), S2 = new Object();
+    static final Object[] NO_ARGS = new Object[0];
+
+    static void firstPrintedRepeatsDropped() {
+        LogDedupe.resetForTest(); LogDedupe.guard.on = true; long t = 1_000_000_000L;
+        assert !LogDedupe.drop(S1, 1, "spam", NO_ARGS, t);
+        for (int i = 1; i <= 99; i++) assert LogDedupe.drop(S1, 1, "spam", NO_ARGS, t + i);
+        assert !LogDedupe.drop(S1, 1, "other", NO_ARGS, t + 1);
+        assert LogDedupe.roll(t + 2_999_999_999L).isEmpty();
+        java.util.List<Object[]> s = LogDedupe.roll(t + 3_000_000_000L);
+        assert s.size() == 1 && s.get(0)[0] == S1 && s.get(0)[1].equals("[PZButter] logDedupe: 99 more in 3 s: spam");
+        assert LogDedupe.roll(t + 3_000_000_000L).isEmpty();                         // one winner
+        assert !LogDedupe.drop(S1, 1, "spam", NO_ARGS, t + 3_000_000_001L);          // new window: printed once again
+        LogDedupe.resetForTest();
+    }
+
+    static void argsLinesNeverDropped() {
+        LogDedupe.resetForTest(); LogDedupe.guard.on = true;
+        assert !LogDedupe.drop(S1, 1, "x=%s", new Object[] {1}, 0) && !LogDedupe.drop(S1, 1, "x=%s", new Object[] {1}, 1);
+        assert !LogDedupe.drop(S1, 1, new StringBuilder("sb"), NO_ARGS, 2) && !LogDedupe.drop(S1, 1, new StringBuilder("sb"), NO_ARGS, 3);
+        assert !LogDedupe.drop(S1, 1, null, NO_ARGS, 4) && !LogDedupe.drop(S1, 1, null, NO_ARGS, 5);
+        assert !LogDedupe.drop(S1, 1, "n", null, 6) && LogDedupe.drop(S1, 1, "n", null, 7);   // a null array is no arguments
+        LogDedupe.resetForTest();
+    }
+
+    static void otherStreamOrSeverityPrinted() {
+        LogDedupe.resetForTest(); LogDedupe.guard.on = true;
+        assert !LogDedupe.drop(S1, 1, "x", NO_ARGS, 0) && !LogDedupe.drop(S2, 1, "x", NO_ARGS, 1) && !LogDedupe.drop(S1, 2, "x", NO_ARGS, 2);
+        assert LogDedupe.drop(S1, 1, "x", NO_ARGS, 3);
+        LogDedupe.resetForTest();
+    }
+
+    static void summaryPassesThrough() {
+        LogDedupe.resetForTest(); LogDedupe.guard.on = true;
+        String s = LogDedupe.summary("x".repeat(300), 5);
+        assert s.length() == "[PZButter] logDedupe: 5 more in 3 s: ".length() + 200;
+        assert !LogDedupe.drop(S1, 1, s, NO_ARGS, 0) && !LogDedupe.drop(S1, 1, s, NO_ARGS, 1);
+        LogDedupe.resetForTest();
+    }
+
+    static void keyCapPassesThrough() {
+        LogDedupe.resetForTest(); LogDedupe.guard.on = true;
+        for (int i = 0; i < LogDedupe.MAX_KEYS; i++) assert !LogDedupe.drop(S1, 1, "k" + i, NO_ARGS, 0);
+        assert !LogDedupe.drop(S1, 1, "new", NO_ARGS, 0) && !LogDedupe.drop(S1, 1, "new", NO_ARGS, 0);
+        assert LogDedupe.drop(S1, 1, "k7", NO_ARGS, 0);
+        LogDedupe.resetForTest();
+    }
+
+    static void concurrentCountsExact() throws Exception {
+        LogDedupe.resetForTest(); LogDedupe.guard.on = true;
+        java.util.concurrent.atomic.AtomicInteger printed = new java.util.concurrent.atomic.AtomicInteger();
+        Thread[] t = new Thread[8];
+        for (int k = 0; k < 8; k++) (t[k] = new Thread(() -> { for (int i = 0; i < 10_000; i++) if (!LogDedupe.drop(S1, 1, "same", NO_ARGS, 5)) printed.incrementAndGet(); })).start();
+        for (Thread x : t) { x.join(10_000); assert !x.isAlive(); }
+        assert printed.get() == 1;
+        assert LogDedupe.roll(5 + LogDedupe.WINDOW_NS).get(0)[1].equals("[PZButter] logDedupe: 79999 more in 3 s: same");
+        LogDedupe.resetForTest();
+    }
+
+    static void dedupeOffDropsNothing() {
+        LogDedupe.resetForTest(); LogDedupe.guard.on = false;
+        assert !LogDedupe.drop(S1, 1, "a", NO_ARGS, 0) && !LogDedupe.drop(S1, 1, "a", NO_ARGS, 1);
+        assert !LogDedupe.due(Long.MAX_VALUE / 2) && LogDedupe.roll(Long.MAX_VALUE / 2).isEmpty();
+        LogDedupe.resetForTest();
+    }
+
+    static void dedupeKeyOffByDefault() {
+        Settings.load(SelfTest.write("enabled=true\n"));
+        LogDedupe.init();
+        assert !LogDedupe.guard.on;
+        Settings.load(SelfTest.write("enabled=true\nlogDedupe=true\n"));
+        LogDedupe.init();
+        assert LogDedupe.guard.on;
+        Settings.load(SelfTest.write("enabled=true\n"));
+        LogDedupe.init();
+        LogDedupe.resetForTest();
+    }
+
+    // summaries leave in the order their messages were first seen, whatever the table's own order
+    static void summariesInFirstSeenOrder() {
+        LogDedupe.resetForTest(); LogDedupe.guard.on = true;
+        for (int i = 0; i < 50; i++) { String m = "m" + (49 - i); assert !LogDedupe.drop(S1, 1, m, NO_ARGS, 0); assert LogDedupe.drop(S1, 1, m, NO_ARGS, 1); }
+        java.util.List<Object[]> s = LogDedupe.roll(LogDedupe.WINDOW_NS);
+        assert s.size() == 50;
+        for (int i = 0; i < 50; i++) assert s.get(i)[1].equals("[PZButter] logDedupe: 1 more in 3 s: m" + (49 - i)) : i;
+        LogDedupe.resetForTest();
+    }
+
+    // a repeat that reaches a message after its window was summarised is printed (never counted into a summary already gone)
+    static void lateRepeatAfterRollPrints() {
+        LogDedupe.resetForTest(); LogDedupe.guard.on = true;
+        assert !LogDedupe.drop(S1, 1, "late", NO_ARGS, 0) && LogDedupe.drop(S1, 1, "late", NO_ARGS, 1);
+        LogDedupe.Window old = LogDedupe.window();                                    // a thread that read the window before the roll
+        assert LogDedupe.roll(LogDedupe.WINDOW_NS).size() == 1;
+        assert !LogDedupe.dropIn(old, S1, 1, "late");                      // closed record: printed, in no summary
+        assert LogDedupe.roll(2 * LogDedupe.WINDOW_NS).isEmpty();
+        LogDedupe.resetForTest();
+    }
+
+    // every dropped line is in exactly one summary, while a thread keeps rolling the window
+    static void concurrentRollLosesNoCount() throws Exception {
+        LogDedupe.resetForTest(); LogDedupe.guard.on = true;
+        java.util.concurrent.atomic.AtomicLong dropped = new java.util.concurrent.atomic.AtomicLong(), summed = new java.util.concurrent.atomic.AtomicLong();
+        java.util.concurrent.atomic.AtomicBoolean stop = new java.util.concurrent.atomic.AtomicBoolean();
+        Thread[] t = new Thread[4];
+        long[] clock = {0};
+        for (int k = 0; k < 4; k++) (t[k] = new Thread(() -> {
+            for (int i = 0; i < 50_000; i++) if (LogDedupe.drop(S1, 1, "hot" + (i & 3), NO_ARGS, clock[0])) dropped.incrementAndGet();
+        })).start();
+        Thread roller = new Thread(() -> {
+            long now = 0;
+            while (!stop.get()) { now += LogDedupe.WINDOW_NS; for (Object[] r : LogDedupe.roll(now)) summed.addAndGet(countOf((String) r[1])); Thread.onSpinWait(); }
+        });
+        roller.start();
+        for (Thread x : t) { x.join(20_000); assert !x.isAlive(); }
+        stop.set(true); roller.join(5000);
+        for (Object[] r : LogDedupe.roll(Long.MAX_VALUE / 2)) summed.addAndGet(countOf((String) r[1]));
+        assert dropped.get() == summed.get() : dropped.get() + " dropped, " + summed.get() + " summarised";
+        LogDedupe.resetForTest();
+    }
+
+    static long countOf(String summary) {
+        String rest = summary.substring("[PZButter] logDedupe: ".length());
+        return Long.parseLong(rest.substring(0, rest.indexOf(' ')));
     }
 }

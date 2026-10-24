@@ -23,6 +23,7 @@ public class Main {
         LuaTiming.init();
         LuaGate.init();
         LuaFiles.init();
+        LogDedupe.init();
         UiTiming.init();
         UiCensus.init();
         UiRetain.init();

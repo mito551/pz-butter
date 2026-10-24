@@ -50,6 +50,11 @@ import zombie.iso.IsoGridSquare;
  *          keys none of which is due. Then a scripted 1,000-open sequence (three files, a tick every open, a fake clock) is
  *          run against a temp directory; the final contents must equal what stock's writes would leave (checked) and the
  *          printed checksum of them and the disk write count must not change between versions.
+ * dedupe: the repeated-line table (LogDedupe.drop / roll), median of 7 runs after a warm-up, key on, a fixed clock. ns per drop()
+ *          for (a) 10,000 unique lines (4,096 recorded, the rest over the cap), (b) one line 10,000 times, (c) 50 lines cycling
+ *          (10,000 calls), (d) 8 threads x 10,000 calls of one line (the sum of the threads' own loop times per call). Prints the
+ *          printed count (calls for which drop() was false) and the summary lines of one roll after each scenario, both fixed
+ *          (checked: printed 10,000 / 1 / 50 / 1, and the summaries must equal the exact repeat counts).
  */
 public final class DeliveryBench {
     static final com.sun.management.ThreadMXBean MX = (com.sun.management.ThreadMXBean) ManagementFactory.getThreadMXBean();
@@ -72,7 +77,8 @@ public final class DeliveryBench {
             case "luagate" -> luagate();
             case "replay" -> replay();
             case "luafiles" -> luafiles();
-            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | uislice | readset | soundgate | cutaway | splash | edge | plan | gate | luagate | replay | luafiles");
+            case "dedupe" -> dedupe();
+            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | uislice | readset | soundgate | cutaway | splash | edge | plan | gate | luagate | replay | luafiles | dedupe");
         }
     }
 
@@ -901,5 +907,77 @@ public final class DeliveryBench {
             sum = sum * 31 + got.hashCode();
         }
         System.out.printf("luafiles scripted %d opens: %d held, %d disk writes, checksum %d%n", done, held, LuaFiles.diskWrites, sum);
+    }
+
+    // ---- dedupe ----
+
+    static void dedupe() throws Exception {
+        final int calls = 10_000, runs = 3 + 7;
+        String[] uniq = new String[calls];
+        for (int i = 0; i < calls; i++) uniq[i] = "unique line number " + i;
+        String[] fifty = new String[50];
+        for (int i = 0; i < 50; i++) fifty[i] = "cycling line " + i;
+        Object stream = new Object();
+        Object[] none = new Object[0];
+        String[] label = {"a 10,000 unique lines", "b one line 10,000 times", "c 50 lines cycling", "d 8 threads x 10,000, one line"};
+        for (int sc = 0; sc < 4; sc++) {
+            double[] ns = new double[7];
+            int printed = 0;
+            String summaries = "";
+            for (int r = 0; r < runs; r++) {
+                LogDedupe.resetForTest();
+                LogDedupe.guard.on = true;
+                long dt;
+                printed = 0;
+                if (sc < 3) {
+                    long t0 = System.nanoTime();
+                    for (int i = 0; i < calls; i++) {
+                        String m = sc == 0 ? uniq[i] : sc == 1 ? "one repeated line" : fifty[i % 50];
+                        if (!LogDedupe.drop(stream, 1, m, none, 5L)) printed++;
+                    }
+                    dt = System.nanoTime() - t0;
+                } else {
+                    final int threads = 8;
+                    java.util.concurrent.CyclicBarrier go = new java.util.concurrent.CyclicBarrier(threads);
+                    long[] own = new long[threads];
+                    int[] pr = new int[threads];
+                    Thread[] t = new Thread[threads];
+                    Throwable[] err = new Throwable[1];
+                    for (int k = 0; k < threads; k++) {
+                        final int kk = k;
+                        (t[k] = new Thread(() -> {
+                            try {
+                                go.await();
+                                long t0 = System.nanoTime();
+                                int p = 0;
+                                for (int i = 0; i < calls; i++) if (!LogDedupe.drop(stream, 1, "one repeated line", none, 5L)) p++;
+                                own[kk] = System.nanoTime() - t0;
+                                pr[kk] = p;
+                            } catch (Throwable e) { err[0] = e; }
+                        }, "dedupe-bench-" + k)).start();
+                    }
+                    for (Thread x : t) x.join(60_000);
+                    if (err[0] != null) throw new IllegalStateException("dedupe worker failed", err[0]);
+                    dt = 0;
+                    for (int k = 0; k < threads; k++) { dt += own[k]; printed += pr[k]; }
+                    dt /= 1;       // summed own loop times; divided by the call count below
+                }
+                int total = sc == 3 ? 8 * calls : calls;
+                StringBuilder sb = new StringBuilder();
+                long counted = 0;
+                for (Object[] sline : LogDedupe.roll(5L + LogDedupe.WINDOW_NS)) { sb.append(sline[1]).append('\n'); counted += Long.parseLong(((String) sline[1]).split(" ")[2]); }
+                int expectPrinted = sc == 0 ? calls : sc == 1 ? 1 : sc == 2 ? 50 : 1;
+                // scenario a: 4,096 recorded and never repeated, so no summaries; the others summarise every drop
+                long expectCounted = sc == 0 ? 0 : total - expectPrinted;
+                if (printed != expectPrinted || counted != expectCounted)
+                    throw new IllegalStateException("dedupe check failed in " + label[sc] + ": printed " + printed + " of " + total + ", summarised " + counted + " of " + expectCounted);
+                summaries = sb.toString();
+                if (r >= 3) ns[r - 3] = dt / (double) total;
+            }
+            System.out.printf("dedupe %-32s: %7.1f ns/drop (min %.1f, max %.1f), printed %d%n", label[sc], median(ns), ns[0], ns[6], printed);
+            if (summaries.isEmpty()) System.out.println("  summaries: none");
+            else for (String l : summaries.split("\n")) System.out.println("  " + l);
+        }
+        LogDedupe.resetForTest();
     }
 }
