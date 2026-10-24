@@ -3,7 +3,9 @@ package pzbutter;
 import java.lang.classfile.Attributes;
 import java.lang.classfile.ClassFile;
 import java.lang.classfile.attribute.ConstantValueAttribute;
+import java.lang.classfile.constantpool.IntegerEntry;
 import java.lang.classfile.constantpool.StringEntry;
+import java.lang.instrument.Instrumentation;
 import java.io.File;
 import java.lang.management.ManagementFactory;
 import java.util.HashSet;
@@ -54,8 +56,9 @@ final class Preload {
 
     private static volatile int classCount, scratchCount;
 
-    /** ZB PREMAIN entry (via PreMain). Never throws. */
-    static void premain(String[] args) {
+    /** ZB PREMAIN entry (via PreMain). Never throws; a second call returns at once. */
+    static synchronized void premain(String[] args) {
+        if (ran) return;
         ran = true;
         try {
             Settings.load();
@@ -66,32 +69,61 @@ final class Preload {
             var d = decide(gameRevision(), list, Settings.num("frameThreads", 0, 0, 32), Settings.flag("luaWorkerGate"),
                     Settings.enabled, ManagementFactory.getRuntimeMXBean().getInputArguments(), inst != null, loaded);
             if (!d.install()) { reason = d.reason(); state = State.OFF; return; }
+            install(inst, list);
+        } catch (Throwable t) {
+            reason = "premain: " + t; state = State.OFF;
+        }
+    }
+
+    /** Installs the transformer, defines every listed class, checks the markers. Any path ending OFF has removed the transformer. */
+    static void install(Instrumentation inst, WorkerList list) {
+        WorkerTransform t = null;
+        try {
             Scratch.init(list);
             var log = new LogSink(new File(System.getProperty("user.home"), "Zomboid/PZButter/preload.log"), 1 << 20);
-            var t = new WorkerTransform(list, log);
-            try (var in = ClassLoader.getSystemResourceAsStream(list.classes().get(0).replace('.', '/') + ".class")) {
-                WorkerTransform.transform(in.readAllBytes(), list);   // warm-up: load the transformer's own classes first
-            }
+            t = new WorkerTransform(list, log);
+            var warm = resource(list.classes().get(0));   // warm-up: load the transformer's own classes first (a missing class fails at forName)
+            if (warm != null) WorkerTransform.transform(warm, list);
             inst.addTransformer(t, false);
             var loader = ClassLoader.getSystemClassLoader();
             for (String c : list.classes()) Class.forName(c, false, loader);
             for (String c : list.classes()) {
-                boolean ok = false;
-                try {
-                    Class.forName(c, false, loader).getDeclaredField(WorkerTransform.MARKER);
-                    ok = true;
-                } catch (NoSuchFieldException e) { }
-                if (!ok) {
+                if (!hasMarker(c, loader, list)) {
                     inst.removeTransformer(t);
                     reason = c + " not transformed"; state = State.OFF;
                     return;
                 }
             }
             classCount = list.classes().size();
-            scratchCount = list.scratch().size();
+            scratchCount = (int) list.scratch().stream().mapToInt(WorkerList.Scratch::k).distinct().count();
             state = State.ACTIVE;
-        } catch (Throwable t) {
-            reason = "premain: " + t; state = State.OFF;
+        } catch (Throwable e) {
+            try { if (t != null) inst.removeTransformer(t); } catch (Throwable ignored) {}
+            reason = "premain: " + e; state = State.OFF;
+        }
+    }
+
+    private static byte[] resource(String cls) throws java.io.IOException {
+        try (var in = ClassLoader.getSystemResourceAsStream(cls.replace('.', '/') + ".class")) { return in == null ? null : in.readAllBytes(); }
+    }
+
+    /**
+     * The loaded class declares the marker, and the marker our transform writes for this class carries the list's hash.
+     * The value is read from the transformed bytes, not the field: Field.get on a static would initialise the class.
+     */
+    static boolean hasMarker(String cls, ClassLoader loader, WorkerList list) {
+        try {
+            Class.forName(cls, false, loader).getDeclaredField(WorkerTransform.MARKER);
+            byte[] out = WorkerTransform.transform(resource(cls), list);
+            if (out == null) return false;
+            for (var f : ClassFile.of().parse(out).fields()) {
+                if (!f.fieldName().equalsString(WorkerTransform.MARKER)) continue;
+                var attr = f.findAttribute(Attributes.constantValue()).orElse(null);
+                return attr != null && attr.constant() instanceof IntegerEntry i && i.intValue() == list.textHash();
+            }
+            return false;
+        } catch (Throwable e) {
+            return false;
         }
     }
 

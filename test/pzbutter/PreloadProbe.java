@@ -9,16 +9,32 @@ public final class PreloadProbe {
         System.out.println("state=" + Preload.state);
         System.out.println("reason=" + Preload.reason);
         var list = WorkerList.load(Preload.gameRevision());
+        if (System.getProperty("pzprobe.fail") != null) failCase(list);   // before any listed class is loaded here
         int have = 0;
         for (String c : list.classes()) {
-            boolean ok;
-            try {
-                Class.forName(c, false, ClassLoader.getSystemClassLoader()).getDeclaredField(WorkerTransform.MARKER);
-                ok = true;
-            } catch (NoSuchFieldException e) { ok = false; }
+            boolean ok = Preload.hasMarker(c, ClassLoader.getSystemClassLoader(), list);
             if (ok) have++; else System.out.println("missing " + c);
         }
         System.out.println("markers=" + have + "/" + list.classes().size());
         System.out.println("status=" + Preload.status());
+    }
+
+    /** Test only: installs over a list whose first class does not exist, so the throw comes after addTransformer. */
+    static void failCase(WorkerList real) throws Exception {
+        String rev = "revision " + real.revision();
+        String text;
+        try (var in = WorkerList.class.getResourceAsStream("/pzbutter/workers-" + real.revision() + ".txt")) {
+            text = new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        }
+        text = text.replace(rev, rev + "\nclass no.such.Missing");   // the real list plus a missing first class
+        Preload.state = Preload.State.NEEDS_RESTART;
+        Preload.install(ZbAccess.instrumentation(), WorkerList.parse(text));
+        System.out.println("fail.state=" + Preload.state);
+        System.out.println("fail.reason=" + Preload.reason);
+        String c = real.classes().get(0);
+        boolean marked;
+        try { Class.forName(c, false, ClassLoader.getSystemClassLoader()).getDeclaredField(WorkerTransform.MARKER); marked = true; }
+        catch (NoSuchFieldException e) { marked = false; }
+        System.out.println("fail.marker=" + marked);
     }
 }

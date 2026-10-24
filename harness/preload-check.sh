@@ -34,4 +34,8 @@ run() {   # run <frameThreads> <expect state> <expect reason> <expect markers: a
 run 4 ACTIVE "" all
 run 0 OFF "frameThreads=0" none
 run 4 OFF "AOT cache -XX:AOTCache=x.aot" none -XX:AOTCache=x.aot
+run 0 OFF "frameThreads=0" none -Dpzprobe.fail=1   # forced throw after addTransformer
+grep -qx "fail.state=OFF" <<<"$OUT" || fail "forced throw: state is not OFF"
+grep -qx "fail.reason=premain: java.lang.ClassNotFoundException: no.such.Missing" <<<"$OUT" || fail "forced throw: wrong reason"
+grep -qx "fail.marker=false" <<<"$OUT" || fail "forced throw: a listed class loaded afterwards carries the marker (transformer left registered)"
 echo "preload ok"
