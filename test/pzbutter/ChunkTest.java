@@ -56,6 +56,8 @@ final class ChunkTest {
         plan6aHoldKeysNeedMaster();
         holdFlowHeadless();
         lightClassesHeadless();
+        lateLightDecidedAtGate();
+        snapshotReadsOnlyPairLevels();
         rateCountsLastSecond();
         marksOnlyAboveRate();
         releaseAfterQuietSecond();
@@ -723,6 +725,112 @@ final class ChunkTest {
             zombie.iso.fboRenderChunk.FBORenderChunkManager.instance = mgrWas;
             ChunkPatches.holdGuard.on = false;
         }
+    }
+
+    /**
+     * Light dirt reaches a clean pair after the plan (stock updateChunkLighting runs after prepareChunksForUpdating): the gate
+     * decides it. A held-to-be pair with a strong move goes at once as STRONG and its scratch snapshot becomes st.light;
+     * a pair that goes anyway is classed LIGHT (no delta) but its snapshot is refreshed.
+     */
+    static void lateLightDecidedAtGate() {
+        boolean clock = FrameClock.on;
+        zombie.iso.fboRenderChunk.FBORenderChunkManager mgrWas = zombie.iso.fboRenderChunk.FBORenderChunkManager.instance;
+        zombie.iso.fboRenderChunk.FBORenderChunkManager mgr = new zombie.iso.fboRenderChunk.FBORenderChunkManager();
+        zombie.iso.fboRenderChunk.FBORenderChunkManager.instance = mgr;
+        IsoCamera.FrameState fs = IsoCamera.frameState;
+        int pi = fs.playerIndex; float cx = fs.camCharacterX, cy = fs.camCharacterY;
+        fs.playerIndex = 0; fs.camCharacterX = 4f; fs.camCharacterY = 4f;
+        try {
+            FrameClock.on = true;
+            Settings.load(SelfTest.write("enabled=true\nbakeScheduler=true\nlightingStrongDelta=6\nlightingRebakeMs=250\nlightingStrongBudget=1\n"));
+            BakeHold.init();
+            IsoChunk a = holdChunk(0, 0, true), b = holdChunk(1, 0, true);
+            zombie.iso.fboRenderChunk.FBORenderLevels la = a.getRenderLevels(0), lb = b.getRenderLevels(0);
+            java.util.ArrayList<IsoChunk> ab = new java.util.ArrayList<>(java.util.List.of(a, b));
+            // frame 1: both pairs baked at t = 10 000, each with a snapshot
+            la.invalidateLevel(0, 32); lb.invalidateLevel(0, 32);
+            BakeHold.planChunks(ab, 0, 1f, 1, 10_000);
+            assert !BakeHold.gate(mgr, a, 0, 1f, 0, 1, 10_000) && !BakeHold.gate(mgr, b, 0, 1f, 0, 1, 10_000);
+            la.clearDirty(0, 1f); lb.clearDirty(0, 1f);                                  // (stock's endRenderChunkLevel does this after a bake)
+            // frame 2, 16 ms later: the plan sees both clean, then the light of one square in each moves a lot (dirt after the plan)
+            BakeHold.planChunks(ab, 0, 1f, 2, 10_016);
+            a.squares[0][5].getLightInfo(0).r = 0.5f + 40 / 255f;
+            b.squares[0][9].getLightInfo(0).g = 0.5f + 40 / 255f;
+            la.invalidateLevel(0, 32); lb.invalidateLevel(0, 32);
+            assert !BakeHold.gate(mgr, a, 0, 1f, 0, 2, 10_016) : "a strong move goes at once, though LIGHT would wait for lightingRebakeMs";
+            assert BakeHold.peek(la, 0).cls == BakeHold.STRONG && !BakeHold.peek(la, 0).held;
+            assert !BakeHold.gate(mgr, a, 1, 1f, 0, 2, 10_016) : "the second level follows";
+            byte[] snap = BakeHold.peek(la, 0).light;
+            assert snap != null && (snap[5 * 3] & 255) == BakeHold.q(0.5f + 40 / 255f) : "the snapshot taken for the decision is the new one";
+            // the strong cap (1) is spent: the second strong move in the frame waits
+            assert BakeHold.gate(mgr, b, 0, 1f, 0, 2, 10_016) : "the strong cap is kept";
+            assert BakeHold.peek(lb, 0).cls == BakeHold.STRONG && BakeHold.peek(lb, 0).held;
+            // a small move 16 ms after the last bake stays LIGHT and waits
+            IsoChunk c = holdChunk(0, 1, true);
+            zombie.iso.fboRenderChunk.FBORenderLevels lc = c.getRenderLevels(0);
+            java.util.ArrayList<IsoChunk> cc = new java.util.ArrayList<>(java.util.List.of(c));
+            lc.invalidateLevel(0, 32);
+            BakeHold.planChunks(cc, 0, 1f, 3, 20_000);
+            assert !BakeHold.gate(mgr, c, 0, 1f, 0, 3, 20_000);                         // baked at 20 000 with a snapshot
+            lc.clearDirty(0, 1f);
+            BakeHold.planChunks(cc, 0, 1f, 4, 20_016);
+            c.squares[0][3].getLightInfo(0).b = 0.5f + 3 / 255f;
+            lc.invalidateLevel(0, 32);
+            assert BakeHold.gate(mgr, c, 0, 1f, 0, 4, 20_016) && BakeHold.peek(lc, 0).cls == BakeHold.LIGHT;
+            // 400 ms later the pair is eligible as LIGHT: no STRONG decision is needed, but the snapshot is refreshed on the grant
+            lc.clearDirty(0, 1f);
+            BakeHold.planChunks(cc, 0, 1f, 5, 20_400);
+            c.squares[0][3].getLightInfo(0).b = 0.5f + 50 / 255f;
+            lc.invalidateLevel(0, 32);
+            assert !BakeHold.gate(mgr, c, 0, 1f, 0, 5, 20_400);
+            assert BakeHold.peek(lc, 0).cls == BakeHold.LIGHT : "granted anyway: LIGHT";
+            assert (BakeHold.peek(lc, 0).light[3 * 3 + 2] & 255) == BakeHold.q(0.5f + 50 / 255f) : "snapshot refreshed on the grant";
+            // a global move found by the plan also keeps late pairs LIGHT
+            IsoChunk d = holdChunk(0, 2, true), e = holdChunk(1, 2, true), f = holdChunk(2, 2, true);
+            java.util.ArrayList<IsoChunk> def = new java.util.ArrayList<>(java.util.List.of(d, e, f));
+            for (IsoChunk x : def) x.getRenderLevels(0).invalidateLevel(0, 32);
+            BakeHold.planChunks(def, 0, 1f, 6, 30_000);
+            for (IsoChunk x : def) { assert !BakeHold.gate(mgr, x, 0, 1f, 0, 6, 30_000); x.getRenderLevels(0).clearDirty(0, 1f); }
+            setLight(d, 0.9f); setLight(e, 0.9f);
+            d.getRenderLevels(0).invalidateLevel(0, 32); e.getRenderLevels(0).invalidateLevel(0, 32);
+            BakeHold.planChunks(def, 0, 1f, 7, 30_016);
+            assert BakeHold.peek(d.getRenderLevels(0), 0).cls == BakeHold.LIGHT && BakeHold.peek(e.getRenderLevels(0), 0).cls == BakeHold.LIGHT : "global move";
+            f.squares[0][1].getLightInfo(0).r = 0.5f + 40 / 255f;
+            f.getRenderLevels(0).invalidateLevel(0, 32);
+            assert BakeHold.gate(mgr, f, 0, 1f, 0, 7, 30_016) && BakeHold.peek(f.getRenderLevels(0), 0).cls == BakeHold.LIGHT : "global move: late pairs spread too";
+        } finally {
+            FrameClock.on = clock;
+            zombie.iso.fboRenderChunk.FBORenderChunkManager.instance = mgrWas;
+            ChunkPatches.holdGuard.on = false;
+            fs.playerIndex = pi; fs.camCharacterX = cx; fs.camCharacterY = cy;
+        }
+    }
+
+    /** A basement chunk (minLevel -1): the pair (-2, -1) snapshots level -1 only, never the ground floor that belongs to pair (0, 1). */
+    static void snapshotReadsOnlyPairLevels() {
+        IsoChunk c = new IsoChunk((IsoCell) null);
+        c.minLevel = -1; c.maxLevel = 1; c.wx = 0; c.wy = 0;
+        c.squares = new zombie.iso.IsoGridSquare[3][64];
+        for (int z = -1; z <= 1; z++)
+            for (int i = 0; i < 64; i++) {
+                zombie.iso.IsoGridSquare sq = new zombie.iso.IsoGridSquare(null, null, i % 8, i / 8, z);
+                sq.setLightInfoServerGUIOnly(new zombie.core.textures.ColorInfo(z == -1 ? 0.2f : z == 0 ? 0.6f : 1f, 0f, 0f, 1f));
+                c.squares[z + 1][i] = sq;
+            }
+        zombie.iso.fboRenderChunk.FBORenderLevels lv = c.getRenderLevels(0);
+        byte[] out = new byte[BakeHold.SNAP];
+        BakeHold.snapshot(c, lv, -1, 0, out);                                           // pair (-2, -1)
+        int basement = BakeHold.q(0.2f);
+        for (int i = 0; i < 64; i++) {
+            assert out[i * 3] == 0 : "level -2 does not exist";
+            assert (out[192 + i * 3] & 255) == basement : "level -1";
+        }
+        BakeHold.snapshot(c, lv, 0, 0, out);                                            // pair (0, 1)
+        for (int i = 0; i < 64; i++) {
+            assert (out[i * 3] & 255) == BakeHold.q(0.6f) && (out[192 + i * 3] & 255) == BakeHold.q(1f);
+        }
+        BakeHold.snapshot(c, lv, -2, 0, out);                                           // any level of a pair reads the same pair
+        assert (out[192] & 255) == basement && out[0] == 0;
     }
 
     // ---- Task 8: trees stay per frame while chunks stream in ----

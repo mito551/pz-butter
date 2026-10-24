@@ -149,12 +149,16 @@ final class BakeHold {
         return counted;
     }
 
+    /** The gate's grant test without the side effects: the same rules as {@link #grantOne}, nothing counted. */
+    static boolean wouldGrant(int cls, int held, long dirtySinceMs, long lastBakeMs, long nowMs, Budget b) {
+        if (cls <= OBJECT || overdue(cls, held, b)) return true;
+        return eligible(cls, dirtySinceMs, lastBakeMs, nowMs, b) && roomIn(cls, b);
+    }
+
     /** One pair decided after the plan, at the gate: the same rules, using and decrementing the plan's counts. */
     static boolean grantOne(int cls, int held, long dirtySinceMs, long lastBakeMs, long nowMs, Budget b) {
-        if (cls <= OBJECT) return true;
-        if (overdue(cls, held, b)) { count(cls, b); return true; }
-        if (!eligible(cls, dirtySinceMs, lastBakeMs, nowMs, b) || !roomIn(cls, b)) return false;
-        count(cls, b);
+        if (!wouldGrant(cls, held, dirtySinceMs, lastBakeMs, nowMs, b)) return false;
+        if (cls > OBJECT) count(cls, b);
         return true;
     }
 
@@ -220,6 +224,7 @@ final class BakeHold {
 
     private static final Budget[] budgets = new Budget[PLAYERS];
     private static final int[] adaptiveTotal = new int[PLAYERS];
+    private static final long[] globalFrame = new long[PLAYERS];   // the frame in which the plan found a global light move
     static { for (int i = 0; i < PLAYERS; i++) budgets[i] = new Budget(); }
 
     // private game members, read through handles (FBORenderChunkManager.xoff / yoff are package-private floats)
@@ -240,6 +245,7 @@ final class BakeHold {
         adaptiveOn = Settings.flag("bakeBudgetAdaptive");
         occlusionGranted = Settings.flag("occlusionGrantedOnly");
         java.util.Arrays.fill(adaptiveTotal, frameBudget);
+        java.util.Arrays.fill(globalFrame, -1);
         boolean want = Settings.flag("bakeScheduler");
         if (want && xoffH == null) {
             xoffH = Game.field(FBORenderChunkManager.class, "xoff", float.class);
@@ -323,13 +329,19 @@ final class BakeHold {
         return classify(flags, fbo != null && fbo.isInit);
     }
 
-    /** Square light of the pair's two levels as bytes (r, g, b x 255, quantised as stock compares them); 0 for a missing square. */
-    static void snapshot(IsoChunk c, int minLevel, int p, byte[] out) {
+    /**
+     * Square light of the pair's two levels as bytes (r, g, b x 255, quantised as stock compares them): the pair's lower level
+     * first, then the upper one. A level the chunk does not have (a basement chunk's pair, a one-level chunk) or a missing
+     * square reads 0, so the layout is the same for every snapshot of a pair.
+     */
+    static void snapshot(IsoChunk c, FBORenderLevels levels, int level, int p, byte[] out) {
+        int lo = levels.getMinLevel(level), hi = levels.getMaxLevel(level), base = Math.floorDiv(level, 2) * 2;
         int o = 0;
-        for (int z = minLevel; z <= minLevel + 1; z++) {
+        for (int z = base; z <= base + 1; z++) {
+            boolean have = z >= lo && z <= hi;
             for (int y = 0; y < 8; y++) {
                 for (int x = 0; x < 8; x++) {
-                    IsoGridSquare sq = z <= c.maxLevel ? c.getGridSquare(x, y, z) : null;
+                    IsoGridSquare sq = have ? c.getGridSquare(x, y, z) : null;
                     ColorInfo ci = sq == null ? null : sq.getLightInfo(p);
                     if (ci == null) { out[o++] = 0; out[o++] = 0; out[o++] = 0; }
                     else { out[o++] = (byte) q(ci.r); out[o++] = (byte) q(ci.g); out[o++] = (byte) q(ci.b); }
@@ -338,7 +350,7 @@ final class BakeHold {
         }
     }
 
-    private static final byte[] cur = new byte[SNAP];
+    private static byte[] cur = new byte[SNAP];   // scratch snapshot; the gate hands it to a pair on a grant and takes the old one back
 
     /** Mean absolute channel move between two snapshots (0-255). */
     static double meanDelta(byte[] a, byte[] b, int n) {
@@ -409,7 +421,7 @@ final class BakeHold {
                     lightPairs++;
                     if (strongDelta == 0) cls = STRONG;
                     else if (st.light != null) {
-                        snapshot(c, lvl, p, cur);
+                        snapshot(c, levels, lvl, p, cur);
                         if (maxDelta(st.light, cur, SNAP) >= strongDelta) cls = STRONG;
                         if (globalPct > 0) { deltaSum += meanDelta(st.light, cur, SNAP); deltaPairs++; }
                     }
@@ -424,8 +436,10 @@ final class BakeHold {
                 n++;
             }
         }
-        if (globalMove(lightPairs, onScreen, deltaPairs == 0 ? 0 : deltaSum / deltaPairs, globalPct))
+        if (globalMove(lightPairs, onScreen, deltaPairs == 0 ? 0 : deltaSum / deltaPairs, globalPct)) {
+            globalFrame[p] = frame;
             for (int i = 0; i < n; i++) if (pCls[i] == STRONG) pCls[i] = LIGHT;
+        }
         Budget b = budgets[p];
         b.total = adaptiveOn ? (adaptiveTotal[p] = adaptive(adaptiveTotal[p], frameBudget, FrameClock.stepMs, capMs())) : frameBudget;
         b.rebake = rebakeBudget;
@@ -459,8 +473,24 @@ final class BakeHold {
         FBORenderLevels levels = chunk.getRenderLevels(p);
         if (!levels.isDirty(level, zoom)) return false;   // stock returns false itself
         PairState st = state(levels, level);
-        int cls = st.planFrame != frame ? gateClass(levels, level, zoom, st, now) : st.cls;
-        boolean held = gateDecision(st, frame, cls, now, budgets[p]);
+        Budget b = budgets[p];
+        boolean fresh = false;   // `cur` holds the light of this pair as of now
+        int cls;
+        if (st.planFrame == frame) cls = st.cls;
+        else {
+            cls = gateClass(levels, level, zoom, st, now);
+            // Light dirt that reached a clean pair after the plan (the stock lighting refresh runs later). A pair that goes anyway
+            // needs no STRONG decision; one that would wait is STRONG when a square moved a lot, unless the plan saw a global move.
+            if (cls == LIGHT) {
+                if (strongDelta == 0) cls = STRONG;
+                else if (st.light != null && globalFrame[p] != frame && !wouldGrant(cls, st.heldFrames, st.dirtySinceMs, st.lastBakeMs, now, b)) {
+                    snapshot(chunk, levels, level, p, cur);
+                    fresh = true;
+                    if (maxDelta(st.light, cur, SNAP) >= strongDelta) cls = STRONG;
+                }
+            }
+        }
+        boolean held = gateDecision(st, frame, cls, now, b);
         if (held) {
             FBORenderChunk before = levels.getFBOForLevel(level, zoom);
             FBORenderChunk rc = levels.getOrCreateFBOForLevel(level, zoom);
@@ -476,14 +506,17 @@ final class BakeHold {
         if (level == levels.getMinLevel(level)) {
             granted(st, now);
             if (strongDelta > 0) {
-                if (st.light == null) st.light = new byte[SNAP];
-                snapshot(chunk, level, p, st.light);
+                if (fresh && st.light != null) { byte[] old = st.light; st.light = cur; cur = old; }   // reuse the decision's snapshot
+                else {
+                    if (st.light == null) st.light = new byte[SNAP];
+                    snapshot(chunk, levels, level, p, st.light);
+                }
             }
         }
         return false;
     }
 
-    /** A pair that became dirty after the plan: classified now (no light delta; a light-only pair stays LIGHT). */
+    /** A pair that became dirty after the plan: classified from its flags (the light delta is the gate's job, only for a pair that would wait). */
     private static int gateClass(FBORenderLevels levels, int level, float zoom, PairState st, long now) {
         if (st.dirtySinceMs < 0) st.dirtySinceMs = now;
         return classifyPair(levels, level, zoom);
