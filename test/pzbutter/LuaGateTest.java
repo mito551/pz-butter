@@ -54,6 +54,9 @@ final class LuaGateTest {
         unknownNameAndSizeCapPassThrough();
         windowsKeysFoldCase();
         fileKeyOffByDefault();
+        fileHookShimsStockWhenOff();
+        fileHoldersTargetStock();
+        fileHoldersShape();
     }
 
     static void plan7KeysDefaults() {
@@ -551,5 +554,34 @@ final class LuaGateTest {
         LuaFiles.init();
         assert !LuaFiles.guard.on;
         LuaFiles.resetForTest();
+    }
+
+    // ---- Task 6: file hooks ----
+
+    static void fileHookShimsStockWhenOff() {
+        LuaFiles.resetForTest(); LuaFiles.guard.on = false;
+        assert LuaPatches.onFileWriter("a.txt", true, false) == null;
+        LuaPatches.onFileWriterOpened("a.txt", false, null); LuaPatches.onFileRead("a.txt"); LuaPatches.onFrameEndFiles();   // no throw, no state
+    }
+
+    static void fileHoldersTargetStock() {
+        java.util.Set<String> want = java.util.Set.of("getFileWriter", "getFileReader", "getFileInput", "getFileOutput"), seen = new java.util.HashSet<>();
+        for (Class<?> c : LuaPatches.class.getDeclaredClasses()) {
+            me.zed_0xff.zombie_buddy.Patch p = c.getAnnotation(me.zed_0xff.zombie_buddy.Patch.class);
+            if (p != null && p.className().equals("zombie.Lua.LuaManager$GlobalObject")) seen.add(p.methodName());
+        }
+        assert seen.equals(want) : seen;
+    }
+
+    static void fileHoldersShape() {
+        // the writer holder skips the stock body on a held writer; the three readers only note the name
+        for (Class<?> c : LuaPatches.class.getDeclaredClasses()) {
+            me.zed_0xff.zombie_buddy.Patch p = c.getAnnotation(me.zed_0xff.zombie_buddy.Patch.class);
+            if (p == null || !p.className().equals("zombie.Lua.LuaManager$GlobalObject")) continue;
+            for (java.lang.reflect.Method m : c.getDeclaredMethods()) {
+                me.zed_0xff.zombie_buddy.Patch.OnEnter e = m.getAnnotation(me.zed_0xff.zombie_buddy.Patch.OnEnter.class);
+                if (e != null) assert e.skipOn() == p.methodName().equals("getFileWriter") : p.methodName();
+            }
+        }
     }
 }

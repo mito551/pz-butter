@@ -277,4 +277,68 @@ public final class LuaPatches {
         @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
         public static void exit(@Patch.Local("g") boolean g) { if (g) gateExit(); }
     }
+
+    // ---- luaFileWriteThrottle: held getFileWriter writes (Tasks 5-6) ----
+
+    /** getFileWriter entry: a held LuaFileWriter, or null to run stock. */
+    public static Object onFileWriter(String name, boolean create, boolean append) {
+        if (!LuaFiles.active() || name == null) return null;
+        try { return LuaFiles.onOpen(name, create, append, System.nanoTime()); }
+        catch (Throwable t) { LuaFiles.guard.fail(t); return null; }
+    }
+
+    /** getFileWriter exit after a stock open (ret is the stock writer, null when stock refused). */
+    public static void onFileWriterOpened(String name, boolean append, Object ret) {
+        if (!LuaFiles.guard.on || ret == null || name == null) return;
+        try { LuaFiles.onStockOpened(name, append, ret, System.nanoTime()); }
+        catch (Throwable t) { LuaFiles.guard.fail(t); }
+    }
+
+    /** getFileReader / getFileInput / getFileOutput entry: held text of that name reaches the disk first. */
+    public static void onFileRead(String name) {
+        if (!LuaFiles.active() || name == null) return;
+        try { LuaFiles.beforeRead(name); } catch (Throwable t) { LuaFiles.guard.fail(t); }
+    }
+
+    /** GameWindow.frameStep exit: write the held files whose window ended. */
+    public static void onFrameEndFiles() {
+        if (!LuaFiles.active()) return;
+        try { LuaFiles.tick(System.nanoTime()); } catch (Throwable t) { LuaFiles.guard.fail(t); }
+    }
+
+    @Patch(className = "zombie.Lua.LuaManager$GlobalObject", methodName = "getFileWriter")
+    public static class FileWriter {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.Argument(0) String name, @Patch.Argument(1) boolean create, @Patch.Argument(2) boolean append,
+                                    @Patch.Local("w") Object w) {
+            w = onFileWriter(name, create, append);
+            return w != null;
+        }
+
+        @Patch.OnExit
+        public static void exit(@Patch.Argument(0) String name, @Patch.Argument(2) boolean append,
+                                @Patch.Return(readOnly = false) zombie.Lua.LuaManager.GlobalObject.LuaFileWriter ret,
+                                @Patch.Local("w") Object w) {
+            if (w != null) ret = (zombie.Lua.LuaManager.GlobalObject.LuaFileWriter) w;
+            else onFileWriterOpened(name, append, ret);
+        }
+    }
+
+    @Patch(className = "zombie.Lua.LuaManager$GlobalObject", methodName = "getFileReader")
+    public static class FileReader {
+        @Patch.OnEnter
+        public static void enter(@Patch.Argument(0) String name) { onFileRead(name); }
+    }
+
+    @Patch(className = "zombie.Lua.LuaManager$GlobalObject", methodName = "getFileInput")
+    public static class FileInput {
+        @Patch.OnEnter
+        public static void enter(@Patch.Argument(0) String name) { onFileRead(name); }
+    }
+
+    @Patch(className = "zombie.Lua.LuaManager$GlobalObject", methodName = "getFileOutput")
+    public static class FileOutput {
+        @Patch.OnEnter
+        public static void enter(@Patch.Argument(0) String name) { onFileRead(name); }
+    }
 }
