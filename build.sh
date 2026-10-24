@@ -22,6 +22,8 @@ mkdir -p "$B/mod/PZButter/42/media/java/client"
 cp "$B/PZButter.jar" "$B/mod/PZButter/42/media/java/client/"
 echo "built $B/PZButter.jar"
 
+[[ -n "${PZ_JRE:-}" ]] && "$HERE/harness/preload-check.sh"
+
 if [[ "${1:-}" == "--install" ]]; then
     DEST="$HOME/Zomboid/mods/PZButter"
     if [[ -e "$DEST" && ! -e "$DEST/.pzbutter-build" ]]; then

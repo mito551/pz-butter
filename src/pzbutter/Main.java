@@ -19,6 +19,7 @@ public class Main {
         CursorLatch.init();
         AimHold.init();
         System.out.println("[PZButter] " + Settings.VERSION + ", enabled=" + Settings.enabled);
+        System.out.println("[PZButter] workers: " + Preload.status());
         pzbutter.luabudget.Budget.init();
         LuaFast.init();
         LuaTiming.init();
