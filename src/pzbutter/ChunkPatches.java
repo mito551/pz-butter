@@ -105,9 +105,16 @@ public final class ChunkPatches {
             try { ChunkTrees.atGate(chunk, level, zoom); }
             catch (Throwable t) { treeRateGuard.fail(t); }
         }
-        if (!holdGuard.on) return false;
-        try { return BakeHold.gate(mgr, chunk, level, zoom); }
-        catch (Throwable t) { holdGuard.fail(t); return false; }
+        boolean held = false;
+        if (holdGuard.on) {
+            try { held = BakeHold.gate(mgr, chunk, level, zoom); }
+            catch (Throwable t) { holdGuard.fail(t); }
+        }
+        if (!held && treeRateGuard.on) {   // the level bakes now: a corner tree's render-square chunk follows it
+            try { ChunkTrees.baking(chunk, level, zoom); }
+            catch (Throwable t) { treeRateGuard.fail(t); }
+        }
+        return held;
     }
 
     /** FBORenderCell.prepareChunkForUpdating entry (holder in WorldPatches): true when the pair waits this frame. */

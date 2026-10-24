@@ -65,6 +65,9 @@ final class ChunkTest {
         treeRateKeyNeedsTreeBake();
         treeMarksFollowArrivalRate();
         treeReleaseReachesRenderSquareChunks();
+        treeFollowUpBakesAfterTheMarkedChunk();
+        treeArrivalsCountOncePerChunk();
+        treeReleaseSeesAnyPlayersScreen();
     }
 
     static void bakeableOnlyFlagReason() {
@@ -413,6 +416,12 @@ final class ChunkTest {
         plan(b, new int[] {BakeHold.NEW, BakeHold.OBJECT}, new int[] {9, 9}, new int[2], new long[2], new long[2], 0);
         assert b.leftTotal == 0;                                                       // not counted
         assert BakeHold.grantOne(BakeHold.NEW, 0, 0, 0, 0, b) && BakeHold.grantOne(BakeHold.OBJECT, 0, 0, 0, 0, b);
+        // a class above LIGHT (none exists) must not throw into the game: never held, not counted
+        b = budget(1, 1, 1, 1);
+        g = plan(b, new int[] {7, BakeHold.REDRAW, 99}, new int[] {5, 1, 0}, new int[3], new long[3], new long[3], 0);
+        assert g[0] && g[1] && g[2] && b.leftTotal == 0 : "unknown classes go, the redraw takes the one counted slot";
+        b = budget(0, 0, 0, 0);
+        assert BakeHold.grantOne(7, 0, 0, 0, 0, b) && b.leftTotal == 0 && BakeHold.wouldGrant(99, 0, 0, 0, 0, b);
     }
 
     static void budgetNearestFirst() {
@@ -796,7 +805,7 @@ final class ChunkTest {
             assert snap != null && (snap[5 * 3] & 255) == BakeHold.q(0.5f + 40 / 255f) : "the snapshot taken for the decision is the new one";
             // the strong cap (1) is spent: the second strong move in the frame waits
             assert BakeHold.gate(mgr, b, 0, 1f, 0, 2, 10_016) : "the strong cap is kept";
-            assert BakeHold.peek(lb, 0).cls == BakeHold.STRONG && BakeHold.peek(lb, 0).held;
+            assert BakeHold.peek(lb, 0).cls == BakeHold.LIGHT && BakeHold.peek(lb, 0).held : "no room for STRONG: no snapshot is taken, the pair stays LIGHT and waits";
             // a small move 16 ms after the last bake stays LIGHT and waits
             IsoChunk c = holdChunk(0, 1, true);
             zombie.iso.fboRenderChunk.FBORenderLevels lc = c.getRenderLevels(0);
@@ -834,6 +843,8 @@ final class ChunkTest {
             FrameClock.on = clock;
             zombie.iso.fboRenderChunk.FBORenderChunkManager.instance = mgrWas;
             ChunkPatches.holdGuard.on = false;
+            Settings.load(SelfTest.write("enabled=true\n"));
+            BakeHold.init();
             cam.restore();
         }
     }
@@ -978,15 +989,11 @@ final class ChunkTest {
         }
     }
 
-    /**
-     * Stock draws a corner jumbo tree into the chunk of its render square (south of local (0, 7), east of local (7, 0)) and skips
-     * it in its own chunk's bake: the release re-bakes that chunk too, for all four players. A tree elsewhere asks nothing.
-     */
-    static void treeReleaseReachesRenderSquareChunks() {
-        boolean fboWas = zombie.core.PerformanceSettings.fboRenderChunk;
-        zombie.core.PerformanceSettings.fboRenderChunk = true;
-        try {
-            IsoChunk a = holdChunk(0, 0, true), south = holdChunk(0, 1, true), east = holdChunk(1, 0, true), other = holdChunk(0, 2, true);
+    /** A, south of A (0, 7 tree), east of A (7, 0 tree), another chunk; squares know their chunk; trees stand on A's corner squares. */
+    record Corner(IsoChunk a, IsoChunk south, IsoChunk east, IsoChunk other, java.util.function.Function<zombie.iso.objects.IsoTree, IsoGridSquare> rs,
+                  IsoGridSquare sq07, zombie.iso.objects.IsoTree sTree) {
+        static Corner make(int wx, int wy) {
+            IsoChunk a = holdChunk(wx, wy, true), south = holdChunk(wx, wy + 1, true), east = holdChunk(wx + 1, wy, true), other = holdChunk(wx, wy + 5, true);
             for (IsoChunk c : new IsoChunk[] {a, south, east, other})
                 for (int z = 0; z < 2; z++) for (int i = 0; i < 64; i++) c.squares[z][i].chunk = c;
             zombie.iso.objects.IsoTree sTree = new zombie.iso.objects.IsoTree(), eTree = new zombie.iso.objects.IsoTree(), plain = new zombie.iso.objects.IsoTree();
@@ -995,20 +1002,202 @@ final class ChunkTest {
             java.util.function.Function<zombie.iso.objects.IsoTree, IsoGridSquare> rs = t ->
                 t == sTree ? south.getGridSquare(0, 0, 0) : t == eTree ? east.getGridSquare(0, 0, 0) : (IsoGridSquare) null;
             for (IsoChunk c : new IsoChunk[] {a, south, east, other}) c.getRenderLevels(0).clearDirty(0, 1f);
-            ChunkTrees.invalidateTrees(a, rs);
+            return new Corner(a, south, east, other, rs, sq07, sTree);
+        }
+    }
+
+    /**
+     * Stock draws a corner jumbo tree into the chunk of its render square (south of local (0, 7), east of local (7, 0)) and skips
+     * it in its own chunk's bake. That chunk is marked only after the marked chunk's own bake (the next chunk's bake reads the
+     * layer the first one sets), per player. A tree elsewhere asks nothing.
+     */
+    static void treeReleaseReachesRenderSquareChunks() {
+        boolean fboWas = zombie.core.PerformanceSettings.fboRenderChunk;
+        zombie.core.PerformanceSettings.fboRenderChunk = true;
+        try {
+            ChunkTrees.init();
+            Corner k = Corner.make(0, 0);
+            IsoChunk a = k.a(), south = k.south(), east = k.east(), other = k.other();
+            ChunkTrees.invalidateTrees(a, k.rs());
             for (int p = 0; p < 4; p++) {
                 assert a.getRenderLevels(p).isDirty(0, 4096L, 1f) : "the marked chunk, player " + p;
+                assert !south.getRenderLevels(p).isDirty(0, 1f) && !east.getRenderLevels(p).isDirty(0, 1f) : "not before the marked chunk has baked, player " + p;
+            }
+            // the second level of the pair does not count as the bake
+            ChunkTrees.baking(a, 1, 1f, 0);
+            assert !south.getRenderLevels(0).isDirty(0, 1f);
+            for (int p = 0; p < 4; p++) {
+                ChunkTrees.baking(a, 0, 1f, p);
                 assert south.getRenderLevels(p).isDirty(0, 4096L, 1f) : "the chunk of the (0, 7) tree's render square, player " + p;
                 assert east.getRenderLevels(p).isDirty(0, 4096L, 1f) : "the chunk of the (7, 0) tree's render square, player " + p;
             }
             assert !other.getRenderLevels(0).isDirty(0, 1f) : "an unrelated chunk is left alone";
+            // once per player: a second bake of the marked chunk marks nothing again
+            south.getRenderLevels(0).clearDirty(0, 1f);
+            ChunkTrees.baking(a, 0, 1f, 0);
+            assert !south.getRenderLevels(0).isDirty(0, 1f);
+            // a chunk that is not dirty is not baking
+            for (int p = 0; p < 4; p++) { south.getRenderLevels(p).clearDirty(0, 1f); east.getRenderLevels(p).clearDirty(0, 1f); }
+            ChunkTrees.invalidateTrees(a, k.rs());
+            a.getRenderLevels(2).clearDirty(0, 1f);
+            ChunkTrees.baking(a, 0, 1f, 2);
+            assert !south.getRenderLevels(2).isDirty(0, 1f);
             // a chunk with no corner tree: only itself; a corner tree drawn into its own chunk adds nothing
-            for (IsoChunk c : new IsoChunk[] {a, south, east}) c.getRenderLevels(0).clearDirty(0, 1f);
-            sq07.getObjects().remove(sTree);
+            for (IsoChunk c : new IsoChunk[] {a, south, east}) for (int p = 0; p < 4; p++) c.getRenderLevels(p).clearDirty(0, 1f);
+            k.sq07().getObjects().remove(k.sTree());
             ChunkTrees.invalidateTrees(a, t -> a.getGridSquare(7, 0, 0));
+            ChunkTrees.baking(a, 0, 1f, 0);
             assert a.getRenderLevels(0).isDirty(0, 4096L, 1f) && !south.getRenderLevels(0).isDirty(0, 1f) && !east.getRenderLevels(0).isDirty(0, 1f);
         } finally {
             zombie.core.PerformanceSettings.fboRenderChunk = fboWas;
+            ChunkTrees.init();
+        }
+    }
+
+    /** Runs the stock chunk order for one frame on the seams: gate, then the follow-up hook of a pair that bakes, then the stock end-of-bake clear. */
+    private static java.util.List<IsoChunk> bakeFrame(zombie.iso.fboRenderChunk.FBORenderChunkManager mgr, java.util.List<IsoChunk> order, long frame, long now) {
+        java.util.ArrayList<IsoChunk> baked = new java.util.ArrayList<>();
+        for (IsoChunk c : order) {
+            zombie.iso.fboRenderChunk.FBORenderLevels lv = c.getRenderLevels(0);
+            if (!lv.isDirty(0, 1f)) continue;                                           // stock: nothing to bake
+            if (BakeHold.gate(mgr, c, 0, 1f, 0, frame, now)) continue;                  // held: the old texture shows
+            ChunkTrees.baking(c, 0, 1f, 0);
+            baked.add(c);
+            lv.clearDirty(0, 1f);
+        }
+        return baked;
+    }
+
+    /**
+     * N1: the render-square chunk B of a corner jumbo tree is re-baked only after the marked chunk A has baked (B's bake reads the
+     * layer A's bake sets), and the re-bake is not held: it is classed OBJECT. Tested with B before A in the chunk order (B is
+     * baked the next frame, past the rebake budget that holds a plain cutaway pair) and with A before B (the same frame, after A).
+     */
+    static void treeFollowUpBakesAfterTheMarkedChunk() {
+        boolean clock = FrameClock.on;
+        boolean fboWas = zombie.core.PerformanceSettings.fboRenderChunk;
+        zombie.iso.fboRenderChunk.FBORenderChunkManager mgrWas = zombie.iso.fboRenderChunk.FBORenderChunkManager.instance;
+        zombie.iso.fboRenderChunk.FBORenderChunkManager mgr = new zombie.iso.fboRenderChunk.FBORenderChunkManager();
+        zombie.iso.fboRenderChunk.FBORenderChunkManager.instance = mgr;
+        zombie.core.PerformanceSettings.fboRenderChunk = true;
+        Cam cam = Cam.set(0, 4f, 4f);
+        try {
+            FrameClock.on = true;
+            Settings.load(SelfTest.write("enabled=true\nbakeScheduler=true\ntreesInChunkTexture=true\ntreeBakeMaxChunksPerSec=2\nrebakeBudget=1\nrebakeMaxFrames=9\nbakeFrameBudget=8\n"));
+            BakeHold.init();
+            ChunkTrees.init();
+            assert ChunkPatches.holdGuard.on;
+            // chunk order: two plain cutaway chunks that use up the rebake budget, a control, B (south of A), then A
+            Corner k = Corner.make(0, 0);
+            IsoChunk a = k.a(), b = k.south();
+            IsoChunk f1 = holdChunk(1, 1, true), f2 = holdChunk(2, 1, true), ctl = holdChunk(3, 1, true);
+            java.util.List<IsoChunk> order = java.util.List.of(f1, f2, ctl, b, a);
+            java.util.ArrayList<IsoChunk> chunks = new java.util.ArrayList<>(order);
+            for (IsoChunk c : new IsoChunk[] {f1, f2, ctl}) c.getRenderLevels(0).invalidateLevel(0, 4096);
+            ChunkTrees.invalidateTrees(a, k.rs());
+            assert !b.getRenderLevels(0).isDirty(0, 1f) : "B waits for A";
+            BakeHold.planChunks(chunks, 0, 1f, 10, 1000);
+            java.util.List<IsoChunk> baked = bakeFrame(mgr, order, 10, 1000);
+            assert baked.equals(java.util.List.of(a)) : "only A fits the rebake budget in frame 10";
+            assert !baked.contains(b) : "B was before A in the order and was not dirty when its turn came";
+            assert b.getRenderLevels(0).isDirty(0, 4096L, 1f) : "A baked: B is marked for its trees";
+            assert BakeHold.peek(b.getRenderLevels(0), 0).noHold;
+            // frame 11: the follow-up goes though the rebake budget is taken by the other cutaway chunks; the control waits
+            BakeHold.planChunks(chunks, 0, 1f, 11, 1016);
+            assert BakeHold.peek(b.getRenderLevels(0), 0).cls == BakeHold.OBJECT && !BakeHold.peek(b.getRenderLevels(0), 0).held : "not held";
+            assert BakeHold.peek(ctl.getRenderLevels(0), 0).cls == BakeHold.CUTAWAY && BakeHold.peek(ctl.getRenderLevels(0), 0).held : "a plain cutaway chunk is held";
+            baked = bakeFrame(mgr, order, 11, 1016);
+            assert baked.contains(b) && !baked.contains(a) : "B is baked, one frame after A";
+            assert !BakeHold.peek(b.getRenderLevels(0), 0).noHold : "the exemption ends with the bake";
+
+            // A before B in the order: B is marked inside A's turn and baked in the same frame, after A, with no plan decision for it
+            Corner k2 = Corner.make(10, 10);
+            IsoChunk a2 = k2.a(), b2 = k2.south();
+            java.util.List<IsoChunk> order2 = java.util.List.of(a2, b2);
+            ChunkTrees.invalidateTrees(a2, k2.rs());
+            BakeHold.planChunks(new java.util.ArrayList<>(order2), 0, 1f, 20, 5000);
+            baked = bakeFrame(mgr, order2, 20, 5000);
+            assert baked.equals(java.util.List.of(a2, b2)) : "A, then B, in one frame: " + baked.size();
+            assert BakeHold.peek(b2.getRenderLevels(0), 0).cls == BakeHold.OBJECT && !BakeHold.peek(b2.getRenderLevels(0), 0).held;
+            assert !b2.getRenderLevels(0).isDirty(0, 1f);
+
+            // without the bake hold the follow-up still happens (the hook does not need the planner)
+            ChunkPatches.holdGuard.on = false;
+            Corner k3 = Corner.make(20, 20);
+            ChunkTrees.invalidateTrees(k3.a(), k3.rs());
+            ChunkTrees.baking(k3.a(), 0, 1f, 0);
+            assert k3.south().getRenderLevels(0).isDirty(0, 4096L, 1f) && BakeHold.peek(k3.south().getRenderLevels(0), 0) == null;
+        } finally {
+            FrameClock.on = clock;
+            zombie.core.PerformanceSettings.fboRenderChunk = fboWas;
+            zombie.iso.fboRenderChunk.FBORenderChunkManager.instance = mgrWas;
+            ChunkPatches.holdGuard.on = false;
+            cam.restore();
+            Settings.load(SelfTest.write("enabled=true\n"));
+            BakeHold.init();
+            ChunkTrees.init();
+        }
+    }
+
+    /** Split screen: a chunk's new texture is one arrival, though every player has a texture of its own. */
+    static void treeArrivalsCountOncePerChunk() {
+        try {
+            Settings.load(SelfTest.write("enabled=true\ntreesInChunkTexture=true\ntreeBakeMaxChunksPerSec=2\n"));
+            ChunkTrees.init();
+            IsoChunk[] cs = new IsoChunk[3];
+            for (int i = 0; i < cs.length; i++) {
+                cs[i] = holdChunk(40 + i, 0, false);
+                for (int p = 0; p < 2; p++) {
+                    zombie.iso.fboRenderChunk.FBORenderLevels lv = cs[i].getRenderLevels(p);
+                    lv.setOnScreen(0, true); lv.setOnScreen(1, true);
+                    lv.invalidateLevel(0, 1024);
+                }
+            }
+            // each chunk arrives for player 0 and then player 1: three arrivals, not six, so the limit of 2 a second marks only the third chunk
+            for (int i = 0; i < cs.length; i++) {
+                ChunkTrees.atGate(cs[i], 0, 1f, 0, 10_000_000L * i);
+                ChunkTrees.atGate(cs[i], 0, 1f, 1, 10_000_000L * i + 1_000_000L);
+            }
+            assert !ChunkTrees.isMarked(cs[0]) && !ChunkTrees.isMarked(cs[1]) : "within the limit";
+            assert ChunkTrees.isMarked(cs[2]);
+            // the same chunk arriving again, a second later, is a new arrival
+            ChunkTrees.atGate(cs[0], 0, 1f, 0, 2_000_000_000L);
+            ChunkTrees.atGate(cs[1], 0, 1f, 0, 2_000_000_100L);
+            ChunkTrees.atGate(cs[2], 0, 1f, 0, 2_000_000_200L);
+            assert ChunkTrees.isMarked(cs[2]);
+        } finally {
+            Settings.load(SelfTest.write("enabled=true\n"));
+            ChunkTrees.init();
+        }
+    }
+
+    /** Split screen: a marked chunk that only player 1 sees is re-baked for its trees; one that nobody sees is just unmarked. */
+    static void treeReleaseSeesAnyPlayersScreen() {
+        boolean fboWas = zombie.core.PerformanceSettings.fboRenderChunk;
+        zombie.core.PerformanceSettings.fboRenderChunk = true;
+        try {
+            Settings.load(SelfTest.write("enabled=true\ntreesInChunkTexture=true\ntreeBakeMaxChunksPerSec=1\n"));
+            ChunkTrees.init();
+            IsoChunk p1 = holdChunk(50, 0, false), nobody = holdChunk(51, 0, false), warm = holdChunk(52, 0, false);
+            for (IsoChunk c : new IsoChunk[] {p1, nobody, warm}) c.getRenderLevels(0).invalidateLevel(0, 1024);
+            p1.getRenderLevels(1).setOnScreen(0, true);
+            p1.getRenderLevels(0).setOnScreen(0, false);
+            nobody.getRenderLevels(0).setOnScreen(0, false);
+            ChunkTrees.atGate(warm, 0, 1f, 0, 0L);
+            ChunkTrees.atGate(p1, 0, 1f, 0, 1L);
+            ChunkTrees.atGate(nobody, 0, 1f, 0, 2L);
+            assert ChunkTrees.isMarked(p1) && ChunkTrees.isMarked(nobody);
+            for (IsoChunk c : new IsoChunk[] {p1, nobody, warm}) c.getRenderLevels(0).clearDirty(0, 1f);
+            ChunkTrees.release(0, 1_000L);
+            ChunkTrees.release(0, 1_100_000_000L);
+            ChunkTrees.release(0, 2_300_000_000L);
+            assert !ChunkTrees.isMarked(p1) && !ChunkTrees.isMarked(nobody);
+            assert p1.getRenderLevels(0).isDirty(0, 4096L, 1f) : "seen by player 1 only: re-baked";
+            assert !nobody.getRenderLevels(0).isDirty(0, 4096L, 1f) : "seen by nobody: only unmarked";
+        } finally {
+            zombie.core.PerformanceSettings.fboRenderChunk = fboWas;
+            Settings.load(SelfTest.write("enabled=true\n"));
+            ChunkTrees.init();
         }
     }
 }

@@ -32,6 +32,8 @@ final class ChunkTrees {
         maxPerSec = Settings.num("treeBakeMaxChunksPerSec", 0, 0, 1000);
         ChunkPatches.treeRateGuard.on = ChunkPatches.treeBakeGuard.on && maxPerSec > 0;
         marks.clear();
+        follows.clear();
+        arrivals.clear();
         rate = new Rate();
     }
 
@@ -55,6 +57,8 @@ final class ChunkTrees {
     /** Chunks whose trees stay per frame for now (new textures are arriving fast). Weak keys; IsoChunk does not override equals / hashCode. Game thread only. */
     private static final WeakHashMap<IsoChunk, Boolean> marks = new WeakHashMap<>();
     private static Rate rate = new Rate();
+    /** When each chunk's last arrival was counted (weak keys; game thread only). */
+    private static final WeakHashMap<IsoChunk, Long> arrivals = new WeakHashMap<>();
 
     /** Arrivals of new chunk textures over the last second, in ten 100 ms buckets. */
     static final class Rate {
@@ -118,14 +122,16 @@ final class ChunkTrees {
         if (level != levels.getMinLevel(level) || !levels.isDirty(level, zoom)) return;
         FBORenderChunk fbo = levels.getFBOForLevel(level, zoom);
         if (fbo != null && fbo.isInit) return;
-        rate.add(nowNs);
+        // split screen: every player has a texture of its own, but the chunk arrived once (counted once a second per chunk)
+        Long last = arrivals.get(chunk);
+        if (last == null || nowNs - last >= 1_000_000_000L || nowNs < last) { rate.add(nowNs); arrivals.put(chunk, nowNs); }
         if (BakeHold.slot(level) == BakeHold.slot(0) && markNew(rate.perSecond(nowNs), maxPerSec)) marks.put(chunk, Boolean.TRUE);
     }
 
     /**
      * Once a frame (player 0's plan): after a quiet second every marked chunk still on screen is re-baked for its trees
      * (DIRTY_TREES; with bakeScheduler these are cutaway-class holds and spread), then all marks go. A chunk that left the
-     * screen is just unmarked.
+     * screen of any player is just unmarked.
      */
     static void release(int p, long nowNs) {
         rate.update(nowNs, maxPerSec);
@@ -134,18 +140,34 @@ final class ChunkTrees {
         marks.clear();
         for (int i = 0; i < list.size(); i++) {
             IsoChunk c = list.get(i);
-            if (c.getRenderLevels(p).isOnScreen(0)) invalidateTrees(c, IsoTree::getRenderSquare);
+            if (onScreenForAny(c)) invalidateTrees(c, IsoTree::getRenderSquare);
         }
     }
 
+    private static boolean onScreenForAny(IsoChunk c) {
+        for (int q = 0; q < BakeHold.PLAYERS; q++) if (c.getRenderLevels(q).isOnScreen(0)) return true;
+        return false;
+    }
+
+    /** Chunks whose level 0 must be baked again once a marked chunk (the key) has baked its own: held weakly. */
+    private static final class Follow {
+        final java.util.ArrayList<java.lang.ref.WeakReference<IsoChunk>> targets = new java.util.ArrayList<>(2);
+        int players = (1 << BakeHold.PLAYERS) - 1;   // players whose bake of the key chunk is still to come
+    }
+
+    private static final WeakHashMap<IsoChunk, Follow> follows = new WeakHashMap<>();
+
     /**
-     * Level 0 of the chunk, and of the chunk each of its corner trees is drawn into, gets DIRTY_TREES for all four players
-     * (IsoChunk.invalidateRenderChunkLevel). Stock draws a jumbo tree into the texture of its getRenderSquare(): the square to the
-     * south of a tree at local (0, 7), to the east of one at local (7, 0), which lies in the next chunk, and the tree is skipped
-     * by the bake of its own chunk. So that chunk has to be baked again too. {@code renderSquare} is IsoTree::getRenderSquare.
+     * Level 0 of the chunk gets DIRTY_TREES for all four players (IsoChunk.invalidateRenderChunkLevel). Stock draws a jumbo tree
+     * into the texture of its getRenderSquare(): the square to the south of a tree at local (0, 7), to the east of one at local
+     * (7, 0), which lies in the next chunk, and the bake of its own chunk skips it. That chunk has to be baked again too, but only
+     * after this chunk's own bake ({@link #baking}): the next chunk's bake reads the tree's cached render layer
+     * (renderMinusFloor(IsoChunk, IsoGridSquare) never recomputes it), and this chunk's bake is what sets it. {@code renderSquare}
+     * is IsoTree::getRenderSquare.
      */
     static void invalidateTrees(IsoChunk c, java.util.function.Function<IsoTree, IsoGridSquare> renderSquare) {
         c.invalidateRenderChunkLevel(0, FBORenderChunk.DIRTY_TREES);
+        Follow f = null;
         for (int k = 0; k < 2; k++) {
             IsoGridSquare sq = k == 0 ? c.getGridSquare(0, 7, 0) : c.getGridSquare(7, 0, 0);
             if (sq == null) continue;
@@ -153,9 +175,41 @@ final class ChunkTrees {
             for (int i = 0; i < objs.size(); i++) {
                 if (!(objs.get(i) instanceof IsoTree t)) continue;
                 IsoGridSquare rs = renderSquare.apply(t);
-                if (rs != null && rs.chunk != null && rs.chunk != c) rs.chunk.invalidateRenderChunkLevel(0, FBORenderChunk.DIRTY_TREES);
+                if (rs == null || rs.chunk == null || rs.chunk == c) continue;
+                if (f == null) f = new Follow();
+                f.targets.add(new java.lang.ref.WeakReference<>(rs.chunk));
             }
         }
+        if (f != null) follows.put(c, f);
+        else follows.remove(c);
+    }
+
+    /**
+     * The gate lets a level of {@code chunk} bake now (stock, or the bake hold did not hold it): when that is level 0's pair and
+     * the chunk has render-square chunks waiting, they are marked DIRTY_TREES for this player and, with the bake hold on, are
+     * never held (a held follow-up would leave the tree missing for several frames). The chunk is baked in the call that
+     * follows, so the cached layer they read is the new one. A target that bakes later in the same frame shows the tree at once;
+     * one that already passed its gate shows it a frame later.
+     */
+    static void baking(IsoChunk chunk, int level, float zoom) {
+        baking(chunk, level, zoom, IsoCamera.frameState.playerIndex);
+    }
+
+    static void baking(IsoChunk chunk, int level, float zoom, int p) {
+        if (follows.isEmpty() || p < 0 || p >= BakeHold.PLAYERS) return;
+        Follow f = follows.get(chunk);
+        if (f == null || (f.players & (1 << p)) == 0) return;
+        FBORenderLevels levels = chunk.getRenderLevels(p);
+        if (level != levels.getMinLevel(level) || BakeHold.slot(level) != BakeHold.slot(0) || !levels.isDirty(level, zoom)) return;
+        f.players &= ~(1 << p);
+        for (int i = 0; i < f.targets.size(); i++) {
+            IsoChunk t = f.targets.get(i).get();
+            if (t == null) continue;
+            FBORenderLevels tl = t.getRenderLevels(p);
+            tl.invalidateLevel(0, FBORenderChunk.DIRTY_TREES);
+            if (ChunkPatches.holdGuard.on) BakeHold.state(tl, 0).noHold = true;
+        }
+        if (f.players == 0) follows.remove(chunk);
     }
 
     /** isTreeRenderedEveryFrame from the tree-bake switch: a tree is per frame only when its chunk is marked. */

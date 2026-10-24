@@ -98,17 +98,17 @@ final class BakeHold {
         }
     }
 
+    // scratch of plan: per-class singly linked lists of candidate indices, threaded through vNext
+    private static int[] vNext = new int[256];
+    private static final int[] vHead = new int[LIGHT + 1];
+
     /**
      * Decides every dirty on-screen pair of one player for this frame. Fills {@code grant[0..n)}, sets the {@code left*}
      * counts in {@code b} (what the gate may still hand out) and returns the number of counted grants. NEW and OBJECT
      * go and are not counted; overdue pairs go first and are counted even past the caps (the counts stop at 0); then
-     * the eligible ones in (class, distance, index) order while the total and their class cap have room.
-     * (Variant stub: implement this method. The helpers above are settled.)
+     * the eligible ones in (class, distance, index) order while the total and their class cap have room. A class above LIGHT
+     * (none exists today) is treated as OBJECT: never held, not counted.
      */
-    // variant scratch: per-class singly linked lists of candidate indices, threaded through vNext
-    private static int[] vNext = new int[256];
-    private static final int[] vHead = new int[LIGHT + 1];
-
     static int plan(int n, int[] cls, int[] dist, int[] held, long[] dirtySinceMs, long[] lastBakeMs, long nowMs, Budget b, boolean[] grant) {
         reset(b);
         if (vNext.length < n) vNext = new int[n + (n >> 1)];
@@ -117,7 +117,7 @@ final class BakeHold {
         // pass A: class <= OBJECT and overdue are granted and counted; the rest start ungranted
         for (int i = 0; i < n; i++) {
             int c = cls[i];
-            if (c <= OBJECT) { grant[i] = true; continue; }
+            if (c <= OBJECT || c > LIGHT) { grant[i] = true; continue; }
             if (overdue(c, held[i], b)) { grant[i] = true; count(c, b); counted++; continue; }
             grant[i] = false;
         }
@@ -151,14 +151,14 @@ final class BakeHold {
 
     /** The gate's grant test without the side effects: the same rules as {@link #grantOne}, nothing counted. */
     static boolean wouldGrant(int cls, int held, long dirtySinceMs, long lastBakeMs, long nowMs, Budget b) {
-        if (cls <= OBJECT || overdue(cls, held, b)) return true;
+        if (cls <= OBJECT || cls > LIGHT || overdue(cls, held, b)) return true;
         return eligible(cls, dirtySinceMs, lastBakeMs, nowMs, b) && roomIn(cls, b);
     }
 
     /** One pair decided after the plan, at the gate: the same rules, using and decrementing the plan's counts. */
     static boolean grantOne(int cls, int held, long dirtySinceMs, long lastBakeMs, long nowMs, Budget b) {
         if (!wouldGrant(cls, held, dirtySinceMs, lastBakeMs, nowMs, b)) return false;
-        if (cls > OBJECT) count(cls, b);
+        if (cls > OBJECT && cls <= LIGHT) count(cls, b);
         return true;
     }
 
@@ -212,6 +212,7 @@ final class BakeHold {
         long lastBakeMs = Long.MIN_VALUE / 2;
         byte[] light;   // square light at the last grant: 2 levels x 64 squares x r, g, b
         int cls;        // the class of the last decision (for the tests and the ledger)
+        boolean noHold; // set by ChunkTrees for the follow-up bake of a corner tree's render-square chunk: classed OBJECT until baked
     }
 
     static final int SNAP = 2 * 64 * 3;
@@ -302,6 +303,7 @@ final class BakeHold {
         st.heldFrames = 0;
         st.dirtySinceMs = -1;
         st.lastBakeMs = nowMs;
+        st.noHold = false;
     }
 
     /** FBORenderChunkManager.beginRenderChunkLevel offsets 50-116, float operations in stock order. */
@@ -417,6 +419,7 @@ final class BakeHold {
                 PairState st = state(levels, lvl);
                 if (st.dirtySinceMs < 0) st.dirtySinceMs = now;
                 int cls = classifyPair(levels, lvl, zoom);
+                if (st.noHold && cls > OBJECT) cls = OBJECT;
                 if (cls == LIGHT) {
                     lightPairs++;
                     if (strongDelta == 0) cls = STRONG;
@@ -483,7 +486,7 @@ final class BakeHold {
             // needs no STRONG decision; one that would wait is STRONG when a square moved a lot, unless the plan saw a global move.
             if (cls == LIGHT) {
                 if (strongDelta == 0) cls = STRONG;
-                else if (st.light != null && globalFrame[p] != frame && !wouldGrant(cls, st.heldFrames, st.dirtySinceMs, st.lastBakeMs, now, b)) {
+                else if (st.light != null && globalFrame[p] != frame && roomIn(STRONG, b) && !wouldGrant(cls, st.heldFrames, st.dirtySinceMs, st.lastBakeMs, now, b)) {
                     snapshot(chunk, levels, level, p, cur);
                     fresh = true;
                     if (maxDelta(st.light, cur, SNAP) >= strongDelta) cls = STRONG;
@@ -519,7 +522,8 @@ final class BakeHold {
     /** A pair that became dirty after the plan: classified from its flags (the light delta is the gate's job, only for a pair that would wait). */
     private static int gateClass(FBORenderLevels levels, int level, float zoom, PairState st, long now) {
         if (st.dirtySinceMs < 0) st.dirtySinceMs = now;
-        return classifyPair(levels, level, zoom);
+        int cls = classifyPair(levels, level, zoom);
+        return st.noHold && cls > OBJECT ? OBJECT : cls;
     }
 
     // ---- prepare, occlusion ----
