@@ -68,6 +68,10 @@ final class LuaGateTest {
         summariesInFirstSeenOrder();
         lateRepeatAfterRollPrints();
         concurrentRollLosesNoCount();
+        logShimPrintsSummaryOnStream();
+        logShimOffAndErrors();
+        logShimSkipsFilteredLines();
+        logHoldersShape();
     }
 
     static void plan7KeysDefaults() {
@@ -722,5 +726,72 @@ final class LuaGateTest {
     static long countOf(String summary) {
         String rest = summary.substring("[PZButter] logDedupe: ".length());
         return Long.parseLong(rest.substring(0, rest.indexOf(' ')));
+    }
+
+    // ---- Task 8: log hooks ----
+
+    static void logShimPrintsSummaryOnStream() {
+        LogDedupe.resetForTest(); LogDedupe.guard.on = true;
+        java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+        java.io.PrintStream ps = new java.io.PrintStream(bytes, true);
+        assert !LogPatches.onLine(ps, null, "tick", NO_ARGS) && LogPatches.onLine(ps, null, "tick", NO_ARGS);
+        LogDedupe.resetWindowStartForTest(System.nanoTime() - LogDedupe.WINDOW_NS);   // window over
+        LogPatches.onFrameEnd();
+        assert bytes.toString().contains("[PZButter] logDedupe: 1 more in 3 s: tick");
+        LogDedupe.resetForTest();
+    }
+
+    static void logShimOffAndErrors() {
+        LogDedupe.resetForTest(); LogDedupe.guard.on = false;
+        assert !LogPatches.onLine(S1, null, "a", NO_ARGS) && !LogPatches.onLine(S1, null, "a", NO_ARGS);
+        LogPatches.onFrameEnd();
+        // a stream that throws on the summary: the line path stays correct and the failure goes to the guard
+        LogDedupe.guard.on = true;
+        java.io.PrintStream bad = new java.io.PrintStream(new java.io.ByteArrayOutputStream()) {
+            @Override public void println(String x) { throw new IllegalStateException("closed"); }
+        };
+        assert !LogPatches.onLine(bad, null, "b", NO_ARGS) && LogPatches.onLine(bad, null, "b", NO_ARGS);
+        LogDedupe.resetWindowStartForTest(System.nanoTime() - LogDedupe.WINDOW_NS);
+        LogPatches.onFrameEnd();                                                      // must not throw
+        assert LogDedupe.guard.on;                                                    // one failure is not five
+        assert !LogPatches.onLine("not a stream", null, "c", NO_ARGS);                // first sight never touches the stream
+        LogDedupe.resetForTest();
+    }
+
+    // a line below the stream's level is never printed by stock: not recorded, not counted, never summarised
+    static void logShimSkipsFilteredLines() {
+        LogDedupe.resetForTest(); LogDedupe.guard.on = true;
+        java.io.PrintStream ps = new java.io.PrintStream(new java.io.ByteArrayOutputStream(), true);
+        zombie.debug.DebugLogStream errOnly = new zombie.debug.DebugLogStream(ps, ps, ps, zombie.debug.LogSeverity.Error);
+        for (int i = 0; i < 3; i++) assert !LogPatches.onLine(errOnly, zombie.debug.LogSeverity.Warning, "quiet", NO_ARGS);
+        assert LogDedupe.roll(LogDedupe.WINDOW_NS).isEmpty() && !LogDedupe.due(Long.MAX_VALUE / 2);
+        assert !LogPatches.onLine(errOnly, zombie.debug.LogSeverity.Error, "loud", NO_ARGS) && LogPatches.onLine(errOnly, zombie.debug.LogSeverity.Error, "loud", NO_ARGS);
+        LogDedupe.resetForTest();
+    }
+
+    static void logHoldersShape() {
+        java.util.Map<String, Integer> want = java.util.Map.of("writeln", 1, "writeWithCallerPrefixln", 1), seen = new java.util.HashMap<>();
+        for (Class<?> c : LogPatches.class.getDeclaredClasses()) {
+            me.zed_0xff.zombie_buddy.Patch p = c.getAnnotation(me.zed_0xff.zombie_buddy.Patch.class);
+            if (p == null) continue;
+            assert p.className().equals("zombie.debug.DebugLogStream") : p.className();
+            seen.merge(p.methodName(), 1, Integer::sum);
+            int enters = 0;
+            for (java.lang.reflect.Method m : c.getDeclaredMethods()) {
+                me.zed_0xff.zombie_buddy.Patch.OnEnter e = m.getAnnotation(me.zed_0xff.zombie_buddy.Patch.OnEnter.class);
+                if (e == null) continue;
+                enters++;
+                assert e.skipOn() && m.getReturnType() == boolean.class : p.methodName();
+                // the LogSeverity binding of argument 1 is what selects the protected overload
+                java.lang.annotation.Annotation[][] as = m.getParameterAnnotations();
+                boolean sev = false;
+                for (int i = 0; i < as.length; i++)
+                    for (java.lang.annotation.Annotation a : as[i])
+                        if (a instanceof me.zed_0xff.zombie_buddy.Patch.Argument arg && arg.value() == 1) sev = m.getParameterTypes()[i] == zombie.debug.LogSeverity.class;
+                assert sev : p.methodName();
+            }
+            assert enters == 1 : p.methodName();
+        }
+        assert seen.equals(want) : seen;
     }
 }
