@@ -29,6 +29,11 @@ final class ChunkTest {
         glassAndLightRules();
         minusFloorRestOrder();
         translucentKeysDefaults();
+        bezierMatchesCssEase();
+        parseRejectsBad();
+        easeEndsOnTarget();
+        easeCancelledByOtherTarget();
+        zoomKeyDefaults();
     }
 
     static void bakeableOnlyFlagReason() {
@@ -87,6 +92,66 @@ final class ChunkTest {
         // key off: the hook hands back whatever stock answered
         assert ChunkPatches.onObjectLayer(null, zombie.iso.fboRenderChunk.ObjectRenderLayer.Translucent)
             == zombie.iso.fboRenderChunk.ObjectRenderLayer.Translucent;
+    }
+
+    static void bezierMatchesCssEase() {
+        float[] ease = ZoomEase.parse("0.25,0.1,0.25,1.0");
+        assert ZoomEase.bezier(ease, 0f) == 0f && ZoomEase.bezier(ease, 1f) == 1f;
+        assert Math.abs(ZoomEase.bezier(ease, 0.5f) - 0.8024f) < 0.002f;           // CSS "ease" at 50 %
+        float prev = 0f;
+        for (int i = 1; i <= 100; i++) { float y = ZoomEase.bezier(ease, i / 100f); assert y >= prev - 1e-6f; prev = y; }
+        float[] linear = ZoomEase.parse("0,0,1,1");
+        assert Math.abs(ZoomEase.bezier(linear, 0.3f) - 0.3f) < 0.001f;
+        // steep curve (x1 = x2 = 0 / 1 corners) still solves
+        float[] steep = ZoomEase.parse("0,0,0,1");
+        float y = ZoomEase.bezier(steep, 0.01f);
+        assert y >= 0f && y <= 1f;
+    }
+
+    static void parseRejectsBad() {
+        float[] d = {0.25f, 0.1f, 0.25f, 1.0f};
+        assert java.util.Arrays.equals(ZoomEase.parse("1.5,0,0.5,1"), d);           // x outside [0, 1]
+        assert java.util.Arrays.equals(ZoomEase.parse("a,b"), d) && java.util.Arrays.equals(ZoomEase.parse(""), d);
+        assert java.util.Arrays.equals(ZoomEase.parse("0.1,0.2,0.3"), d) && java.util.Arrays.equals(ZoomEase.parse("0.1,0.2,0.3,0.4,0.5"), d);
+        assert java.util.Arrays.equals(ZoomEase.parse("0.1, 0.2, 0.3, 1.5"), new float[] {0.1f, 0.2f, 0.3f, 1.5f});   // y may leave [0, 1]
+    }
+
+    static void easeEndsOnTarget() {
+        float[] c = ZoomEase.parse("0.25,0.1,0.25,1.0");
+        assert ZoomEase.eased(1f, 2f, 0L, 300_000_000L, 300, c) == 2f;
+        assert ZoomEase.eased(1f, 2f, 0L, 0L, 300, c) == 1f;
+        float mid = ZoomEase.eased(1f, 2f, 0L, 150_000_000L, 300, c);
+        assert mid > 1.5f && mid < 2f;
+        assert ZoomEase.eased(1f, 2f, 0L, 5L, 0, c) == 2f;                            // off: jump to the target
+    }
+
+    static void easeCancelledByOtherTarget() {
+        ZoomEase.curve = ZoomEase.parse("0.25,0.1,0.25,1.0");
+        ZoomEase.resetForTest();
+        ZoomEase.start(0, 1f, 2f, 0L);
+        assert ZoomEase.step(0, 2f, 100_000_000L, 300) > 1f;                          // same target: easing
+        assert Float.isNaN(ZoomEase.step(0, 1.5f, 120_000_000L, 300));                // target changed under it: ease ends
+        assert Float.isNaN(ZoomEase.step(0, 2f, 130_000_000L, 300));                  // and stays ended
+        ZoomEase.start(1, 1f, 2f, 0L);
+        assert ZoomEase.step(1, 2f, 300_000_000L, 300) == 2f;                         // the last step is the target itself
+        assert Float.isNaN(ZoomEase.step(1, 2f, 310_000_000L, 300));                  // then the ease is done
+        assert Float.isNaN(ZoomEase.step(2, 2f, 0L, 300));                            // never started
+    }
+
+    static void zoomKeyDefaults() {
+        Settings.load(SelfTest.write("enabled=true\n"));
+        ZoomEase.init();
+        assert !ChunkPatches.zoomGuard.on && ZoomEase.ms == 0;
+        assert java.util.Arrays.equals(ZoomEase.curve, new float[] {0.25f, 0.1f, 0.25f, 1.0f});
+        Settings.load(SelfTest.write("enabled=true\nzoomEaseMs=300\nzoomEase=0,0,1,1\n"));
+        ZoomEase.init();
+        assert ZoomEase.ms == 300 && java.util.Arrays.equals(ZoomEase.curve, new float[] {0f, 0f, 1f, 1f});
+        assert ChunkPatches.zoomGuard.on;                                             // the private zoom / targetZoom handles resolve
+        Settings.load(SelfTest.write("enabled=false\nzoomEaseMs=300\n"));
+        ZoomEase.init();
+        assert !ChunkPatches.zoomGuard.on;
+        Settings.load(SelfTest.write("enabled=true\n"));
+        ZoomEase.init();
     }
 
     static void fadingSplatsDropped() {

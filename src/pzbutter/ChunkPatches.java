@@ -21,6 +21,7 @@ public final class ChunkPatches {
     static final Guard mipGuard = new Guard("bakeMipLevels");
     static final Guard edgeGuard = new Guard("edgeTestFast");
     static final Guard translucentGuard = new Guard("translucentTilesInChunkTexture");
+    static final Guard zoomGuard = new Guard("zoomEaseMs");
 
     /** FBORenderCell.isTreeRenderedEveryFrame entry: the answer when treesInChunkTexture is on; null runs stock. */
     public static Boolean onTreeEveryFrame(Object obj) {
@@ -62,6 +63,27 @@ public final class ChunkPatches {
         if (!translucentGuard.on) return stock;
         try { return TranslucentBake.layer(obj, stock); }
         catch (Throwable t) { translucentGuard.fail(t); return stock; }
+    }
+
+    /** MultiTextureFBO2.doZoomScroll entry: the zoom and target before the wheel step (null when off or on failure). */
+    public static Object onZoomScrollEnter(Object fbo, int p) {
+        if (!zoomGuard.on) return null;
+        try { return ZoomEase.scrollEnter(fbo, p); }
+        catch (Throwable t) { zoomGuard.fail(t); return null; }
+    }
+
+    /** MultiTextureFBO2.doZoomScroll exit: starts the ease when the wheel moved the target. */
+    public static void onZoomScrollExit(Object fbo, int p, Object before) {
+        if (before == null || !zoomGuard.on) return;
+        try { ZoomEase.scrollExit(fbo, p, before); }
+        catch (Throwable t) { zoomGuard.fail(t); }
+    }
+
+    /** MultiTextureFBO2.update exit: an active ease sets the zoom for this frame. */
+    public static void onZoomUpdate(Object fbo) {
+        if (!zoomGuard.on) return;
+        try { ZoomEase.updateExit(fbo); }
+        catch (Throwable t) { zoomGuard.fail(t); }
     }
 
     /**
@@ -131,5 +153,24 @@ public final class ChunkPatches {
         public static void exit(@Patch.Argument(0) IsoObject obj, @Patch.Return(readOnly = false) ObjectRenderLayer ret) {
             ret = onObjectLayer(obj, ret);
         }
+    }
+
+    @Patch(className = "zombie.core.textures.MultiTextureFBO2", methodName = "doZoomScroll")
+    public static class ZoomScroll {
+        @Patch.OnEnter
+        public static void enter(@Patch.This Object self, @Patch.Argument(0) int p, @Patch.Local("z") Object z) {
+            z = onZoomScrollEnter(self, p);
+        }
+
+        @Patch.OnExit
+        public static void exit(@Patch.This Object self, @Patch.Argument(0) int p, @Patch.Local("z") Object z) {
+            onZoomScrollExit(self, p, z);
+        }
+    }
+
+    @Patch(className = "zombie.core.textures.MultiTextureFBO2", methodName = "update")
+    public static class ZoomUpdate {
+        @Patch.OnExit
+        public static void exit(@Patch.This Object self) { onZoomUpdate(self); }
     }
 }

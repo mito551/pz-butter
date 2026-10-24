@@ -38,6 +38,7 @@ public class Main {
         BakeMisc.init();
         EdgeTest.init();
         TranslucentBake.init();
+        ZoomEase.init();
         AudioLimiter.init();
         SoundPatches.onFmodInit();
         LuaPatches.uiLuaFast = Settings.flag("uiLuaFast");
