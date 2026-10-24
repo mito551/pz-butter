@@ -33,6 +33,18 @@ final class ChunkTest {
         easeEndsOnTarget();
         easeCancelledByOtherTarget();
         zoomKeyDefaults();
+        holdNeverForNewOrObject();
+        budgetNearestFirst();
+        classOrderBeatsDistance();
+        overdueAlwaysGranted();
+        lightRateLimitedButOverdueWins();
+        bloodCoalesces();
+        classCapsApply();
+        adaptiveBudget();
+        strongCapHalves();
+        globalMoveDemotesStrong();
+        strongDeltaDetected();
+        planKeepsNoStateBetweenCalls();
     }
 
     static void bakeableOnlyFlagReason() {
@@ -331,5 +343,166 @@ final class ChunkTest {
         }
         // the check must see both answers, or it proves nothing
         assert blocked > 0 && blocked < checks : blocked + " of " + checks;
+    }
+
+    // ---- Task 6: bake-hold planner core ----
+
+    static BakeHold.Budget budget(int total, int rebake, int strong, int light) {
+        BakeHold.Budget b = new BakeHold.Budget();
+        b.total = total; b.rebake = rebake; b.strong = strong; b.light = light;
+        b.rebakeMaxFrames = 3; b.lightMaxFrames = 30; b.lightMs = 250; b.bloodMs = 250;
+        return b;
+    }
+
+    static boolean[] plan(BakeHold.Budget b, int[] cls, int[] dist, int[] held, long[] since, long[] last, long now) {
+        boolean[] g = new boolean[cls.length];
+        BakeHold.plan(cls.length, cls, dist, held, since, last, now, b, g);
+        return g;
+    }
+
+    static void holdNeverForNewOrObject() {
+        assert BakeHold.classify(32, false) == BakeHold.NEW && BakeHold.classify(512 | 32, true) == BakeHold.NEW;
+        assert BakeHold.classify(64 | 32, true) == BakeHold.OBJECT && BakeHold.classify(0, true) == BakeHold.OBJECT;
+        assert BakeHold.classify(2048 | 32, true) == BakeHold.CUTAWAY && BakeHold.classify(1024, true) == BakeHold.REDRAW;
+        assert BakeHold.classify(1 | 32, true) == BakeHold.BLOOD && BakeHold.classify(32, true) == BakeHold.LIGHT;
+        // every object, item and corpse flag, and every cutaway flag, picks its class even next to the others
+        for (long f : new long[] {2, 4, 8, 16, 64, 128, 256})
+            assert BakeHold.classify(f | 2048 | 1024 | 1 | 32, true) == BakeHold.OBJECT : f;
+        for (long f : new long[] {2048, 4096, 8192, 16384})
+            assert BakeHold.classify(f | 1024 | 1 | 32, true) == BakeHold.CUTAWAY : f;
+        boolean[] g = plan(budget(0, 0, 0, 0), new int[] {BakeHold.NEW, BakeHold.OBJECT}, new int[] {9, 9}, new int[2], new long[2], new long[2], 0);
+        assert g[0] && g[1];
+        BakeHold.Budget b = budget(0, 0, 0, 0);
+        plan(b, new int[] {BakeHold.NEW, BakeHold.OBJECT}, new int[] {9, 9}, new int[2], new long[2], new long[2], 0);
+        assert b.leftTotal == 0;                                                       // not counted
+        assert BakeHold.grantOne(BakeHold.NEW, 0, 0, 0, 0, b) && BakeHold.grantOne(BakeHold.OBJECT, 0, 0, 0, 0, b);
+    }
+
+    static void budgetNearestFirst() {
+        int R = BakeHold.REDRAW;
+        boolean[] g = plan(budget(2, 0, 0, 0), new int[] {R, R, R, R, R}, new int[] {3, 1, 2, 5, 4}, new int[5], new long[5], new long[5], 0);
+        assert !g[0] && g[1] && g[2] && !g[3] && !g[4];
+        // equal class and distance: the lower index goes first
+        g = plan(budget(1, 0, 0, 0), new int[] {R, R}, new int[] {2, 2}, new int[2], new long[2], new long[2], 0);
+        assert g[0] && !g[1];
+    }
+
+    static void classOrderBeatsDistance() {
+        boolean[] g = plan(budget(1, 0, 0, 0), new int[] {BakeHold.LIGHT, BakeHold.CUTAWAY}, new int[] {0, 9}, new int[2], new long[2],
+                           new long[] {-1_000_000, -1_000_000}, 0);
+        assert !g[0] && g[1];
+        // CUTAWAY, REDRAW, STRONG, BLOOD, LIGHT in that order
+        int[] cls = {BakeHold.LIGHT, BakeHold.BLOOD, BakeHold.STRONG, BakeHold.REDRAW, BakeHold.CUTAWAY};
+        long[] since = new long[5], last = {-1_000_000, -1_000_000, -1_000_000, -1_000_000, -1_000_000};
+        for (int k = 1; k <= 5; k++) {
+            boolean[] got = plan(budget(k, 0, 0, 0), cls, new int[5], new int[5], new long[] {-1_000_000, -1_000_000, -1_000_000, -1_000_000, -1_000_000}, last, 0);
+            int n = 0;
+            for (boolean x : got) if (x) n++;
+            assert n == k : k;
+            for (int i = 4; i > 4 - k; i--) assert got[i] : k + " " + i;               // the last k entries are the most urgent
+        }
+    }
+
+    static void overdueAlwaysGranted() {
+        int R = BakeHold.REDRAW;
+        BakeHold.Budget b = budget(1, 0, 0, 0);
+        boolean[] g = plan(b, new int[] {R, R, R, R}, new int[] {1, 2, 3, 0}, new int[] {3, 3, 3, 0}, new long[4], new long[4], 0);
+        assert g[0] && g[1] && g[2] && !g[3] && b.leftTotal == 0;
+        // overdue past a class cap: the counts never go below 0 and the others wait
+        b = budget(8, 1, 0, 0);
+        g = plan(b, new int[] {R, R, R}, new int[] {1, 2, 3}, new int[] {3, 4, 0}, new long[3], new long[3], 0);
+        assert g[0] && g[1] && !g[2] && b.leftRebake == 0 && b.leftTotal == 6;
+        // each class has its own limit: 3 frames for cutaway and redraw, 30 for light, blood and strong
+        int[] oc = {BakeHold.CUTAWAY, BakeHold.REDRAW, BakeHold.LIGHT, BakeHold.BLOOD, BakeHold.STRONG};
+        long[] z5 = new long[5], l5 = {990, 990, 990, 990, 990};
+        assert BakeHold.plan(5, oc, new int[5], new int[] {2, 2, 29, 29, 29}, z5, l5, 1000, budget(0, 0, 0, 0), new boolean[5]) == 0;
+        assert BakeHold.plan(5, oc, new int[5], new int[] {3, 3, 29, 29, 29}, z5, l5, 1000, budget(0, 0, 0, 0), new boolean[5]) == 2;
+        assert BakeHold.plan(5, oc, new int[5], new int[] {2, 2, 30, 30, 30}, z5, l5, 1000, budget(0, 0, 0, 0), new boolean[5]) == 3;
+    }
+
+    static void lightRateLimitedButOverdueWins() {
+        int L = BakeHold.LIGHT;
+        boolean[] g = plan(budget(8, 0, 0, 0), new int[] {L, L}, new int[] {0, 0}, new int[] {5, 30}, new long[2], new long[] {900, 900}, 1000);
+        assert !g[0] && g[1];                                   // baked 100 ms ago: waits; held 30 frames: goes
+        g = plan(budget(8, 0, 0, 0), new int[] {L}, new int[] {0}, new int[] {1}, new long[1], new long[] {700}, 1000);
+        assert g[0];                                            // 300 ms since its bake
+        BakeHold.Budget b = budget(8, 0, 0, 0);
+        g = plan(b, new int[] {L}, new int[] {0}, new int[] {29}, new long[1], new long[] {999}, 1000);
+        assert !g[0] && b.leftTotal == 8;
+        b.lightMs = 0;                                          // no limit
+        g = plan(b, new int[] {L}, new int[] {0}, new int[] {0}, new long[1], new long[] {999}, 1000);
+        assert g[0];
+    }
+
+    static void bloodCoalesces() {
+        int B = BakeHold.BLOOD;
+        assert !plan(budget(8, 0, 0, 0), new int[] {B}, new int[] {0}, new int[1], new long[] {900}, new long[1], 1000)[0];
+        assert plan(budget(8, 0, 0, 0), new int[] {B}, new int[] {0}, new int[1], new long[] {740}, new long[1], 1000)[0];
+        BakeHold.Budget b = budget(8, 0, 0, 0);
+        b.bloodMs = 0;
+        assert plan(b, new int[] {B}, new int[] {0}, new int[1], new long[] {1000}, new long[1], 1000)[0];
+        assert plan(budget(8, 0, 0, 0), new int[] {B}, new int[] {0}, new int[] {30}, new long[] {1000}, new long[1], 1000)[0];   // overdue
+    }
+
+    static void classCapsApply() {
+        int L = BakeHold.LIGHT;
+        boolean[] g = plan(budget(8, 0, 0, 2), new int[] {L, L, L, L}, new int[] {0, 1, 2, 3}, new int[4], new long[4], new long[4], 1000);
+        assert g[0] && g[1] && !g[2] && !g[3];
+        BakeHold.Budget b = budget(8, 0, 0, 0);
+        plan(b, new int[] {L}, new int[] {0}, new int[1], new long[1], new long[1], 1000);
+        assert BakeHold.grantOne(BakeHold.REDRAW, 0, 0, 0, 1000, b) && b.leftTotal == 6;   // after the plan, at the gate
+        // rebake caps cutaway and redraw together; strong has its own; blood only the total
+        b = budget(8, 2, 1, 0);
+        g = plan(b, new int[] {BakeHold.CUTAWAY, BakeHold.REDRAW, BakeHold.REDRAW, BakeHold.STRONG, BakeHold.STRONG, BakeHold.BLOOD},
+                 new int[] {0, 1, 2, 3, 4, 5}, new int[6], new long[6], new long[6], 1000);
+        assert g[0] && g[1] && !g[2] && g[3] && !g[4] && g[5];
+        assert b.leftRebake == 0 && b.leftStrong == 0 && b.leftTotal == 4;
+        // at the gate: the same limits, decrementing the same counts
+        assert !BakeHold.grantOne(BakeHold.REDRAW, 0, 0, 0, 1000, b) && !BakeHold.grantOne(BakeHold.STRONG, 0, 0, 0, 1000, b);
+        assert BakeHold.grantOne(BakeHold.REDRAW, 3, 0, 0, 1000, b) && b.leftTotal == 3 && b.leftRebake == 0;   // overdue at the gate
+        assert BakeHold.grantOne(BakeHold.BLOOD, 0, 0, 0, 1000, b) && b.leftTotal == 2;
+        assert !BakeHold.grantOne(BakeHold.LIGHT, 0, 0, 900, 1000, b);                  // 100 ms since its bake
+        // a spent total holds every class that is not overdue
+        b.leftTotal = 0;
+        assert !BakeHold.grantOne(BakeHold.CUTAWAY, 0, 0, 0, 1000, b) && !BakeHold.grantOne(BakeHold.BLOOD, 0, 0, 0, 1000, b);
+        assert BakeHold.grantOne(BakeHold.CUTAWAY, 3, 0, 0, 1000, b) && b.leftTotal == 0;
+    }
+
+    static void adaptiveBudget() {
+        assert BakeHold.adaptive(8, 8, 15.5, 16.67) == 4 && BakeHold.adaptive(4, 8, 9.0, 16.67) == 5;
+        assert BakeHold.adaptive(2, 8, 16.0, 16.67) == 2 && BakeHold.adaptive(8, 8, 9.0, 16.67) == 8;
+        assert BakeHold.adaptive(5, 8, 12.0, 16.67) == 5 && BakeHold.adaptive(3, 8, 99, 0) == 8;
+        assert BakeHold.adaptive(1, 8, 12.0, 16.67) == 2 && BakeHold.adaptive(1, 1, 99, 16.67) == 1;   // never below min(2, max)
+    }
+
+    static void strongCapHalves() {
+        assert BakeHold.strongCap(8, 10.0, 9) == 4 && BakeHold.strongCap(8, 8.0, 9) == 8 && BakeHold.strongCap(1, 10.0, 9) == 1;
+        assert BakeHold.strongCap(0, 10.0, 9) == 0 && BakeHold.strongCap(8, 10.0, 0) == 8;
+    }
+
+    static void globalMoveDemotesStrong() {
+        assert BakeHold.globalMove(30, 60, 6.0, 2) && !BakeHold.globalMove(29, 60, 6.0, 2);
+        assert !BakeHold.globalMove(30, 60, 5.0, 2) && !BakeHold.globalMove(60, 60, 99, 0);
+        assert !BakeHold.globalMove(0, 0, 99, 2);
+    }
+
+    static void strongDeltaDetected() {
+        assert BakeHold.maxDelta(new byte[] {10, 20, (byte) 200}, new byte[] {10, 27, (byte) 190}, 3) == 10;
+        assert BakeHold.maxDelta(new byte[] {(byte) 255}, new byte[] {0}, 1) == 255;
+        assert BakeHold.maxDelta(new byte[] {1, 2, 3}, new byte[] {9, 9, 9}, 0) == 0;
+        assert BakeHold.q(1.2f) == 255 && BakeHold.q(-0.1f) == 0 && BakeHold.q(0.5f) == 127;
+    }
+
+    static void planKeepsNoStateBetweenCalls() {
+        // a large plan (past the first scratch size) twice in a row gives the same answers
+        int n = 700;
+        int[] cls = new int[n], dist = new int[n], held = new int[n];
+        long[] since = new long[n], last = new long[n];
+        for (int i = 0; i < n; i++) { cls[i] = BakeHold.CUTAWAY + i % 5; dist[i] = (i * 7) % 13; last[i] = -1_000_000; }
+        boolean[] a = plan(budget(9, 0, 0, 0), cls, dist, held, since, last, 0), c = plan(budget(9, 0, 0, 0), cls, dist, held, since, last, 0);
+        assert java.util.Arrays.equals(a, c);
+        int granted = 0;
+        for (boolean x : a) if (x) granted++;
+        assert granted == 9;
     }
 }

@@ -26,6 +26,9 @@ import zombie.iso.IsoGridSquare;
  *          each square paired with its eight neighbours (outside ones are null); scenarios open (no objects), door (a
  *          blocked door on the middle square's north edge) and window (a blocked window on its west edge). Both must
  *          count the same blocked pairs (checked).
+ * plan:    ns per BakeHold.plan call (one player, one frame) over 40 pairs all REDRAW; 120 mixed (10 % CUTAWAY, 30 % REDRAW,
+ *          50 % LIGHT, 10 % BLOOD); 400 mostly LIGHT (dusk at the widest zoom). Prints a checksum of the grant array and the
+ *          left* counts, which must not change between versions.
  */
 public final class DeliveryBench {
     static final com.sun.management.ThreadMXBean MX = (com.sun.management.ThreadMXBean) ManagementFactory.getThreadMXBean();
@@ -43,7 +46,8 @@ public final class DeliveryBench {
             case "cutaway" -> cutaway();
             case "splash" -> splash();
             case "edge" -> edge();
-            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | uislice | readset | soundgate | cutaway | splash | edge");
+            case "plan" -> plan();
+            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | uislice | readset | soundgate | cutaway | splash | edge | plan");
         }
     }
 
@@ -440,6 +444,46 @@ public final class DeliveryBench {
             Arrays.sort(stockNs); Arrays.sort(edgeNs);
             System.out.printf("edge %-6s stock   : %6.2f ns/call (min %.2f, max %.2f), blocked %d of %d%n", sc, stockNs[3], stockNs[0], stockNs[6], stockHits, (long) reps * n);
             System.out.printf("edge %-6s edgeTest: %6.2f ns/call (min %.2f, max %.2f), blocked %d of %d%n", sc, edgeNs[3], edgeNs[0], edgeNs[6], edgeHits, (long) reps * n);
+        }
+    }
+
+    static void plan() {
+        String[] names = {"40 redraw", "120 mixed", "400 light"};
+        int[] sizes = {40, 120, 400};
+        for (int sc = 0; sc < 3; sc++) {
+            int n = sizes[sc];
+            java.util.Random r = new java.util.Random(7 + sc);
+            int[] cls = new int[n], dist = new int[n], held = new int[n];
+            long[] since = new long[n], last = new long[n];
+            for (int i = 0; i < n; i++) {
+                int c;
+                if (sc == 0) c = BakeHold.REDRAW;
+                else if (sc == 1) { int u = r.nextInt(10); c = u == 0 ? BakeHold.CUTAWAY : u < 4 ? BakeHold.REDRAW : u < 9 ? BakeHold.LIGHT : BakeHold.BLOOD; }
+                else { int u = r.nextInt(100); c = u < 90 ? BakeHold.LIGHT : u < 95 ? BakeHold.STRONG : u < 98 ? BakeHold.REDRAW : BakeHold.BLOOD; }
+                cls[i] = c;
+                dist[i] = r.nextInt(12);
+                held[i] = c <= BakeHold.REDRAW ? (r.nextInt(20) == 0 ? 3 : r.nextInt(3)) : r.nextInt(12);   // a few overdue redraws, no overdue lights
+                since[i] = 1000 - r.nextInt(600);
+                last[i] = 1000 - r.nextInt(600);
+            }
+            BakeHold.Budget b = new BakeHold.Budget();
+            b.total = 8; b.rebake = 4; b.strong = 8; b.light = 8;
+            b.rebakeMaxFrames = 3; b.lightMaxFrames = 30; b.lightMs = 250; b.bloodMs = 250;
+            boolean[] g = new boolean[n];
+            int reps = 20_000;
+            double[] ns = new double[7];
+            long sum = 0;
+            for (int rr = -2; rr < 7; rr++) {
+                long t0 = System.nanoTime();
+                for (int k = 0; k < reps; k++) sum += BakeHold.plan(n, cls, dist, held, since, last, 1000, b, g);
+                long t1 = System.nanoTime();
+                if (rr >= 0) ns[rr] = (t1 - t0) / (double) reps;
+            }
+            long chk = 17;
+            for (int i = 0; i < n; i++) chk = chk * 31 + (g[i] ? 1 : 0);
+            chk = chk * 31 + b.leftTotal; chk = chk * 31 + b.leftRebake; chk = chk * 31 + b.leftStrong; chk = chk * 31 + b.leftLight;
+            Arrays.sort(ns);
+            System.out.printf("plan %-9s: %9.1f ns/plan (min %.1f, max %.1f), checksum %d, counted %d%n", names[sc], ns[3], ns[0], ns[6], chk, sum / (reps * 9L));
         }
     }
 }
