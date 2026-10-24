@@ -1107,6 +1107,15 @@ final class LuaGateTest {
         assert t.contains(new ModCompat.Target("zombie.Lua.Event", "trigger", false, "other.jar"));
     }
 
+    @me.zed_0xff.zombie_buddy.Patch(className = "a.B", methodName = "m")
+    static class ThisRw { @me.zed_0xff.zombie_buddy.Patch.OnEnter public static void e(@me.zed_0xff.zombie_buddy.Patch.This(readOnly = false) Object self) { } }
+    @me.zed_0xff.zombie_buddy.Patch(className = "a.B", methodName = "m")
+    static class AllArgsRw { @me.zed_0xff.zombie_buddy.Patch.OnEnter public static void e(@me.zed_0xff.zombie_buddy.Patch.AllArguments(readOnly = false) Object[] all) { } }
+    @me.zed_0xff.zombie_buddy.Patch(className = "a.B", methodName = "m")
+    static class ThisRo { @me.zed_0xff.zombie_buddy.Patch.OnEnter public static void e(@me.zed_0xff.zombie_buddy.Patch.This Object self) { } }
+    @me.zed_0xff.zombie_buddy.Patch(className = "a.B", methodName = "m")
+    static class AllArgsRo { @me.zed_0xff.zombie_buddy.Patch.OnEnter public static void e(@me.zed_0xff.zombie_buddy.Patch.AllArguments Object[] all) { } }
+
     /** The four ways a @Patch replaces stock, and the ones that do not; the last is a class built here (isAdvice = false). */
     static void scanReadsEveryReplacingForm() throws Exception {
         java.util.function.Function<Class<?>, Boolean> replaces = c -> {
@@ -1121,6 +1130,8 @@ final class LuaGateTest {
         assert !replaces.apply(DeliveryPatches.Step.class);                         // OnEnter only
         assert !replaces.apply(LuaPatches.Rawset.class);                            // Argument and This with the default readOnly
         assert !replaces.apply(DeliveryPatches.Acquire.class);                      // Return with the default readOnly
+        assert replaces.apply(ThisRw.class) && replaces.apply(AllArgsRw.class);     // This / AllArguments with readOnly = false
+        assert !replaces.apply(ThisRo.class) && !replaces.apply(AllArgsRo.class);
         java.lang.constant.ClassDesc patch = java.lang.constant.ClassDesc.of("me.zed_0xff.zombie_buddy.Patch");
         java.util.function.Function<Boolean, byte[]> fake = isAdvice -> java.lang.classfile.ClassFile.of().build(java.lang.constant.ClassDesc.of("x.Fake"),
             cb -> cb.with(java.lang.classfile.attribute.RuntimeVisibleAnnotationsAttribute.of(java.lang.classfile.Annotation.of(patch,
@@ -1238,15 +1249,43 @@ final class LuaGateTest {
         assert java.util.Arrays.asList(ModCompat.KEYS.get("LuaPatches.TriggerHook")).equals(java.util.List.of("luaWorkerGate"));
     }
 
-    /** Only keys that are real switches may be forced off: stock-false ones, or the stock-true ones Settings answers true for. */
+    /** Keys of the table that are numbers or modes (not switches); every one needs its stock answer checked below. */
+    static final java.util.Set<String> VALUE_KEYS = java.util.Set.of("aimHoldMs", "bakeMipLevels", "borderlessFullscreen", "cutawayRadius", "gpuMaxFrames",
+        "gridStackInterval", "lightSwitchCheckFrames", "lightingFps", "presentPacing", "roofHideDebounceFrames", "soundTickHz", "treeBakeMaxChunksPerSec", "vrr", "zoomEaseMs");
+
+    /**
+     * Forced off answers stock for every key of the table: a switch is false (true for the stock-true ones), and each number or mode key
+     * leaves its feature at the stock value (aimHoldMs 150, the rest 0 or off) even when the file says otherwise.
+     */
     static void forcedKeysAnswerStock() {
         Settings.load(SelfTest.write("enabled=true\n"));
-        java.util.Set<String> all = new java.util.TreeSet<>();
+        String template = Settings.render(new java.util.Properties());
+        java.util.Set<String> all = new java.util.TreeSet<>(), values = new java.util.TreeSet<>();
         for (String[] ks : ModCompat.KEYS.values()) all.addAll(java.util.Arrays.asList(ks));
+        for (String k : all) {
+            int i = template.indexOf("\n" + k + "=");
+            String v = template.substring(i + k.length() + 2, template.indexOf('\n', i + 1));
+            if (!v.equals("true") && !v.equals("false")) values.add(k);
+        }
+        assert values.equals(VALUE_KEYS) : "a number or mode key joined or left the table, add its stock check: " + values;
         Settings.forcedOff.addAll(all);
-        for (String k : all)
-            assert !Settings.flag(k) == !Settings.STOCK_ON.contains(k) : k;
-        Settings.load(SelfTest.write("enabled=true\n"));
+        for (String k : all) if (!VALUE_KEYS.contains(k)) assert !Settings.flag(k) == !Settings.STOCK_ON.contains(k) : k;
+        // the numbers and modes, through the features' own init, with values in the file that are not stock
+        Settings.load(SelfTest.write("enabled=true\naimHoldMs=999\ncutawayRadius=9\ngridStackInterval=9\nroofHideDebounceFrames=9\nzoomEaseMs=9\n"
+            + "bakeMipLevels=9\ntreeBakeMaxChunksPerSec=9\nsoundTickHz=9\nlightSwitchCheckFrames=9\nlightingFps=9\npresentPacing=on\nvrr=on\nborderlessFullscreen=on\n"));
+        Settings.forcedOff.addAll(VALUE_KEYS);
+        AimHold.init(); Cutaways.init(); GridGate.init(); ZoomEase.init(); BakeMisc.init(); ChunkTrees.init(); SoundTick.init();
+        LightChecks.init(); SwapHold.init(); Vrr.init();
+        try {
+            assert AimHold.holdMs == 150 && Cutaways.radius == 0 && GridGate.interval == 0 && GridGate.roofFrames == 0 && ZoomEase.ms == 0;
+            assert BakeMisc.mipLevels == 0 && ChunkTrees.maxPerSec == 0 && !SoundPatches.tickGuard.on && LightChecks.switchTtl == 0 && LightChecks.lightingFps == 0;
+            assert SwapHold.pacing.equals("off") && Vrr.mode.equals("off") && Vrr.fullscreenWindow.equals("off") && !Vrr.guard.on;
+            // gpuMaxFrames (stock-off means a different number) has its own test below
+        } finally {
+            Settings.load(SelfTest.write("enabled=true\n"));                         // back to the shipped values for the features that follow
+            AimHold.init(); Cutaways.init(); GridGate.init(); ZoomEase.init(); BakeMisc.init(); ChunkTrees.init(); SoundTick.init();
+            LightChecks.init(); SwapHold.init(); Vrr.init();
+        }
     }
 
     static void oursReadsEveryHolder() {

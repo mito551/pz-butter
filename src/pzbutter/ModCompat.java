@@ -48,6 +48,8 @@ final class ModCompat {
     private static final String ON_ENTER = "Lme/zed_0xff/zombie_buddy/Patch$OnEnter;";
     private static final String RETURN = "Lme/zed_0xff/zombie_buddy/Patch$Return;";
     private static final String ARGUMENT = "Lme/zed_0xff/zombie_buddy/Patch$Argument;";
+    private static final String THIS = "Lme/zed_0xff/zombie_buddy/Patch$This;";
+    private static final String ALL_ARGUMENTS = "Lme/zed_0xff/zombie_buddy/Patch$AllArguments;";
     private static final byte[] PATCH_ASCII = "me/zed_0xff/zombie_buddy/Patch".getBytes(StandardCharsets.US_ASCII);
 
     // ---- the keys each holder's advice reaches (the feature switches only: never enabled or frameLog) ----
@@ -187,7 +189,7 @@ final class ModCompat {
 
     /**
      * The @Patch of one class file: className and methodName, and whether the patch replaces stock (isAdvice false, an
-     * OnEnter with skipOn true, a Return or Argument with readOnly false). Empty for a class without @Patch.
+     * OnEnter with skipOn true, a Return, Argument, This or AllArguments with readOnly false). Empty for a class without @Patch.
      */
     static List<Target> scanClass(byte[] classFile, String where) {
         if (classFile == null || indexOf(classFile, PATCH_ASCII) < 0) return List.of();   // most classes: skip the parse
@@ -217,7 +219,7 @@ final class ModCompat {
                     for (List<Annotation> one : rpa.parameterAnnotations())
                         for (Annotation an : one) {
                             String n = an.className().stringValue();
-                            if ((n.equals(RETURN) || n.equals(ARGUMENT)) && flagIs(an, "readOnly", false, true)) replaces = true;
+                            if ((n.equals(RETURN) || n.equals(ARGUMENT) || n.equals(THIS) || n.equals(ALL_ARGUMENTS)) && flagIs(an, "readOnly", false, true)) replaces = true;
                         }
                 }
             }
