@@ -55,8 +55,10 @@ final class LuaGate {
 
     /** The wait after which a thread logs once (SPEC constant; a test shortens it). */
     static long warnNs = 2_000_000_000L;
+    private static boolean holderWarned;                    // the game thread's 2 s line: once, like Worker.warned
     static final long PARK_SLICE_NS = 100_000L;
-    static final long STAT_NS = 60_000_000_000L;
+    /** The stat line period (a test shortens it). */
+    static long statNs = 60_000_000_000L;
 
     // counters
     static long gatedCalls, waitNs, maxWaitNs, strays;
@@ -195,7 +197,7 @@ final class LuaGate {
     private static void awaitTurn(Thread self) {
         Worker w = self instanceof Worker x ? x : null;
         long t0 = System.nanoTime();
-        boolean interrupted = false, taken = false, warned = w != null && w.warned, warnNow = false;
+        boolean interrupted = false, taken = false, warned = w != null ? w.warned : holderWarned, warnNow = false;
         try {
             while (true) {
                 synchronized (M) {
@@ -221,7 +223,7 @@ final class LuaGate {
                 }
                 if (warnNow) {
                     warnNow = false;
-                    if (w != null) w.warned = true;
+                    if (w != null) w.warned = true; else holderWarned = true;
                     System.out.println("[PZButter] luaWorkerGate: " + self.getName() + (w != null ? " waited 2 s for the game thread" : " waited 2 s for a frame worker"));
                 }
             }
@@ -253,7 +255,8 @@ final class LuaGate {
 
     /**
      * The holder waits for {@code done} with the token free. Not while another thread owns Lua (a world load): the token stays,
-     * so no worker can swap the owner fields away from the loader.
+     * so no worker can swap the owner fields away from the loader. The loop looks again on every poll: once the game thread owns
+     * Lua again (the load ended) the token is freed then, so a worker that queued meanwhile runs and {@code done} can come true.
      */
     static void awaitYielding(BooleanSupplier done) {
         Thread cur = Thread.currentThread();
@@ -265,6 +268,11 @@ final class LuaGate {
         boolean interrupted = Thread.interrupted();                 // a set flag would end every park at once: keep it aside
         try {
             while (!done.getAsBoolean()) {
+                if (!mine && holder == cur) {
+                    synchronized (M) {
+                        if (owner == cur && ownsLua(cur)) { owner = null; M.notifyAll(); mine = true; }
+                    }
+                }
                 java.util.concurrent.locks.LockSupport.parkNanos(PARK_SLICE_NS);
                 if (Thread.interrupted()) interrupted = true;
             }
@@ -313,7 +321,7 @@ final class LuaGate {
         else if (cur == holder && nWaiting > 0 && ownsLua(cur)) yieldPoint();
         if (cur != holder) return;
         long now = System.nanoTime();
-        if (now - lastStatNs >= STAT_NS) {
+        if (now - lastStatNs >= statNs) {
             long elapsed = now - lastStatNs;
             lastStatNs = now;
             if (gatedCalls != lastCalls || strays != lastStrays) System.out.println(statLine(elapsed));
@@ -344,6 +352,8 @@ final class LuaGate {
             gameThreadSlot = null;
             luaThreads = null;
             warnNs = 2_000_000_000L;
+            holderWarned = false;
+            statNs = 60_000_000_000L;
             guard.on = false;
             M.notifyAll();
         }
