@@ -71,6 +71,9 @@ final class LuaGateTest {
         logShimPrintsSummaryOnStream();
         logShimOffAndErrors();
         logShimSkipsFilteredLines();
+        onceLinesPassThroughUntouched();
+        summaryKeepsSeverityAndStream();
+        onLineNeverPrintsSummaries();
         logHoldersShape();
         scanFindsPatchAnnotations();
         scanReadsEveryReplacingForm();
@@ -751,7 +754,7 @@ final class LuaGateTest {
         LogDedupe.resetForTest(); LogDedupe.guard.on = true;
         java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
         java.io.PrintStream ps = new java.io.PrintStream(bytes, true);
-        assert !LogPatches.onLine(ps, null, "tick", NO_ARGS) && LogPatches.onLine(ps, null, "tick", NO_ARGS);
+        assert !LogPatches.onLine(ps, null, "tick", NO_ARGS, true) && LogPatches.onLine(ps, null, "tick", NO_ARGS, true);
         LogDedupe.resetWindowStartForTest(System.nanoTime() - LogDedupe.WINDOW_NS);   // window over
         LogPatches.onFrameEnd();
         assert bytes.toString().contains("[PZButter] logDedupe: 1 more in 3 s: tick");
@@ -760,18 +763,18 @@ final class LuaGateTest {
 
     static void logShimOffAndErrors() {
         LogDedupe.resetForTest(); LogDedupe.guard.on = false;
-        assert !LogPatches.onLine(S1, null, "a", NO_ARGS) && !LogPatches.onLine(S1, null, "a", NO_ARGS);
+        assert !LogPatches.onLine(S1, null, "a", NO_ARGS, true) && !LogPatches.onLine(S1, null, "a", NO_ARGS, true);
         LogPatches.onFrameEnd();
         // a stream that throws on the summary: the line path stays correct and the failure goes to the guard
         LogDedupe.guard.on = true;
         java.io.PrintStream bad = new java.io.PrintStream(new java.io.ByteArrayOutputStream()) {
             @Override public void println(String x) { throw new IllegalStateException("closed"); }
         };
-        assert !LogPatches.onLine(bad, null, "b", NO_ARGS) && LogPatches.onLine(bad, null, "b", NO_ARGS);
+        assert !LogPatches.onLine(bad, null, "b", NO_ARGS, true) && LogPatches.onLine(bad, null, "b", NO_ARGS, true);
         LogDedupe.resetWindowStartForTest(System.nanoTime() - LogDedupe.WINDOW_NS);
         LogPatches.onFrameEnd();                                                      // must not throw
         assert LogDedupe.guard.on;                                                    // one failure is not five
-        assert !LogPatches.onLine("not a stream", null, "c", NO_ARGS);                // first sight never touches the stream
+        assert !LogPatches.onLine("not a stream", null, "c", NO_ARGS, true);                // first sight never touches the stream
         LogDedupe.resetForTest();
     }
 
@@ -780,9 +783,55 @@ final class LuaGateTest {
         LogDedupe.resetForTest(); LogDedupe.guard.on = true;
         java.io.PrintStream ps = new java.io.PrintStream(new java.io.ByteArrayOutputStream(), true);
         zombie.debug.DebugLogStream errOnly = new zombie.debug.DebugLogStream(ps, ps, ps, zombie.debug.LogSeverity.Error);
-        for (int i = 0; i < 3; i++) assert !LogPatches.onLine(errOnly, zombie.debug.LogSeverity.Warning, "quiet", NO_ARGS);
+        for (int i = 0; i < 3; i++) assert !LogPatches.onLine(errOnly, zombie.debug.LogSeverity.Warning, "quiet", NO_ARGS, true);
         assert LogDedupe.roll(LogDedupe.WINDOW_NS).isEmpty() && !LogDedupe.due(Long.MAX_VALUE / 2);
-        assert !LogPatches.onLine(errOnly, zombie.debug.LogSeverity.Error, "loud", NO_ARGS) && LogPatches.onLine(errOnly, zombie.debug.LogSeverity.Error, "loud", NO_ARGS);
+        assert !LogPatches.onLine(errOnly, zombie.debug.LogSeverity.Error, "loud", NO_ARGS, true) && LogPatches.onLine(errOnly, zombie.debug.LogSeverity.Error, "loud", NO_ARGS, true);
+        LogDedupe.resetForTest();
+    }
+
+    // warnOnce / debugOnceln pass argument 3 = false: stock prints them once per JVM, so a repeat is never ours to count or summarise
+    static void onceLinesPassThroughUntouched() {
+        LogDedupe.resetForTest(); LogDedupe.guard.on = true;
+        for (int i = 0; i < 5; i++) assert !LogPatches.onLine(S1, null, "once", NO_ARGS, false);
+        assert LogDedupe.window() == null && !LogDedupe.due(Long.MAX_VALUE / 2) && LogDedupe.roll(Long.MAX_VALUE / 2).isEmpty();
+        assert !LogPatches.onLine(S1, null, "once", NO_ARGS, true) && LogPatches.onLine(S1, null, "once", NO_ARGS, true);   // the same text as a repeatable line counts
+        assert !LogPatches.onLine(S1, null, "other", NO_ARGS, false) && !LogPatches.onLine(S1, null, "other", NO_ARGS, false);
+        assert LogDedupe.roll(Long.MAX_VALUE / 2).size() == 1;
+        LogDedupe.resetForTest();
+    }
+
+    // a stream whose level is above General would filter a General summary: it leaves at the first line's severity, on that severity's print stream
+    static void summaryKeepsSeverityAndStream() throws Exception {
+        LogDedupe.resetForTest(); LogDedupe.guard.on = true;
+        java.io.PrintStream po = new java.io.PrintStream(new java.io.ByteArrayOutputStream()), pw = new java.io.PrintStream(new java.io.ByteArrayOutputStream()),
+            pe = new java.io.PrintStream(new java.io.ByteArrayOutputStream());
+        zombie.debug.DebugLogStream d = new zombie.debug.DebugLogStream(po, pw, pe, zombie.debug.LogSeverity.Warning);
+        assert !d.isLogEnabled(zombie.debug.LogSeverity.General) && LogPatches.writelnBound();   // the protected writeln of the game is found
+        zombie.debug.LogSeverity w = zombie.debug.LogSeverity.Warning, e = zombie.debug.LogSeverity.Error;
+        assert !LogPatches.onLine(d, w, "w-spam", NO_ARGS, true) && LogPatches.onLine(d, w, "w-spam", NO_ARGS, true) && LogPatches.onLine(d, w, "w-spam", NO_ARGS, true);
+        assert !LogPatches.onLine(d, e, "e-spam", NO_ARGS, true) && LogPatches.onLine(d, e, "e-spam", NO_ARGS, true);
+        java.util.List<Object[]> got = new java.util.ArrayList<>();
+        LogPatches.Sink real = LogPatches.sink;
+        LogPatches.sink = (st, ps, v, text) -> got.add(new Object[] {st, ps, v, text});
+        try {
+            LogDedupe.resetWindowStartForTest(System.nanoTime() - LogDedupe.WINDOW_NS);
+            LogPatches.onFrameEnd();
+        } finally { LogPatches.sink = real; }
+        assert got.size() == 2 && got.get(0)[0] == d && got.get(0)[1] == pw && got.get(0)[2] == w && got.get(0)[3].equals("[PZButter] logDedupe: 2 more in 3 s: w-spam") : got;
+        assert got.get(1)[1] == pe && got.get(1)[2] == e && got.get(1)[3].equals("[PZButter] logDedupe: 1 more in 3 s: e-spam");
+        LogDedupe.resetForTest();
+    }
+
+    // repeats are only counted by the line hook: the summaries leave from the frame end, never from a logging thread
+    static void onLineNeverPrintsSummaries() {
+        LogDedupe.resetForTest(); LogDedupe.guard.on = true;
+        java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+        java.io.PrintStream ps = new java.io.PrintStream(bytes, true);
+        assert !LogPatches.onLine(ps, null, "m", NO_ARGS, true) && LogPatches.onLine(ps, null, "m", NO_ARGS, true);
+        LogDedupe.resetWindowStartForTest(System.nanoTime() - LogDedupe.WINDOW_NS);
+        assert LogPatches.onLine(ps, null, "m", NO_ARGS, true) && bytes.size() == 0;   // window over, still no summary from the line path
+        LogPatches.onFrameEnd();
+        assert bytes.toString().contains("2 more in 3 s: m");
         LogDedupe.resetForTest();
     }
 
@@ -806,6 +855,12 @@ final class LuaGateTest {
                     for (java.lang.annotation.Annotation a : as[i])
                         if (a instanceof me.zed_0xff.zombie_buddy.Patch.Argument arg && arg.value() == 1) sev = m.getParameterTypes()[i] == zombie.debug.LogSeverity.class;
                 assert sev : p.methodName();
+                // writeWithCallerPrefixln also binds argument 3 (false = a once-line, which passes through untouched)
+                boolean once = false;
+                for (int i = 0; i < as.length; i++)
+                    for (java.lang.annotation.Annotation a : as[i])
+                        if (a instanceof me.zed_0xff.zombie_buddy.Patch.Argument arg && arg.value() == 3) once = m.getParameterTypes()[i] == boolean.class;
+                assert once == p.methodName().equals("writeWithCallerPrefixln") : p.methodName();
             }
             assert enters == 1 : p.methodName();
         }

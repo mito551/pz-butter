@@ -90,7 +90,7 @@ final class LogDedupe {
 
     private record Sum(Rec rec, String msg, long count) {}
 
-    /** The window ended: the one caller that wins gets {stream, summary} for every repeated message, in first-seen order. */
+    /** The window ended: the one caller that wins gets {stream, summary, severity ordinal as Integer} for every repeated message, in first-seen order. */
     static List<Object[]> roll(long nowNs) {
         Window w = cur.get();
         if (w == null || nowNs - w.start < WINDOW_NS || !cur.compareAndSet(w, new Window(nowNs))) return EMPTY;
@@ -106,7 +106,7 @@ final class LogDedupe {
         if (sums == null) return EMPTY;
         sums.sort((a, b) -> Integer.compare(a.rec.seq, b.rec.seq));
         ArrayList<Object[]> out = new ArrayList<>(sums.size());
-        for (Sum m : sums) out.add(new Object[] {m.rec.stream, summary(m.msg, m.count)});
+        for (Sum m : sums) out.add(new Object[] {m.rec.stream, summary(m.msg, m.count), m.rec.severity});
         return out;
     }
 
