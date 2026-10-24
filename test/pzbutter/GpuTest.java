@@ -59,6 +59,14 @@ final class GpuTest {
         uniformCacheDropsRelinkedProgram();
         programRecordUnknownPassesThrough();
         checkCounterCadence();
+        noSyncShimsAnswerFromRecords();
+        fboStatusOnlyInsideInit();
+        noSyncOffOrOtherThreadAsks();
+        bakeNoSyncCheckLogsMismatch();
+        bakeNoSyncCheckCorrectsUniformAndStatus();
+        noSyncStalePendingIsNotTaken();
+        noSyncInitReadsKeys();
+        noSyncHoldersTargetStock();
     }
 
     static final String[] PLAN9_FLAGS = {"persistentVbo", "vboFastQuads", "smartTextureRelease", "bakeNoSync", "bakeNoSyncCheck", "bakeBudgetGpu", "gpuStats"};
@@ -703,5 +711,160 @@ final class GpuTest {
         assert due == 4;
         int logged = 0; for (int i = 0; i < 9; i++) if (c.log()) logged++;
         assert logged == 5 && c.mismatches == 9;
+    }
+
+    static void noSyncShimsAnswerFromRecords() {
+        NoSync.resetForTest(); NoSync.guard.on = true;
+        Thread was = PresentLog.renderThread; PresentLog.renderThread = Thread.currentThread();
+        try {
+            NoSync.textures.add(77);
+            assert GpuPatches.onGenTexture() && GpuPatches.onGenTextureExit(0) == 77 && NoSync.namesPooled == 1;
+            assert !GpuPatches.onGenTexture() && GpuPatches.onGenTextureExit(5) == 5;          // empty pool: the driver's name
+            NoSync.framebuffers.add(31); NoSync.renderbuffers.add(41);
+            assert GpuPatches.onGenFramebuffer() && GpuPatches.onGenFramebufferExit(0) == 31;
+            assert GpuPatches.onGenRenderbuffer() && GpuPatches.onGenRenderbufferExit(0) == 41 && NoSync.namesPooled == 3;
+            GpuPatches.onUseProgram(12);
+            assert GpuPatches.onGetInteger(0x8B8D) && GpuPatches.onGetIntegerExit(0x8B8D, 0) == 12;
+            assert !GpuPatches.onGetInteger(0x0BA2) && GpuPatches.onGetIntegerExit(0x0BA2, 9) == 9;
+            assert !GpuPatches.onUniform(12, "WOffset") && GpuPatches.onUniformExit(12, "WOffset", 4) == 4;
+            assert GpuPatches.onUniform(12, "WOffset") && GpuPatches.onUniformExit(12, "WOffset", 0) == 4;
+            GpuPatches.onProgramGone(12);
+            assert !GpuPatches.onUniform(12, "WOffset");
+            GpuPatches.onUniformExit(12, "WOffset", 8);
+            assert NoSync.uniformsAnswered == 1 && NoSync.programAnswered == 1 && NoSync.asked == 2;
+        } finally { PresentLog.renderThread = was; NoSync.resetForTest(); }
+    }
+
+    static void fboStatusOnlyInsideInit() {
+        NoSync.resetForTest(); NoSync.guard.on = true;
+        Thread was = PresentLog.renderThread; PresentLog.renderThread = Thread.currentThread();
+        try {
+            assert !GpuPatches.onFboStatus() && GpuPatches.onFboStatusExit(0x8CD5) == 0x8CD5;   // outside initInternal: asked, not remembered
+            long k = NoSync.ShapeMemo.key(256, 256, false, 0, 0, true);
+            NoSync.shapes.enter(k);
+            assert !GpuPatches.onFboStatus() && GpuPatches.onFboStatusExit(0x8CD5) == 0x8CD5;   // first of its shape: asked, remembered
+            NoSync.shapes.exit();
+            NoSync.shapes.enter(k);
+            assert GpuPatches.onFboStatus() && GpuPatches.onFboStatusExit(0) == 0x8CD5 && NoSync.fboAnswered == 1;
+            NoSync.shapes.exit();
+            NoSync.shapes.enter(k);                                                               // an incomplete answer is passed on and never stored
+            long k2 = NoSync.ShapeMemo.key(512, 512, false, 0, 0, true);
+            NoSync.shapes.exit(); NoSync.shapes.enter(k2);
+            assert !GpuPatches.onFboStatus() && GpuPatches.onFboStatusExit(0x8CD6) == 0x8CD6;
+            assert !GpuPatches.onFboStatus();
+            NoSync.shapes.exit();
+        } finally { PresentLog.renderThread = was; NoSync.resetForTest(); }
+    }
+
+    static void noSyncOffOrOtherThreadAsks() throws Exception {
+        NoSync.resetForTest();
+        NoSync.textures.add(77); NoSync.programs.used(3);
+        assert !GpuPatches.onGenTexture() && !GpuPatches.onGetInteger(0x8B8D) && GpuPatches.onGetIntegerExit(0x8B8D, 5) == 5;
+        Thread was = PresentLog.renderThread;
+        try {
+            NoSync.guard.on = true; PresentLog.renderThread = null;
+            assert !GpuPatches.onGenTexture() && !GpuPatches.onGetInteger(0x8B8D) && NoSync.textures.size() == 1;
+            // another thread sees nothing of the render thread's records, and takes no waiting answer
+            PresentLog.renderThread = Thread.currentThread();
+            assert GpuPatches.onGetInteger(0x8B8D);                                                  // the answer waits for its exit
+            int[] got = {-2};
+            Thread other = new Thread(() -> {
+                got[0] = GpuPatches.onGetIntegerExit(0x8B8D, 5);
+                if (GpuPatches.onGenTexture() || GpuPatches.onGetInteger(0x8B8D)) got[0] = -3;
+            });
+            other.start(); other.join(5000);
+            assert got[0] == 5 && NoSync.textures.size() == 1;
+            assert GpuPatches.onGetIntegerExit(0x8B8D, 0) == 3;                                      // still there for the render thread
+        } finally { PresentLog.renderThread = was; NoSync.resetForTest(); }
+    }
+
+    static void bakeNoSyncCheckLogsMismatch() {
+        NoSync.resetForTest(); NoSync.guard.on = true; NoSync.check = true;
+        NoSync.driverIntegerForTest = pname -> 99;              // the seam the check uses instead of GL11C in tests
+        Thread was = PresentLog.renderThread; PresentLog.renderThread = Thread.currentThread();
+        try {
+            GpuPatches.onUseProgram(12);
+            for (int i = 0; i < 256; i++) { GpuPatches.onGetInteger(0x8B8D); GpuPatches.onGetIntegerExit(0x8B8D, 0); }
+            assert NoSync.checker.mismatches == 1 && NoSync.programs.current == 99;            // corrected to the driver's answer
+            NoSync.driverIntegerForTest = pname -> 99;
+            for (int i = 0; i < 256; i++) { GpuPatches.onGetInteger(0x8B8D); GpuPatches.onGetIntegerExit(0x8B8D, 0); }
+            assert NoSync.checker.mismatches == 1;                                              // the record agrees now
+        } finally { PresentLog.renderThread = was; NoSync.resetForTest(); }
+    }
+
+    static void bakeNoSyncCheckCorrectsUniformAndStatus() {
+        NoSync.resetForTest(); NoSync.guard.on = true; NoSync.check = true;
+        NoSync.driverUniformForTest = (p, n) -> 6;
+        NoSync.driverStatusForTest = () -> 0x8CD6;
+        Thread was = PresentLog.renderThread; PresentLog.renderThread = Thread.currentThread();
+        try {
+            NoSync.uniforms.put(3, "WOffset", 4);
+            for (int i = 0; i < 255; i++) NoSync.checker.due();                                 // the next check is the 256th
+            assert GpuPatches.onUniform(3, "WOffset") && GpuPatches.onUniformExit(3, "WOffset", 0) == 6;
+            assert NoSync.uniforms.get(3, "WOffset") == 6 && NoSync.checker.mismatches == 1;
+            long k = NoSync.ShapeMemo.key(64, 64, false, 0, 0, false);
+            NoSync.shapes.remember(k, 0x8CD5); NoSync.shapes.enter(k);
+            for (int i = 0; i < 255; i++) NoSync.checker.due();
+            assert GpuPatches.onFboStatus() && GpuPatches.onFboStatusExit(0) == 0x8CD6;         // the driver's answer wins, the shape is forgotten
+            assert !NoSync.shapes.complete(k) && NoSync.checker.mismatches == 2;
+            NoSync.shapes.exit();
+        } finally { PresentLog.renderThread = was; NoSync.resetForTest(); }
+    }
+
+    static void noSyncStalePendingIsNotTaken() {
+        NoSync.resetForTest(); NoSync.guard.on = true;
+        Thread was = PresentLog.renderThread; PresentLog.renderThread = Thread.currentThread();
+        try {
+            NoSync.textures.add(77);
+            assert GpuPatches.onGenTexture();                                                    // its exit never came
+            assert GpuPatches.onGetIntegerExit(0x8B8D, 5) == 5 && GpuPatches.onUniformExit(1, "x", 2) == 2 && GpuPatches.onFboStatusExit(7) == 7;
+            assert GpuPatches.onGenTextureExit(0) == 77;
+        } finally { PresentLog.renderThread = was; NoSync.resetForTest(); }
+    }
+
+    static void noSyncInitReadsKeys() {
+        NoSync.resetForTest();
+        try {
+            Settings.load(SelfTest.write("enabled=true\nbakeNoSync=true\nbakeNoSyncCheck=true\n"));
+            NoSync.init();
+            assert NoSync.guard.on && NoSync.check;
+            Settings.load(SelfTest.write("enabled=true\nbakeNoSyncCheck=true\n"));
+            NoSync.init();
+            assert !NoSync.guard.on && !NoSync.check;                                            // the check needs the feature
+        } finally { NoSync.resetForTest(); Settings.load(SelfTest.write("enabled=true\n")); }
+    }
+
+    static void noSyncHoldersTargetStock() throws Exception {
+        java.util.Map<String, String> want = java.util.Map.ofEntries(
+            java.util.Map.entry("GenTextures", "org.lwjgl.opengl.GL11.glGenTextures"),
+            java.util.Map.entry("GetInteger", "org.lwjgl.opengl.GL11.glGetInteger"),
+            java.util.Map.entry("UseProgram", "org.lwjgl.opengl.GL20.glUseProgram"),
+            java.util.Map.entry("LinkProgram", "org.lwjgl.opengl.GL20.glLinkProgram"),
+            java.util.Map.entry("DeleteProgram", "org.lwjgl.opengl.GL20.glDeleteProgram"),
+            java.util.Map.entry("UniformLocation", "org.lwjgl.opengl.GL20.glGetUniformLocation"),
+            java.util.Map.entry("GenFramebuffers", "zombie.core.textures.GLFramebufferObject30.glGenFramebuffers"),
+            java.util.Map.entry("GenRenderbuffers", "zombie.core.textures.GLFramebufferObject30.glGenRenderbuffers"),
+            java.util.Map.entry("FboStatus", "zombie.core.textures.GLFramebufferObject30.glCheckFramebufferStatus"),
+            java.util.Map.entry("FboInit", "zombie.core.textures.TextureFBO.initInternal"));
+        for (java.util.Map.Entry<String, String> e : want.entrySet()) {
+            Class<?> c = null;
+            for (Class<?> x : GpuPatches.class.getDeclaredClasses()) if (x.getSimpleName().equals(e.getKey())) c = x;
+            assert c != null : e.getKey();
+            me.zed_0xff.zombie_buddy.Patch p = c.getAnnotation(me.zed_0xff.zombie_buddy.Patch.class);
+            assert (p.className() + "." + p.methodName()).equals(e.getValue()) : e.getKey();
+        }
+        assert GpuPatches.GenTextures.class.getAnnotation(me.zed_0xff.zombie_buddy.Patch.class).strictMatch();
+        // the hooked descriptors exist in the jar: the ()I name getters, the (int, CharSequence) lookup, the (I)I query and (I)V program calls
+        assert org.lwjgl.opengl.GL11.class.getMethod("glGenTextures").getReturnType() == int.class;
+        assert org.lwjgl.opengl.GL11.class.getMethod("glGetInteger", int.class).getReturnType() == int.class;
+        assert org.lwjgl.opengl.GL20.class.getMethod("glGetUniformLocation", int.class, CharSequence.class).getReturnType() == int.class;
+        for (String m : new String[] {"glUseProgram", "glLinkProgram", "glDeleteProgram"})
+            assert org.lwjgl.opengl.GL20.class.getMethod(m, int.class).getReturnType() == void.class : m;
+        for (String m : new String[] {"glGenFramebuffers", "glGenRenderbuffers"})
+            assert zombie.core.textures.GLFramebufferObject30.class.getMethod(m).getReturnType() == int.class : m;
+        assert zombie.core.textures.GLFramebufferObject30.class.getMethod("glCheckFramebufferStatus", int.class).getReturnType() == int.class;
+        java.lang.reflect.Method init = zombie.core.textures.TextureFBO.class.getDeclaredMethod("initInternal",
+            zombie.interfaces.ITexture.class, zombie.interfaces.ITexture.class, boolean.class);
+        assert java.lang.reflect.Modifier.isPrivate(init.getModifiers());
     }
 }

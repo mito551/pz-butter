@@ -1,7 +1,12 @@
 package pzbutter;
 
+import java.nio.ByteOrder;
+import java.nio.IntBuffer;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.function.IntSupplier;
+import java.util.function.IntUnaryOperator;
+import java.util.function.ToIntBiFunction;
 
 /**
  * bakeNoSync: a threaded driver finishes all queued work before it answers a question that returns a value. The game asks a few on its
@@ -11,7 +16,7 @@ import java.util.HashSet;
  * deleted, and the current program is whatever {@code glUseProgram} last set. Every answer is the driver's own, so it is right for every
  * caller while the record holds. {@code bakeNoSyncCheck} asks the driver again for every 256th answer and logs a difference.
  *
- * <p>The cores here are pure (no GL) and tested offline. Render
+ * <p>The cores here are pure (no GL) and tested offline; the GL calls (the pool top-up, the check's questions) are at the bottom. Render
  * (GL context) thread only; the shims in {@link GpuPatches} check.
  */
 final class NoSync {
@@ -126,11 +131,66 @@ final class NoSync {
     /** Names taken from a pool, framebuffer checks and uniform locations and program queries answered from a record, driver questions that fell through. */
     static long namesPooled, fboAnswered, uniformsAnswered, programAnswered, asked;
 
+    /**
+     * The hand-off from a skipping enter advice to its exit advice (same thread, nothing between them): the kind says which answer is
+     * waiting, so a stale one is never taken by another method's exit.
+     */
+    static final int K_NONE = 0, K_TEXTURE = 1, K_FRAMEBUFFER = 2, K_RENDERBUFFER = 3, K_STATUS = 4, K_UNIFORM = 5, K_INTEGER = 6;
+    static int pendingKind, pendingInt;
+
+    /** The driver's own answers for the check; tests swap them. */
+    static IntUnaryOperator driverIntegerForTest = NoSync::driverInteger;
+    static ToIntBiFunction<Integer, CharSequence> driverUniformForTest = NoSync::driverUniform;
+    static IntSupplier driverStatusForTest = NoSync::driverStatus;
+
+    // ---- GL parts (render thread) ----
+
+    private static IntBuffer scratch;
+
+    /** Fills every low pool back to 64 names; one driver call a pool. The IntBuffer overloads are not the hooked ()I ones. */
+    static void topUp() {
+        if (textures.low()) {
+            IntBuffer b = scratch(POOL - textures.size());
+            org.lwjgl.opengl.GL11.glGenTextures(b);
+            drain(b, textures);
+        }
+        if (framebuffers.low()) {
+            IntBuffer b = scratch(POOL - framebuffers.size());
+            org.lwjgl.opengl.GL30.glGenFramebuffers(b);
+            drain(b, framebuffers);
+        }
+        if (renderbuffers.low()) {
+            IntBuffer b = scratch(POOL - renderbuffers.size());
+            org.lwjgl.opengl.GL30.glGenRenderbuffers(b);
+            drain(b, renderbuffers);
+        }
+    }
+
+    private static IntBuffer scratch(int n) {
+        if (scratch == null) scratch = java.nio.ByteBuffer.allocateDirect(POOL * 4).order(ByteOrder.nativeOrder()).asIntBuffer();
+        scratch.clear();
+        scratch.limit(n);
+        return scratch;
+    }
+
+    private static void drain(IntBuffer b, NamePool p) {
+        for (int i = 0; i < b.limit(); i++) p.add(b.get(i));
+    }
+
+    /** GL11C.glGetInteger and GL20C.glGetUniformLocation: the entry points under the hooked wrappers, used only by the check. */
+    static int driverInteger(int pname) { return org.lwjgl.opengl.GL11C.glGetInteger(pname); }
+    static int driverUniform(int program, CharSequence name) { return org.lwjgl.opengl.GL20C.glGetUniformLocation(program, name); }
+    static int driverStatus() { return org.lwjgl.opengl.GL30C.glCheckFramebufferStatus(GL_FRAMEBUFFER); }
+
     static void resetForTest() {
         guard.on = false;
         check = false;
         textures.clear(); framebuffers.clear(); renderbuffers.clear();
         shapes.clear(); uniforms.clear(); programs.forget(); checker.clear();
         namesPooled = fboAnswered = uniformsAnswered = programAnswered = asked = 0;
+        pendingKind = K_NONE; pendingInt = 0;
+        driverIntegerForTest = NoSync::driverInteger;
+        driverUniformForTest = NoSync::driverUniform;
+        driverStatusForTest = NoSync::driverStatus;
     }
 }

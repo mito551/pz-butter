@@ -93,6 +93,11 @@ import zombie.iso.IsoGridSquare;
  *          a frame (each batch maps and unmaps its vertex and its index buffer), the fake GL signalling every fence at once, 3,000 frames a run:
  *          ns per map + unmap of one buffer. (3) per-batch fences (onRingRendered after each batch; a frame fence is made per swap too), same load.
  *          Prints a checksum of the sequence of GL names bound and the wait counts: fixed between versions, equal for every run of a case.
+ * glrecord: bakeNoSync's current-program record (GpuPatches.onUseProgram / onGetInteger / onGetIntegerExit, Plan 9), median of 7 runs after a
+ *          warm-up. (1) key off: ns per onUseProgram + onGetInteger pair (50 M pairs a run). (2) on, 20,000 frames a run of 1,000 onUseProgram
+ *          (16 programs in turn), every 5th followed by onGetInteger(GL_CURRENT_PROGRAM) + exit, every 5th (offset 2) by onGetInteger of another
+ *          pname + exit (200 + 200 queries a frame): ns per shim call (1,000 onUseProgram + 400 enters + 400 exits = 1,800 calls a frame).
+ *          Prints a checksum of the answers, fixed between versions and equal for every run.
  */
 public final class DeliveryBench {
     static final com.sun.management.ThreadMXBean MX = (com.sun.management.ThreadMXBean) ManagementFactory.getThreadMXBean();
@@ -124,7 +129,8 @@ public final class DeliveryBench {
             case "vbosize" -> vbosize();
             case "vboquad" -> vboquad();
             case "vboslots" -> vboslots();
-            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | uislice | readset | soundgate | cutaway | splash | edge | plan | gate | luagate | replay | luafiles | dedupe | scenecull | simlod | spotted | cullsort | statsget | vbosize | vboquad | vboslots");
+            case "glrecord" -> glrecord();
+            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | uislice | readset | soundgate | cutaway | splash | edge | plan | gate | luagate | replay | luafiles | dedupe | scenecull | simlod | spotted | cullsort | statsget | vbosize | vboquad | vboslots | glrecord");
         }
     }
 
@@ -1344,6 +1350,60 @@ public final class DeliveryBench {
             zombie.core.VBO.GLVertexBufferObject.funcs = was;
             PresentLog.renderThread = wasThread;
             UploadSizer.resetForTest();
+        }
+    }
+
+    /** bakeNoSync's program record through the shims, with the render thread set to this one. */
+    static void glrecord() throws Exception {
+        final int offCalls = 50_000_000, frames = 20_000, perFrame = 1_000;
+        NoSync.resetForTest();
+        double[] ns = new double[7];
+        for (int r = 0; r < 3 + 7; r++) {
+            long t0 = System.nanoTime();
+            int hits = 0;
+            for (int i = 0; i < offCalls; i++) {
+                GpuPatches.onUseProgram(i & 15);
+                if (GpuPatches.onGetInteger(0x8B8D)) hits++;
+            }
+            long dt = System.nanoTime() - t0;
+            if (hits != 0) throw new IllegalStateException("glrecord: key off answered");
+            if (r >= 3) ns[r - 3] = dt / (double) offCalls;
+        }
+        System.out.printf("glrecord key off              : %6.2f ns/pair (min %.2f, max %.2f)%n", median(ns), ns[0], ns[6]);
+
+        Thread wasThread = PresentLog.renderThread;
+        PresentLog.renderThread = Thread.currentThread();
+        try {
+            double[] t = new double[7];
+            long firstSum = 0;
+            for (int r = 0; r < 3 + 7; r++) {
+                NoSync.resetForTest();
+                NoSync.guard.on = true;
+                long sum = 0;
+                long t0 = System.nanoTime();
+                for (int f = 0; f < frames; f++) {
+                    for (int i = 0; i < perFrame; i++) {
+                        GpuPatches.onUseProgram((i * 7 + f) & 15);
+                        int m = i % 5;
+                        if (m == 0) {
+                            boolean skip = GpuPatches.onGetInteger(0x8B8D);
+                            sum = sum * 31 + GpuPatches.onGetIntegerExit(0x8B8D, -5) + (skip ? 1 : 0);
+                        } else if (m == 2) {
+                            boolean skip = GpuPatches.onGetInteger(0x0BA2);
+                            sum = sum * 31 + GpuPatches.onGetIntegerExit(0x0BA2, i) + (skip ? 1 : 0);
+                        }
+                    }
+                }
+                long dt = System.nanoTime() - t0;
+                if (r == 0) firstSum = sum;
+                else if (sum != firstSum) throw new IllegalStateException("glrecord: checksum changed between runs");
+                if (NoSync.programAnswered != (long) frames * (perFrame / 5)) throw new IllegalStateException("glrecord: wrong number of answers");
+                if (r >= 3) t[r - 3] = dt / ((double) frames * (perFrame + 4 * (perFrame / 5)));
+            }
+            System.out.printf("glrecord on                   : %6.2f ns/call (min %.2f, max %.2f), checksum %d%n", median(t), t[0], t[6], firstSum);
+        } finally {
+            PresentLog.renderThread = wasThread;
+            NoSync.resetForTest();
         }
     }
 
