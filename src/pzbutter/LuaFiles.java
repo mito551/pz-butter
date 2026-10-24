@@ -117,7 +117,8 @@ final class LuaFiles {
         long due = NEVER;
         if (e.heartbeat && nowNs - e.lastOpenNs < REPEAT_NS) due = e.lastOpenNs + REPEAT_NS;
         if (!append && nowNs - e.lastRewriteNs < REWRITE_NS) due = Math.max(due, e.lastRewriteNs + REWRITE_NS);
-        // a stock open with create=false fails on a missing file: only held text proves the file exists
+        // create=false: stock's FileOutputStream would create a missing file anyway, but we only extend text we already hold
+        // (a file we know exists); a create=false open with nothing pending runs stock
         if (due != NEVER && e.size() < MAX_HELD_CHARS && (create || pending)) {
             if (!append) { e.base = new StringBuilder(); e.tail = null; }
             else if (e.base == null && e.tail == null) e.tail = new StringBuilder();
@@ -142,17 +143,18 @@ final class LuaFiles {
         if (!append) e.lastRewriteNs = nowNs;
     }
 
-    /** getFileReader / getFileInput / getFileOutput entry: the held text reaches the disk first, the name is never held again. */
+    /**
+     * getFileReader / getFileInput / getFileOutput entry: the held text reaches the disk first, the name is never held again. Only a
+     * name that has an entry (stock opened it for writing before) is marked: a mod that merely reads many names cannot fill the table.
+     */
     static synchronized void beforeRead(String name) {
-        Entry e = entry(name);
-        if (e == null) {                               // table full: flush by name, nothing to mark
-            e = entries.get(key(name, WINDOWS));
-            if (e != null) writeEntry(e, System.nanoTime());
-            return;
-        }
+        Entry e = entries.get(key(name, WINDOWS));
+        if (e == null) return;
         e.readBack = true;
         if (e.pending()) writeEntry(e, System.nanoTime());
     }
+
+    static synchronized int entryCount() { return entries.size(); }
 
     /** Frame end (game thread): writes the held text whose window ended. */
     static void tick(long nowNs) {
@@ -234,6 +236,7 @@ final class LuaFiles {
 
         private void add(String s) {
             synchronized (LuaFiles.class) {
+                if (e.size() + s.length() > MAX_HELD_CHARS) writeEntry(e, System.nanoTime());     // the cap is a memory bound: write what is held now
                 if (e.base != null) e.base.append(s);
                 else {
                     if (e.tail == null) {                 // written after a flush: due at the next tick

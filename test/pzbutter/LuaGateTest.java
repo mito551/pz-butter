@@ -59,8 +59,10 @@ final class LuaGateTest {
         heldWriterIsStockClass();
         fileThrottleOffPassesThrough();
         tickCountsAsAcceptedOpen();
-        createFalseIsNeverHeld();
+        createFalseHeldOnlyWithPendingText();
         unknownNameAndSizeCapPassThrough();
+        heldTextCapFlushesEarly();
+        readsOfUnwrittenNamesMakeNoEntries();
         windowsKeysFoldCase();
         fileKeyOffByDefault();
         fileHookShimsStockWhenOff();
@@ -751,8 +753,8 @@ final class LuaGateTest {
         LuaFiles.resetForTest();
     }
 
-    static void createFalseIsNeverHeld() throws Exception {
-        // a stock open with create=false fails on a missing file: only a held create=true text may be extended
+    static void createFalseHeldOnlyWithPendingText() throws Exception {
+        // create=false is held only to extend text we already hold (stock's FileOutputStream would create the file anyway; running stock is the safe default)
         filesSetUp(true);
         open("c.json", false, "a", 0);
         assert LuaFiles.onOpen("c.json", false, false, 100 * MS) == null;
@@ -768,6 +770,31 @@ final class LuaGateTest {
         Object w = LuaFiles.onOpen("big.json", true, false, 10 * MS);
         ((zombie.Lua.LuaManager.GlobalObject.LuaFileWriter) w).write("x".repeat(LuaFiles.MAX_HELD_CHARS));
         assert LuaFiles.onOpen("big.json", true, false, 20 * MS) == null;           // over the cap: stock, held text dropped (stock truncates)
+        LuaFiles.resetForTest();
+    }
+
+    /** The cap bounds the memory of one open writer too: past it the held text is written and the writer carries on. */
+    static void heldTextCapFlushesEarly() throws Exception {
+        filesSetUp(true);
+        open("cap.json", false, "", 0);
+        var w = (zombie.Lua.LuaManager.GlobalObject.LuaFileWriter) LuaFiles.onOpen("cap.json", true, false, 10 * MS);
+        w.write("a".repeat(LuaFiles.MAX_HELD_CHARS));
+        assert read("cap.json").equals("") && LuaFiles.diskWrites == 0;                // exactly at the cap: still held
+        w.write("bb");
+        assert read("cap.json").equals("a".repeat(LuaFiles.MAX_HELD_CHARS)) && LuaFiles.diskWrites == 1;
+        w.close();
+        LuaFiles.flushAll();
+        assert read("cap.json").equals("a".repeat(LuaFiles.MAX_HELD_CHARS) + "bb");
+        LuaFiles.resetForTest();
+    }
+
+    /** Reading a name nobody wrote makes no entry: a read-heavy mod cannot fill the table and stop later writers being held. */
+    static void readsOfUnwrittenNamesMakeNoEntries() throws Exception {
+        filesSetUp(true);
+        for (int i = 0; i < 20_000; i++) LuaFiles.beforeRead("r" + i + ".txt");
+        assert LuaFiles.entryCount() == 0;
+        open("late.json", false, "a", 0);
+        assert open("late.json", false, "b", 10 * MS);                                  // still held
         LuaFiles.resetForTest();
     }
 
