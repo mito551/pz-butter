@@ -38,6 +38,7 @@ public final class SelfTest {
         ChunkTest.run();
         LuaGateTest.run();
         ChunkShimTest.run();
+        ZombieTest.run();
         delete(DIR);
         System.out.println("ok");
     }

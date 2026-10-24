@@ -104,6 +104,17 @@ The mod creates `~/Zomboid/PZButter.properties` on first start and reads it once
 | `lightingStrongFrameMs` | With `bakeScheduler`: a frame step longer than this halves the next frame's strong-light redraws. Default `9`. |
 | `lightingGlobalDeltaPct` | With `bakeScheduler`: a light change across most of the screen above this % (a flash, a fast dusk) is spread like a slow one. `0`: off. Default `2`. |
 | `bloodRebakeCoalesceMs` | With `bakeScheduler`: a texture whose only change is new blood waits this long, so several splats share one redraw. `0`: at once. Default `250`. |
+| `zeroFacingFix` | A character asked to face a zero-length direction keeps its facing, instead of the game stopping with "Forward Direction cannot be zero length vector". Only the calls the game would have stopped on change. Off by default. |
+| `numberZombiesBlended` | How many of the most relevant zombies get blended animations. `0` keeps the game's 20; `1` to `64`. Fewer looks stiffer and costs less. |
+| `zombieLodFixed3d` | Changes the simulation. At most this many zombies are drawn as 3D models; the rest are flat sprites and, like the game's own zombies past 510, update less often. `0` keeps the game's 510; `50` to `510`, never below `numberZombiesBlended`. Bandits2 users: keep it at 300 or more. |
+| `zombieModelAddBudgetUs` | Changes the simulation for a few frames. Microseconds a frame for zombies getting their 3D model; past it the next ones stay sprites (and update less often) one frame longer. At least one gets its model each frame. `0`: no limit, as the game. |
+| `zombieSimLodTiles` | Changes the simulation. Zombies farther than this many tiles from every player update every other frame (and every 4th, 8th with more steps), one step nearer than the game's own 30, 60 and 80 tiles. `0`: off. |
+| `zombieSimLodSteps` | With `zombieSimLodTiles`: extra steps, each at twice the previous distance (`1` to `3`). Default `1`. |
+| `playerLosFast` | The player's sight pass checks "have I seen this one before" with a set instead of searching a list of every zombie seen recently (millions of checks a frame in a big horde). The same answers. Off by default. |
+| `zombieCullSortFast` | The sort that picks which zombies get 3D models works each zombie's score out once instead of twice per comparison. The same order. Off by default. |
+| `statsNoBox` | Character stat reads skip a throwaway object per read. The same values. Off by default. |
+| `popmanFlagsFlyweight` | Zombies the population hands over share their state-flag objects instead of one new object each. The same flags; a Java mod that changes such an object would change it for every zombie with the same flags. Off by default. |
+| `entityTiming` | Diagnostic. Once a minute the console gets the time per frame of the zombie update phases (sorting into update tiers, update, movement and animation, 3D model picking, the player's sight pass) and the zombie count; with `frameLog`, one line per frame in `Zomboid/pzbutter/entity.out`. Off by default. |
 
 Each line of `frames.out` has five fields:
 
