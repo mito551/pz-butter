@@ -22,6 +22,7 @@ public class Main {
         LuaFast.init();
         LuaTiming.init();
         LuaGate.init();
+        LuaFiles.init();
         UiTiming.init();
         UiCensus.init();
         UiRetain.init();

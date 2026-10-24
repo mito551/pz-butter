@@ -45,6 +45,11 @@ import zombie.iso.IsoGridSquare;
  *          times over the captures), then ns per replayed call on one thread; median of 7 runs after a warm-up. A second
  *          scenario is a quiet frame of 50 events (5 threads x 10). Prints a checksum of the fired order sequence, which must
  *          equal the sorted sequence's (checked) and not change between versions.
+ * luafiles: the held Lua file writes (LuaFiles), median of 7 runs after a warm-up. ns per onOpen + write + close of a held
+ *          heartbeat append, of a held rewrite, and ns per onOpen with the key off (pass-through); ns per tick() with 10 held
+ *          keys none of which is due. Then a scripted 1,000-open sequence (three files, a tick every open, a fake clock) is
+ *          run against a temp directory; the final contents must equal what stock's writes would leave (checked) and the
+ *          printed checksum of them and the disk write count must not change between versions.
  */
 public final class DeliveryBench {
     static final com.sun.management.ThreadMXBean MX = (com.sun.management.ThreadMXBean) ManagementFactory.getThreadMXBean();
@@ -66,7 +71,8 @@ public final class DeliveryBench {
             case "gate" -> gate();
             case "luagate" -> luagate();
             case "replay" -> replay();
-            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | uislice | readset | soundgate | cutaway | splash | edge | plan | gate | luagate | replay");
+            case "luafiles" -> luafiles();
+            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | uislice | readset | soundgate | cutaway | splash | edge | plan | gate | luagate | replay | luafiles");
         }
     }
 
@@ -787,5 +793,113 @@ public final class DeliveryBench {
         if (err[0] != null) throw new IllegalStateException("replay worker failed", err[0]);
         System.out.printf("replay %-24s: %7.1f ns per capture (min %.1f, max %.1f), %7.1f ns per replayed call (min %.1f, max %.1f), checksum %d%n",
             label, median(cap), cap[0], cap[6], median(rep), rep[0], rep[6], sum[0]);
+    }
+
+    // ---- luafiles ----
+
+    static final long MSN = 1_000_000L;
+
+    static void luafiles() throws Exception {
+        java.io.File dir = java.nio.file.Files.createTempDirectory("pzbutter-luafiles").toFile();
+        try {
+            LuaFiles.resetForTest();
+            LuaFiles.cacheDir = dir::getPath;
+            final int opens = 100_000, runs = 3 + 7;
+            for (int sc = 0; sc < 3; sc++) {
+                String name = sc == 0 ? "bench_heartbeat.txt" : "bench_status.json";
+                boolean append = sc == 0;
+                double[] ns = new double[7];
+                for (int r = 0; r < runs; r++) {
+                    LuaFiles.resetForTest();
+                    LuaFiles.cacheDir = dir::getPath;
+                    LuaFiles.guard.on = sc != 2;
+                    LuaFiles.onStockOpened(name, append, name, 0);
+                    long t0 = System.nanoTime();
+                    long held = 0;
+                    for (int i = 0; i < opens; i++) {
+                        Object w = LuaFiles.onOpen(name, true, append, 1000L + i * 8L);     // 0.8 ms in all: inside both windows
+                        if (w != null) {
+                            var f = (zombie.Lua.LuaManager.GlobalObject.LuaFileWriter) w;
+                            f.write("x"); f.close();
+                            held++;
+                        }
+                    }
+                    long dt = System.nanoTime() - t0;
+                    if (sc != 2 && held != opens || sc == 2 && held != 0) throw new IllegalStateException("luafiles check failed: held " + held + " scenario " + sc);
+                    LuaFiles.flushAll();
+                    if (r >= 3) ns[r - 3] = dt / (double) opens;
+                }
+                System.out.printf("luafiles %-30s: %7.1f ns (min %.1f, max %.1f)%n",
+                    sc == 0 ? "1 held heartbeat append" : sc == 1 ? "2 held rewrite" : "3 key off, pass-through onOpen", median(ns), ns[0], ns[6]);
+            }
+            double[] ns = new double[7];
+            for (int r = 0; r < runs; r++) {
+                LuaFiles.resetForTest();
+                LuaFiles.cacheDir = dir::getPath;
+                LuaFiles.guard.on = true;
+                for (int k = 0; k < 10; k++) {
+                    String n = "k" + k + "_ping.txt";
+                    LuaFiles.onStockOpened(n, true, n, 0);
+                    ((zombie.Lua.LuaManager.GlobalObject.LuaFileWriter) LuaFiles.onOpen(n, true, true, 1000L)).write("x");
+                }
+                int ticks = 1_000_000;
+                long t0 = System.nanoTime();
+                for (int i = 0; i < ticks; i++) LuaFiles.tick(2000L + i);                // all due at 2 s: not yet
+                long dt = System.nanoTime() - t0;
+                if (LuaFiles.diskWrites != 0) throw new IllegalStateException("luafiles: tick wrote early");
+                LuaFiles.flushAll();
+                if (r >= 3) ns[r - 3] = dt / (double) ticks;
+            }
+            System.out.printf("luafiles %-30s: %7.1f ns (min %.1f, max %.1f)%n", "4 tick, 10 held, none due", median(ns), ns[0], ns[6]);
+            scripted(dir);
+        } finally {
+            LuaFiles.resetForTest();
+            for (java.io.File f : dir.listFiles()) f.delete();
+            dir.delete();
+        }
+    }
+
+    /** 1,000 opens over three files with a fake clock, tick on every open; the files must end as stock's writes leave them. */
+    static void scripted(java.io.File dir) throws Exception {
+        LuaFiles.resetForTest();
+        LuaFiles.cacheDir = dir::getPath;
+        LuaFiles.guard.on = true;
+        String[] names = {"status.json", "x_heartbeat.txt", "data.txt"};
+        boolean[] app = {false, true, false};
+        long[] step = {100 * MSN, 300 * MSN, 700 * MSN};
+        StringBuilder[] want = {new StringBuilder(), new StringBuilder(), new StringBuilder()};
+        long now = 0;
+        long[] next = new long[3];
+        int done = 0, held = 0;
+        while (done < 1000) {
+            now += 37 * MSN;
+            for (int k = 0; k < 3 && done < 1000; k++) {
+                if (now < next[k]) continue;
+                next[k] = now + step[k];
+                String text = names[k] + "#" + done + "\n";
+                if (app[k]) want[k].append(text); else want[k].setLength(0);
+                if (!app[k]) want[k].append(text);
+                Object w = LuaFiles.onOpen(names[k], true, app[k], now);
+                if (w != null) {
+                    var f = (zombie.Lua.LuaManager.GlobalObject.LuaFileWriter) w;
+                    f.write(text); f.close();
+                    held++;
+                } else {
+                    java.io.File file = LuaFiles.resolve(dir.getPath(), names[k]);
+                    try (java.io.FileOutputStream o = new java.io.FileOutputStream(file, app[k])) { o.write(text.getBytes(java.nio.charset.StandardCharsets.UTF_8)); }
+                    LuaFiles.onStockOpened(names[k], app[k], text, now);
+                }
+                done++;
+            }
+            LuaFiles.tick(now);
+        }
+        LuaFiles.flushAll();
+        long sum = 0;
+        for (int k = 0; k < 3; k++) {
+            String got = new String(java.nio.file.Files.readAllBytes(LuaFiles.resolve(dir.getPath(), names[k]).toPath()), java.nio.charset.StandardCharsets.UTF_8);
+            if (!got.equals(want[k].toString())) throw new IllegalStateException("luafiles scripted: " + names[k] + " ends as " + got.length() + " chars, stock " + want[k].length());
+            sum = sum * 31 + got.hashCode();
+        }
+        System.out.printf("luafiles scripted %d opens: %d held, %d disk writes, checksum %d%n", done, held, LuaFiles.diskWrites, sum);
     }
 }

@@ -40,6 +40,20 @@ final class LuaGateTest {
         throwingFireContinues();
         replayKeepsOneThreadsTiesAcrossGrowth();
         replayEmptiesAndPrunesEndedThreads();
+        heartbeatNameRule();
+        keyAndPathRules();
+        rewriteBurstLastWins();
+        heartbeatAppendsKept();
+        stockAppendFlushesHeldFirst();
+        stockRewriteSupersedesHeld();
+        readBackFlushesAndExempts();
+        heldWriterIsStockClass();
+        fileThrottleOffPassesThrough();
+        tickCountsAsAcceptedOpen();
+        createFalseIsNeverHeld();
+        unknownNameAndSizeCapPassThrough();
+        windowsKeysFoldCase();
+        fileKeyOffByDefault();
     }
 
     static void plan7KeysDefaults() {
@@ -382,5 +396,160 @@ final class LuaGateTest {
         LuaReplay.capture(3, new Object[] {"y"});
         LuaReplay.clear();
         assert LuaReplay.pending() == 0 && LuaReplay.replay(c -> { assert false; }) == 0;
+    }
+
+    // ---- Task 5: held Lua file writes ----
+
+    static final long MS = 1_000_000L;
+    static java.io.File D;
+
+    static void filesSetUp(boolean on) {
+        D = SelfTest.tmp("luafiles/x").getParentFile();
+        LuaFiles.resetForTest(); LuaFiles.guard.on = on; LuaFiles.cacheDir = () -> D.getPath();
+    }
+
+    /** The hook as the game runs it: held writer, or the stock write followed by the note. Returns whether the open was held. */
+    static boolean open(String name, boolean append, String text, long now) throws Exception {
+        Object w = LuaFiles.onOpen(name, true, append, now);
+        if (w != null) {
+            ((zombie.Lua.LuaManager.GlobalObject.LuaFileWriter) w).write(text);
+            ((zombie.Lua.LuaManager.GlobalObject.LuaFileWriter) w).close();
+            return true;
+        }
+        java.io.File f = LuaFiles.resolve(D.getPath(), name);
+        f.getParentFile().mkdirs();
+        try (java.io.FileOutputStream o = new java.io.FileOutputStream(f, append)) { o.write(text.getBytes(java.nio.charset.StandardCharsets.UTF_8)); }
+        LuaFiles.onStockOpened(name, append, new Object(), now);
+        return false;
+    }
+
+    static String read(String name) throws Exception {
+        java.io.File f = LuaFiles.resolve(D.getPath(), name);
+        return f.exists() ? new String(java.nio.file.Files.readAllBytes(f.toPath()), java.nio.charset.StandardCharsets.UTF_8) : "";
+    }
+
+    static void heartbeatNameRule() {
+        for (String n : new String[] {"ping.txt", "MyModHeartbeat.txt", "server_pulse.json", "Pulse2.json", "temp_log.txt", "tmp-log.txt", "TempLog.txt", "templog.txt", "logs/heartbeat.txt"})
+            assert LuaFiles.heartbeatName(n) : n;
+        for (String n : new String[] {"mapping.txt", "shipping.log", "temperature.txt", "pingpong.txt", "status.json", "log.txt"})
+            assert !LuaFiles.heartbeatName(n) : n;
+    }
+
+    static void keyAndPathRules() {
+        assert LuaFiles.key("a\\B.txt", false).equals("a/B.txt") && LuaFiles.key("a\\B.txt", true).equals("a/b.txt");
+        String s = java.io.File.separator;
+        assert LuaFiles.resolve("/c", "a/b\\c.txt").getPath().equals(new java.io.File("/c" + s + "a" + s + "b" + s + "c.txt").getPath());
+    }
+
+    static void rewriteBurstLastWins() throws Exception {
+        filesSetUp(true);
+        assert !open("status.json", false, "v0", 0);
+        for (int i = 1; i <= 4; i++) assert open("status.json", false, "v" + i, i * 100 * MS);
+        LuaFiles.tick(450 * MS);
+        assert read("status.json").equals("v0");
+        LuaFiles.tick(600 * MS);
+        assert read("status.json").equals("v4") && LuaFiles.diskWrites == 1;
+        LuaFiles.resetForTest();
+    }
+
+    static void heartbeatAppendsKept() throws Exception {
+        filesSetUp(true);
+        assert !open("mod_heartbeat.txt", true, "a\n", 0);
+        assert open("mod_heartbeat.txt", true, "b\n", 500 * MS) && open("mod_heartbeat.txt", true, "c\n", 1000 * MS);
+        LuaFiles.tick(1900 * MS);
+        assert read("mod_heartbeat.txt").equals("a\n");
+        LuaFiles.tick(2100 * MS);
+        assert read("mod_heartbeat.txt").equals("a\nb\nc\n");
+        LuaFiles.resetForTest();
+    }
+
+    static void stockAppendFlushesHeldFirst() throws Exception {
+        filesSetUp(true);
+        open("x_ping.txt", true, "1", 0); open("x_ping.txt", true, "2", 100 * MS);   // second held
+        assert !open("x_ping.txt", true, "3", 2500 * MS);                            // window over, no tick yet: held text first
+        assert read("x_ping.txt").equals("123");
+        LuaFiles.resetForTest();
+    }
+
+    static void stockRewriteSupersedesHeld() throws Exception {
+        filesSetUp(true);
+        open("s.json", false, "a", 0); assert open("s.json", false, "b", 100 * MS);
+        assert !open("s.json", false, "c", 700 * MS);
+        LuaFiles.tick(5000 * MS);
+        assert read("s.json").equals("c");
+        LuaFiles.resetForTest();
+    }
+
+    static void readBackFlushesAndExempts() throws Exception {
+        filesSetUp(true);
+        open("r.txt", false, "a", 0); assert open("r.txt", false, "b", 100 * MS);
+        LuaFiles.beforeRead("r.txt");
+        assert read("r.txt").equals("b") && !open("r.txt", false, "c", 200 * MS) && read("r.txt").equals("c");
+        LuaFiles.resetForTest();
+    }
+
+    static void heldWriterIsStockClass() throws Exception {
+        filesSetUp(true);
+        open("w.txt", false, "", 0);
+        Object w = LuaFiles.onOpen("w.txt", true, false, 10 * MS);
+        assert w instanceof zombie.Lua.LuaManager.GlobalObject.LuaFileWriter;
+        ((zombie.Lua.LuaManager.GlobalObject.LuaFileWriter) w).writeln("x"); ((zombie.Lua.LuaManager.GlobalObject.LuaFileWriter) w).close();
+        LuaFiles.flushAll();
+        assert read("w.txt").equals("x" + System.lineSeparator());
+        LuaFiles.resetForTest();
+    }
+
+    static void fileThrottleOffPassesThrough() throws Exception {
+        filesSetUp(false);
+        open("o.json", false, "a", 0);
+        assert !open("o.json", false, "b", 10 * MS) && read("o.json").equals("b");
+        LuaFiles.resetForTest();
+    }
+
+    static void tickCountsAsAcceptedOpen() throws Exception {
+        // a mod that keeps rewriting gets one disk write per window, not one per window plus one per burst
+        filesSetUp(true);
+        open("k.json", false, "v0", 0);
+        assert open("k.json", false, "a", 100 * MS) && open("k.json", false, "b", 300 * MS);
+        LuaFiles.tick(500 * MS);
+        assert read("k.json").equals("b") && LuaFiles.diskWrites == 1;
+        assert open("k.json", false, "c", 600 * MS);                                // 100 ms after the tick's write: held
+        LuaFiles.tick(900 * MS);
+        assert read("k.json").equals("b");
+        LuaFiles.tick(1000 * MS);
+        assert read("k.json").equals("c") && LuaFiles.diskWrites == 2;
+        LuaFiles.resetForTest();
+    }
+
+    static void createFalseIsNeverHeld() throws Exception {
+        // a stock open with create=false fails on a missing file: only a held create=true text may be extended
+        filesSetUp(true);
+        open("c.json", false, "a", 0);
+        assert LuaFiles.onOpen("c.json", false, false, 100 * MS) == null;
+        assert open("c.json", false, "b", 150 * MS);
+        assert LuaFiles.onOpen("c.json", false, false, 200 * MS) != null;           // held text pending: the file exists
+        LuaFiles.resetForTest();
+    }
+
+    static void unknownNameAndSizeCapPassThrough() throws Exception {
+        filesSetUp(true);
+        assert LuaFiles.onOpen("never.txt", true, false, 0) == null && LuaFiles.heldOpens == 0;   // stock has not accepted it yet
+        open("big.json", false, "", 0);
+        Object w = LuaFiles.onOpen("big.json", true, false, 10 * MS);
+        ((zombie.Lua.LuaManager.GlobalObject.LuaFileWriter) w).write("x".repeat(LuaFiles.MAX_HELD_CHARS));
+        assert LuaFiles.onOpen("big.json", true, false, 20 * MS) == null;           // over the cap: stock, held text dropped (stock truncates)
+        LuaFiles.resetForTest();
+    }
+
+    static void windowsKeysFoldCase() {
+        assert LuaFiles.key("Dir\\File.TXT", true).equals("dir/file.txt");
+        assert LuaFiles.key("Dir/File.TXT", false).equals("Dir/File.TXT");
+    }
+
+    static void fileKeyOffByDefault() {
+        Settings.load(SelfTest.write("enabled=true\n"));
+        LuaFiles.init();
+        assert !LuaFiles.guard.on;
+        LuaFiles.resetForTest();
     }
 }
