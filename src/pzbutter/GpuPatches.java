@@ -13,6 +13,27 @@ public final class GpuPatches {
     public static void init() {
         SmartRelease.init();
         BatchSize.init();
+        UploadSizer.init();
+    }
+
+    /** True on the thread that owns the GL context: the render thread, once the first swap has set it. */
+    static boolean glThread() {
+        Thread r = PresentLog.renderThread;
+        return r != null && Thread.currentThread() == r;
+    }
+
+    /** GLVertexBufferObject.bufferData entry: true uploads the batch into size-class storage here and skips the game's upload. */
+    public static boolean onBufferData(Object self, java.nio.ByteBuffer data) {
+        if (!UploadSizer.guard.on) return false;
+        if (!glThread()) { UploadSizer.passed++; return false; }
+        try { return UploadSizer.upload(self, data); }
+        catch (Throwable t) { UploadSizer.guard.fail(t); return false; }
+    }
+
+    @Patch(className = "zombie.core.VBO.GLVertexBufferObject", methodName = "bufferData")
+    public static class BufferData {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This Object self, @Patch.Argument(0) java.nio.ByteBuffer data) { return GpuPatches.onBufferData(self, data); }
     }
 
     /** SmartTexture.calculate entry, before the game's monitor: the old composite goes back to the combiner's pool. */

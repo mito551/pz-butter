@@ -134,6 +134,7 @@ final class ModCompat {
         // sprite buffers and GPU (Plan 9)
         Map.entry("GpuPatches.SmartCalculate", k("smartTextureRelease", "gpuStats")),
         Map.entry("GpuPatches.VboFormat", k("vboBatchKb")),
+        Map.entry("GpuPatches.BufferData", k("vboSizeClasses", "gpuStats")),
         // log
         Map.entry("LogPatches.Writeln", k("logDedupe")),
         Map.entry("LogPatches.PrefixLine", k("logDedupe")),

@@ -1,6 +1,6 @@
 package pzbutter;
 
-/** Plan 9 checks (sprite buffers and GPU; Task 1: keys and template, Task 3: combined texture release, Task 4: batch size). Run from SelfTest.main. Later tasks append their calls to runAll(). */
+/** Plan 9 checks (sprite buffers and GPU; Task 1: keys and template, Task 2: size classes, Task 3: combined texture release, Task 4: batch size). Run from SelfTest.main. Later tasks append their calls to runAll(). */
 final class GpuTest {
     private GpuTest() {}
 
@@ -21,6 +21,14 @@ final class GpuTest {
         batchSizesAndClamp();
         batchInstallsOnEmptyBuffers();
         batchKeepsBuffersMidBatch();
+        sizeClassTable();
+        orphanReallocsOnClassChange();
+        subdataOnlyGrows();
+        uploadGuardTripsAfterThree();
+        sizeClassesOffPassesThrough();
+        uploadUsesClassesOnTheGlThread();
+        uploadPassesOffThread();
+        sizeClassInitReadsKeys();
     }
 
     static final String[] PLAN9_FLAGS = {"persistentVbo", "vboFastQuads", "smartTextureRelease", "bakeNoSync", "bakeNoSyncCheck", "bakeBudgetGpu", "gpuStats"};
@@ -151,5 +159,99 @@ final class GpuTest {
         callSetFormat(r);
         assert ((java.nio.ByteBuffer) field(r, "elements")).capacity() == 4096;
         BatchSize.resetForTest();
+    }
+
+    // ---- Task 2: vboSizeClasses ----
+
+    static final class FakeUploader implements UploadSizer.Uploader {
+        final StringBuilder log = new StringBuilder();
+        public void alloc(int type, long bytes, int usage) { log.append("A").append(bytes).append(' '); }
+        public void sub(int type, java.nio.ByteBuffer d) { log.append("S").append(d.remaining()).append(' '); }
+    }
+
+    static void sizeClassTable() {
+        long m = 65536;
+        assert UploadSizer.sizeClass(1, m) == m && UploadSizer.sizeClass(m, m) == m && UploadSizer.sizeClass(m + 1, m) == 131072;
+        assert UploadSizer.sizeClass(131072, m) == 131072 && UploadSizer.sizeClass(1_000_000, m) == 1 << 20;
+        assert UploadSizer.sizeClass(Long.MAX_VALUE, m) == Long.MAX_VALUE;
+    }
+
+    static void orphanReallocsOnClassChange() {
+        int O = UploadSizer.ORPHAN, A = UploadSizer.ALLOC, R = UploadSizer.RESPEC;
+        assert UploadSizer.decide(false, false, 0, 4096, 65536, O) == A;
+        assert UploadSizer.decide(true, false, 65536, 4096, 65536, O) == R;
+        assert UploadSizer.decide(true, false, 131072, 4096, 65536, O) == A;      // orphan follows the class down as well
+        assert UploadSizer.decide(true, true, 65536, 4096, 65536, O) == A;        // a new GL name never inherits a capacity
+    }
+
+    static void subdataOnlyGrows() {
+        int S = UploadSizer.SUBDATA;
+        assert UploadSizer.decide(true, false, 131072, 4096, 65536, S) == UploadSizer.SUB;
+        assert UploadSizer.decide(true, false, 65536, 70000, 131072, S) == UploadSizer.ALLOC;
+    }
+
+    static void uploadGuardTripsAfterThree() {
+        UploadSizer.Guard3 g = new UploadSizer.Guard3();
+        long s = 1_000_000_000L, t = 0;
+        for (int w = 0; w < 2; w++) { assert !g.add(300_000_000L, t += s); }      // two windows over 250 ms/s
+        assert !g.add(100_000_000L, t += s);                                     // one under: the count restarts
+        assert !g.add(300_000_000L, t += s) && !g.add(300_000_000L, t += s) && g.add(300_000_000L, t += s);
+    }
+
+    static void sizeClassesOffPassesThrough() {
+        UploadSizer.resetForTest();
+        assert !GpuPatches.onBufferData(null, null) && UploadSizer.uploads == 0;
+    }
+
+    static void uploadUsesClassesOnTheGlThread() throws Exception {
+        UploadSizer.resetForTest(); FakeUploader f = new FakeUploader(); UploadSizer.gl = f;
+        zombie.core.VBO.IGLBufferObject was = zombie.core.VBO.GLVertexBufferObject.funcs;
+        zombie.core.VBO.GLVertexBufferObject.funcs = new zombie.core.VBO.GLBufferObject15();
+        Thread was2 = PresentLog.renderThread; PresentLog.renderThread = Thread.currentThread();
+        try {
+            UploadSizer.mode = UploadSizer.ORPHAN; UploadSizer.minBytes = 65536; UploadSizer.guard.on = true;
+            zombie.core.VBO.GLVertexBufferObject v = new zombie.core.VBO.GLVertexBufferObject(4096, 34962, 35040);   // no GL in the constructor
+            assert GpuPatches.onBufferData(v, java.nio.ByteBuffer.allocateDirect(4000));
+            assert GpuPatches.onBufferData(v, java.nio.ByteBuffer.allocateDirect(3000));
+            assert GpuPatches.onBufferData(v, java.nio.ByteBuffer.allocateDirect(100_000));
+            assert f.log.toString().equals("A65536 S4000 A65536 S3000 A131072 S100000 ") : f.log;   // orphan: same size re-specified (A65536), then a class up
+            assert UploadSizer.uploads == 3 && UploadSizer.reallocs == 2;
+            assert !GpuPatches.onBufferData(v, java.nio.ByteBuffer.allocateDirect(0));            // empty: stock
+            // subdata: a smaller batch writes into the bigger storage, a bigger one allocates the next class
+            UploadSizer.mode = UploadSizer.SUBDATA; f.log.setLength(0);
+            assert GpuPatches.onBufferData(v, java.nio.ByteBuffer.allocateDirect(500));
+            assert GpuPatches.onBufferData(v, java.nio.ByteBuffer.allocateDirect(200_000));
+            assert f.log.toString().equals("S500 A262144 S200000 ") : f.log;
+            // a funcs that is not GLBufferObject15 leaves the upload to the game
+            zombie.core.VBO.GLVertexBufferObject.funcs = null;
+            assert !GpuPatches.onBufferData(v, java.nio.ByteBuffer.allocateDirect(10));
+        } finally {
+            zombie.core.VBO.GLVertexBufferObject.funcs = was; PresentLog.renderThread = was2; UploadSizer.resetForTest();
+        }
+    }
+
+    static void uploadPassesOffThread() throws Exception {
+        UploadSizer.resetForTest(); FakeUploader f = new FakeUploader(); UploadSizer.gl = f;
+        Thread was = PresentLog.renderThread; PresentLog.renderThread = Thread.currentThread();
+        try {
+            UploadSizer.mode = UploadSizer.ORPHAN; UploadSizer.guard.on = true;
+            boolean[] got = new boolean[1];
+            Thread t = new Thread(() -> got[0] = GpuPatches.onBufferData(null, java.nio.ByteBuffer.allocateDirect(10)));
+            t.start(); t.join(5000);
+            assert !got[0] && UploadSizer.passed == 1 && f.log.length() == 0;
+        } finally { PresentLog.renderThread = was; UploadSizer.resetForTest(); }
+    }
+
+    static void sizeClassInitReadsKeys() {
+        Settings.load(SelfTest.write("enabled=true\nvboSizeClasses=Subdata\nvboSizeClassMinKb=100\n")); UploadSizer.init();
+        assert UploadSizer.mode == UploadSizer.SUBDATA && UploadSizer.minBytes == 64 * 1024 && UploadSizer.guard.on;
+        Settings.load(SelfTest.write("enabled=true\nvboSizeClasses=orphan\nvboSizeClassMinKb=1\n")); UploadSizer.init();
+        assert UploadSizer.mode == UploadSizer.ORPHAN && UploadSizer.minBytes == 4 * 1024;
+        Settings.load(SelfTest.write("enabled=true\nvboSizeClasses=banana\n")); UploadSizer.init();
+        assert UploadSizer.mode == UploadSizer.OFF && !UploadSizer.guard.on;
+        Settings.load(SelfTest.write("enabled=false\nvboSizeClasses=orphan\n")); UploadSizer.init();
+        assert UploadSizer.mode == UploadSizer.OFF && !UploadSizer.guard.on;
+        Settings.load(SelfTest.write("enabled=true\n"));
+        UploadSizer.resetForTest();
     }
 }

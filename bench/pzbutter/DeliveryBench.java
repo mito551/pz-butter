@@ -77,6 +77,11 @@ import zombie.iso.IsoGridSquare;
  * statsget: Stats.get (stock) against the statsNoBox shim (ZombiePatches.onStatsGet + unpack) over every CharacterStat of one Stats with
  *          every second stat set (hits and default reads), 5 M reads a run, median of 7 runs after a warm-up; then the bytes allocated per
  *          read over 10 M reads of each. Prints a checksum of the floats read, equal for both (checked) and fixed between versions.
+ * vbosize: the size-class upload (UploadSizer.upload through GpuPatches.onBufferData, Plan 9), median of 7 runs after a warm-up, a no-op
+ *          Uploader that folds every call (kind, size) into a checksum. (1) key off: ns per onBufferData(null, null) (50 M calls a run);
+ *          (2) orphan, two buffer objects alternating, 4 KB batches (every call a same-size respec + sub): ns per call (5 M calls a run);
+ *          (3) subdata, batch sizes from a fixed-seed list between 1 KB and 1 MB over four buffer objects: ns per call (5 M calls a run).
+ *          The checksum of the Uploader calls of (2) and (3) is fixed and must not change between versions.
  */
 public final class DeliveryBench {
     static final com.sun.management.ThreadMXBean MX = (com.sun.management.ThreadMXBean) ManagementFactory.getThreadMXBean();
@@ -105,7 +110,8 @@ public final class DeliveryBench {
             case "spotted" -> spotted();
             case "cullsort" -> { try { cullsort(); } catch (Throwable t) { throw new RuntimeException(t); } }
             case "statsget" -> statsget();
-            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | uislice | readset | soundgate | cutaway | splash | edge | plan | gate | luagate | replay | luafiles | dedupe | scenecull | simlod | spotted | cullsort | statsget");
+            case "vbosize" -> vbosize();
+            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | uislice | readset | soundgate | cutaway | splash | edge | plan | gate | luagate | replay | luafiles | dedupe | scenecull | simlod | spotted | cullsort | statsget | vbosize");
         }
     }
 
@@ -1265,5 +1271,66 @@ public final class DeliveryBench {
         }
         ZombieMisc.resetForTest();
         if (check[0] != check[1]) throw new IllegalStateException("statsget: the two reads disagree");
+    }
+
+    /** The folded Uploader of the vbosize bench: a checksum of the calls in order, no GL. */
+    static final class FoldUploader implements UploadSizer.Uploader {
+        long sum;
+        public void alloc(int type, long bytes, int usage) { sum = sum * 31 + 7 * bytes + type + usage; }
+        public void sub(int type, java.nio.ByteBuffer d) { sum = sum * 31 + 11L * d.remaining() + type; }
+    }
+
+    static void vbosize() throws Exception {
+        final int offCalls = 50_000_000, calls = 5_000_000;
+        UploadSizer.resetForTest();
+        double[] ns = new double[7];
+        for (int r = 0; r < 3 + 7; r++) {
+            long t0 = System.nanoTime();
+            int hits = 0;
+            for (int i = 0; i < offCalls; i++) if (GpuPatches.onBufferData(null, null)) hits++;
+            long dt = System.nanoTime() - t0;
+            if (hits != 0) throw new IllegalStateException("vbosize: key off took an upload");
+            if (r >= 3) ns[r - 3] = dt / (double) offCalls;
+        }
+        System.out.printf("vbosize key off          : %6.2f ns/call (min %.2f, max %.2f)%n", median(ns), ns[0], ns[6]);
+
+        zombie.core.VBO.IGLBufferObject was = zombie.core.VBO.GLVertexBufferObject.funcs;
+        Thread wasThread = PresentLog.renderThread;
+        zombie.core.VBO.GLVertexBufferObject.funcs = new zombie.core.VBO.GLBufferObject15();
+        PresentLog.renderThread = Thread.currentThread();
+        try {
+            java.util.Random rnd = new java.util.Random(5);
+            java.nio.ByteBuffer[] sizes = new java.nio.ByteBuffer[512];
+            for (int i = 0; i < sizes.length; i++) sizes[i] = java.nio.ByteBuffer.allocateDirect(1024 + rnd.nextInt(1024 * 1024 - 1024 + 1));
+            java.nio.ByteBuffer fourKb = java.nio.ByteBuffer.allocateDirect(4096);
+            for (int scen = 0; scen < 2; scen++) {
+                double[] t = new double[7];
+                long first = 0;
+                for (int r = 0; r < 3 + 7; r++) {
+                    UploadSizer.resetForTest();
+                    FoldUploader f = new FoldUploader();
+                    UploadSizer.gl = f;
+                    UploadSizer.mode = scen == 0 ? UploadSizer.ORPHAN : UploadSizer.SUBDATA;
+                    UploadSizer.guard.on = true;
+                    zombie.core.VBO.GLVertexBufferObject[] v = new zombie.core.VBO.GLVertexBufferObject[scen == 0 ? 2 : 4];
+                    for (int i = 0; i < v.length; i++) v[i] = new zombie.core.VBO.GLVertexBufferObject(4096, 34962, 35040);
+                    long t0 = System.nanoTime();
+                    for (int i = 0; i < calls; i++) {
+                        if (!GpuPatches.onBufferData(v[i % v.length], scen == 0 ? fourKb : sizes[(i * 7) & 511])) throw new IllegalStateException("vbosize: upload refused");
+                    }
+                    long dt = System.nanoTime() - t0;
+                    if (!UploadSizer.guard.on) throw new IllegalStateException("vbosize: the lag guard tripped");
+                    if (r == 0) first = f.sum;
+                    else if (f.sum != first) throw new IllegalStateException("vbosize: checksum changed between runs");
+                    if (r >= 3) t[r - 3] = dt / (double) calls;
+                }
+                System.out.printf("vbosize %-17s: %6.2f ns/call (min %.2f, max %.2f), checksum %d%n",
+                    scen == 0 ? "orphan, 4 KB x2" : "subdata, 1K-1M x4", median(t), t[0], t[6], first);
+            }
+        } finally {
+            zombie.core.VBO.GLVertexBufferObject.funcs = was;
+            PresentLog.renderThread = wasThread;
+            UploadSizer.resetForTest();
+        }
     }
 }
