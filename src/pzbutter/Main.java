@@ -25,6 +25,7 @@ public class Main {
         LuaGate.init();
         LuaFiles.init();
         LogDedupe.init();
+        ZombiePatches.init();
         UiTiming.init();
         UiCensus.init();
         UiRetain.init();

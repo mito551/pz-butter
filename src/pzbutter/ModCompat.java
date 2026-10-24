@@ -42,7 +42,7 @@ final class ModCompat {
 
     /** The classes whose nested classes are PZ Butter's holders. */
     static final Class<?>[] OUTERS = {Patches.class, DeliveryPatches.class, LuaPatches.class, UiPatches.class, MapPatches.class,
-        SoundPatches.class, WorldPatches.class, ChunkPatches.class, LogPatches.class};
+        SoundPatches.class, WorldPatches.class, ChunkPatches.class, LogPatches.class, ZombiePatches.class};
 
     private static final String PATCH = "Lme/zed_0xff/zombie_buddy/Patch;";
     private static final String ON_ENTER = "Lme/zed_0xff/zombie_buddy/Patch$OnEnter;";
@@ -120,6 +120,8 @@ final class ModCompat {
         Map.entry("LuaPatches.FileReader", k("luaFileWriteThrottle")),
         Map.entry("LuaPatches.FileInput", k("luaFileWriteThrottle")),
         Map.entry("LuaPatches.FileOutput", k("luaFileWriteThrottle")),
+        // zombies and entities (Plan 8)
+        Map.entry("ZombiePatches.ForwardDirection", k("zeroFacingFix")),
         // log
         Map.entry("LogPatches.Writeln", k("logDedupe")),
         Map.entry("LogPatches.PrefixLine", k("logDedupe")),
