@@ -12,6 +12,7 @@ public final class ZombiePatches {
 
     public static void init() {
         FacingFix.init();
+        ZombieLod.init();
     }
 
     /** IsoGameCharacter.setForwardDirection(float, float) entry: true skips the body (the character keeps its facing). */

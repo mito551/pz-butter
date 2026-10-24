@@ -55,6 +55,11 @@ import zombie.iso.IsoGridSquare;
  *          (10,000 calls), (d) 8 threads x 10,000 calls of one line (the sum of the threads' own loop times per call). Prints the
  *          printed count (calls for which drop() was false) and the summary lines of one roll after each scenario, both fixed
  *          (checked: printed 10,000 / 1 / 50 / 1, and the summaries must equal the exact repeat counts).
+ * scenecull: the cull loop's 3D cap and model budget (ZombieLod, Plan 8), median of 7 runs after a warm-up, 500 culls of 2,000
+ *          setSceneCulled calls a run (every 16th is stock's own culled call). (2) cap 300, 600 zombies already in the model
+ *          manager (the first 600 calls): ns per decide(); (3) budget 500 us with fake add costs of 40 us, 50 first-time adds per
+ *          cull (every 40th call): ns per decide() plus granted(). Prints a checksum of every decided boolean (the rewrite
+ *          pattern), which must not change between versions.
  */
 public final class DeliveryBench {
     static final com.sun.management.ThreadMXBean MX = (com.sun.management.ThreadMXBean) ManagementFactory.getThreadMXBean();
@@ -78,7 +83,8 @@ public final class DeliveryBench {
             case "replay" -> replay();
             case "luafiles" -> luafiles();
             case "dedupe" -> dedupe();
-            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | uislice | readset | soundgate | cutaway | splash | edge | plan | gate | luagate | replay | luafiles | dedupe");
+            case "scenecull" -> scenecull();
+            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | uislice | readset | soundgate | cutaway | splash | edge | plan | gate | luagate | replay | luafiles | dedupe | scenecull");
         }
     }
 
@@ -979,5 +985,47 @@ public final class DeliveryBench {
             else for (String l : summaries.split("\n")) System.out.println("  " + l);
         }
         LogDedupe.resetForTest();
+    }
+
+    // ---- Plan 8: the cull loop's decisions ----
+
+    /** One run: {@code culls} culls of {@code calls} calls; returns the checksum of the decided booleans. */
+    static long cullRun(int culls, int calls, boolean budget) {
+        long sum = 0;
+        for (int c = 0; c < culls; c++) {
+            ZombieLod.beginCull(20);
+            for (int i = 0; i < calls; i++) {
+                boolean culled = (i & 15) == 15;
+                boolean added = budget ? i % 40 != 0 : i < 600;
+                boolean r = ZombieLod.decide(culled, added);
+                if (budget && !culled && !r) ZombieLod.granted(added, 40_000L);
+                sum = sum * 31 + (r ? 1 : 0);
+            }
+            ZombieLod.endCull();
+        }
+        return sum;
+    }
+
+    static void scenecull() {
+        final int culls = 500, calls = 2_000;
+        String[] label = {"2 cap 300, 600 added", "3 budget 500 us, 50 adds"};
+        for (int sc = 0; sc < 2; sc++) {
+            double[] ns = new double[7];
+            long sum = 0, first = 0;
+            for (int r = 0; r < 3 + 7; r++) {
+                ZombieLod.resetForTest();
+                if (sc == 0) { ZombieLod.capGuard.on = true; ZombieLod.cap = 300; }
+                else { ZombieLod.budgetGuard.on = true; ZombieLod.budgetNs = 500_000L; }
+                long t0 = System.nanoTime();
+                sum = cullRun(culls, calls, sc == 1);
+                long dt = System.nanoTime() - t0;
+                if (r == 0) first = sum;
+                else if (sum != first) throw new IllegalStateException("scenecull: checksum changed between runs");
+                if (r >= 3) ns[r - 3] = dt / (double) ((long) culls * calls);
+            }
+            System.out.printf("scenecull %-26s: %6.2f ns/call (min %.2f, max %.2f), checksum %d, capped %d, deferred %d%n",
+                label[sc], median(ns), ns[0], ns[6], sum, ZombieLod.capped, ZombieLod.deferred);
+        }
+        ZombieLod.resetForTest();
     }
 }

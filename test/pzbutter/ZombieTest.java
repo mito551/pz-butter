@@ -11,6 +11,12 @@ final class ZombieTest {
         facingSkipsOnlyWhatStockThrows();
         facingOtherThreadPassesThrough();
         facingHolderSelectsFloatOverload();
+        cullCapCountsGrantsInOrder();
+        cullCapNeverBelowBlend();
+        modelBudgetDefersFirstTimeAdds();
+        blendCountWritten();
+        blendZeroWritesNothing();
+        lodKeysParse();
     }
 
     static final String[] PLAN8_FLAGS = {"zeroFacingFix", "playerLosFast", "zombieCullSortFast", "statsNoBox", "popmanFlagsFlyweight", "entityTiming"};
@@ -86,5 +92,70 @@ final class ZombieTest {
         me.zed_0xff.zombie_buddy.Patch p = ZombiePatches.ForwardDirection.class.getAnnotation(me.zed_0xff.zombie_buddy.Patch.class);
         assert p.className().equals("zombie.characters.IsoGameCharacter") && p.methodName().equals("setForwardDirection");
         assert m.getAnnotation(me.zed_0xff.zombie_buddy.Patch.OnEnter.class).skipOn();
+    }
+
+    // ---- Task 3: blend count, 3D cap and model budget ----
+
+    static void cullCapCountsGrantsInOrder() {
+        ZombieLod.resetForTest(); ZombieLod.capGuard.on = true; ZombieLod.cap = 50;
+        ZombieLod.beginCull(20);
+        for (int i = 0; i < 50; i++) assert !ZombieLod.decide(false, true) : i;
+        assert ZombieLod.decide(false, true) && ZombieLod.decide(false, false);   // the 51st and 52nd grants become sprites
+        assert !ZombieLod.decide(true, true) && ZombieLod.grants == 52;           // stock's own culled calls pass, uncounted
+        assert ZombieLod.capped == 2 && ZombieLod.deferred == 0;
+        ZombieLod.endCull();
+        ZombieLod.beginCull(20);
+        assert !ZombieLod.decide(false, true) && ZombieLod.grants == 1;            // a new cull counts from 0
+        ZombieLod.endCull(); ZombieLod.resetForTest();
+    }
+
+    static void cullCapNeverBelowBlend() {
+        ZombieLod.resetForTest(); ZombieLod.capGuard.on = true; ZombieLod.cap = 50;
+        ZombieLod.beginCull(64);
+        for (int i = 0; i < 64; i++) assert !ZombieLod.decide(false, true) : i;
+        assert ZombieLod.decide(false, true);
+        assert ZombieLod.effectiveCap(0, 64) == 0 && ZombieLod.effectiveCap(300, 20) == 300;
+        ZombieLod.endCull(); ZombieLod.resetForTest();
+    }
+
+    static void modelBudgetDefersFirstTimeAdds() {
+        ZombieLod.resetForTest(); ZombieLod.budgetGuard.on = true; ZombieLod.budgetNs = 1_000_000L;
+        ZombieLod.beginCull(20);
+        assert !ZombieLod.decide(false, false); ZombieLod.granted(false, 2_000_000L);   // the first add of a cull always passes
+        assert ZombieLod.decide(false, false);                                          // budget spent: the next first-time add waits
+        assert !ZombieLod.decide(false, true);                                          // a zombie that has its model keeps it
+        ZombieLod.endCull();
+        ZombieLod.beginCull(20);
+        assert !ZombieLod.decide(false, false); ZombieLod.granted(false, 300_000L);
+        assert !ZombieLod.decide(false, false); ZombieLod.granted(false, 300_000L);
+        assert !ZombieLod.decide(false, false); ZombieLod.granted(false, 500_000L);     // 0.6 ms < 1 ms: passes; now 1.1 ms
+        assert ZombieLod.decide(false, false) && ZombieLod.deferred == 2;
+        ZombieLod.endCull(); ZombieLod.resetForTest();
+    }
+
+    static void blendCountWritten() {
+        ZombieLod.resetForTest(); ZombieLod.blendGuard.on = true; ZombieLod.blended = 10;
+        ZombieLod.enterCull();
+        assert zombie.core.PerformanceSettings.numberZombiesBlended == 10 && !ZombieLod.inCull;   // blend alone does not open a cull
+        ZombieLod.exitCull();
+        zombie.core.PerformanceSettings.numberZombiesBlended = 20; ZombieLod.resetForTest();
+    }
+
+    static void blendZeroWritesNothing() {
+        ZombieLod.resetForTest();
+        zombie.core.PerformanceSettings.numberZombiesBlended = 20;
+        ZombieLod.enterCull(); ZombieLod.exitCull();
+        assert zombie.core.PerformanceSettings.numberZombiesBlended == 20 && !ZombieLod.inCull;
+    }
+
+    static void lodKeysParse() {
+        Settings.load(SelfTest.write("enabled=true\nzombieLodFixed3d=10\nnumberZombiesBlended=99\nzombieModelAddBudgetUs=500\n"));
+        ZombieLod.init();
+        assert ZombieLod.cap == 50 && ZombieLod.blended == 64 && ZombieLod.budgetNs == 500_000L;
+        assert ZombieLod.capGuard.on && ZombieLod.blendGuard.on && ZombieLod.budgetGuard.on;
+        Settings.load(SelfTest.write("enabled=false\nzombieLodFixed3d=300\n"));
+        ZombieLod.init();
+        assert ZombieLod.cap == 0 && !ZombieLod.capGuard.on;
+        ZombieLod.resetForTest();
     }
 }
