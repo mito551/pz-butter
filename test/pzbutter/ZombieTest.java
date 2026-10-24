@@ -49,7 +49,7 @@ final class ZombieTest {
         statsGetMatchesStock();
         statsGetFallsBackToStock();
         statsShimOffTouchesNothing();
-        flagsFlyweightSameFlags();
+        removedFlyweightKeyIsKept();
         smallHoldersTargetStock();
         entityTimingSumsOutermost();
         entityTimingMinuteLine();
@@ -63,7 +63,7 @@ final class ZombieTest {
         zombieShimsOffTouchNothing();
     }
 
-    static final String[] PLAN8_FLAGS = {"zeroFacingFix", "playerLosFast", "zombieCullSortFast", "statsNoBox", "popmanFlagsFlyweight", "entityTiming"};
+    static final String[] PLAN8_FLAGS = {"zeroFacingFix", "playerLosFast", "zombieCullSortFast", "statsNoBox", "entityTiming"};
 
     static void plan8KeysDefaults() {
         Settings.load(SelfTest.write(Settings.render(new java.util.Properties()).replace("\nenabled=false\n", "\nenabled=true\n")));
@@ -77,7 +77,7 @@ final class ZombieTest {
         String t = Settings.render(new java.util.Properties());
         for (String k : new String[] {"zeroFacingFix=false", "numberZombiesBlended=0", "zombieLodFixed3d=0", "zombieModelAddBudgetUs=0",
                 "zombieSimLodTiles=0", "zombieSimLodSteps=1", "playerLosFast=false", "zombieCullSortFast=false", "statsNoBox=false",
-                "popmanFlagsFlyweight=false", "entityTiming=false"})
+                "entityTiming=false"})
             assert t.contains("\n" + k + "\n") : k;
         assert t.indexOf("\nbloodRebakeCoalesceMs=250\n") < t.indexOf("\nzeroFacingFix=false\n") && t.indexOf("\nentityTiming=false\n") < t.indexOf("\ninputLatch=true\n");
         for (String k : new String[] {"zombieLodFixed3d", "zombieModelAddBudgetUs", "zombieSimLodTiles"})
@@ -640,37 +640,28 @@ final class ZombieTest {
 
     static void statsShimOffTouchesNothing() {
         ZombieMisc.resetForTest();
-        assert ZombiePatches.onStatsGet(null, null) == -1 && ZombiePatches.onFromInt(3) == null;
-        Settings.load(SelfTest.write("enabled=false\nstatsNoBox=true\npopmanFlagsFlyweight=true\n"));
+        assert ZombiePatches.onStatsGet(null, null) == -1;
+        Settings.load(SelfTest.write("enabled=false\nstatsNoBox=true\n"));
         ZombieMisc.init();
-        assert !ZombieMisc.statsGuard.on && !ZombieMisc.flagsGuard.on;
+        assert !ZombieMisc.statsGuard.on;
         Settings.load(SelfTest.write("enabled=true\n"));
     }
 
-    static void flagsFlyweightSameFlags() {
-        ZombieMisc.resetForTest();
-        ZombieMisc.flagsGuard.on = true;
-        try {
-            for (int v = 0; v < 64; v++) {
-                zombie.popman.ZombieStateFlags shared = ZombieMisc.flags(v), stock = new zombie.popman.ZombieStateFlags(v);
-                assert shared == ZombieMisc.flags(v) && shared != stock && shared.asInt() == stock.asInt() && shared.toString().equals(stock.toString());
-                assert ZombiePatches.onFromInt(v) == shared;
-                assert shared.isInitialized() == stock.isInitialized() && shared.isCrawling() == stock.isCrawling() && shared.isCanWalk() == stock.isCanWalk()
-                    && shared.isFakeDead() == stock.isFakeDead() && shared.isCanCrawlUnderVehicle() == stock.isCanCrawlUnderVehicle()
-                    && shared.isReanimatedForGrappleOnly() == stock.isReanimatedForGrappleOnly();
-            }
-            assert ZombieMisc.flags(64) == null && ZombieMisc.flags(-1) == null && ZombieMisc.flags(Integer.MIN_VALUE) == null && ZombieMisc.flags(Integer.MAX_VALUE) == null;
-            ZombieMisc.flagsGuard.on = false;
-            assert ZombieMisc.flags(3) == null && ZombiePatches.onFromInt(3) == null;
-        } finally { ZombieMisc.resetForTest(); }
+    // popmanFlagsFlyweight was dropped: a settings file that still names it keeps the line (as an unknown key) and loads
+    static void removedFlyweightKeyIsKept() {
+        java.util.Properties p = new java.util.Properties();
+        p.setProperty("popmanFlagsFlyweight", "true");
+        String t = Settings.render(p);
+        assert !Settings.render(new java.util.Properties()).contains("popmanFlagsFlyweight") && t.contains("\npopmanFlagsFlyweight=true\n") : t;
+        Settings.load(SelfTest.write("enabled=true\npopmanFlagsFlyweight=true\n"));
+        ZombiePatches.init();
+        Settings.load(SelfTest.write("enabled=true\n"));
     }
 
     static void smallHoldersTargetStock() throws Exception {
         me.zed_0xff.zombie_buddy.Patch p = ZombiePatches.StatsGet.class.getAnnotation(me.zed_0xff.zombie_buddy.Patch.class);
         assert p.className().equals("zombie.characters.Stats") && p.methodName().equals("get");
-        p = ZombiePatches.FlagsFromInt.class.getAnnotation(me.zed_0xff.zombie_buddy.Patch.class);
-        assert p.className().equals("zombie.popman.ZombieStateFlags") && p.methodName().equals("fromInt");
-        for (Class<?> h : new Class<?>[] {ZombiePatches.StatsGet.class, ZombiePatches.FlagsFromInt.class}) {
+        for (Class<?> h : new Class<?>[] {ZombiePatches.StatsGet.class}) {
             boolean enterSkips = false, exitReturns = false;
             for (java.lang.reflect.Method m : h.getDeclaredMethods()) {
                 me.zed_0xff.zombie_buddy.Patch.OnEnter e = m.getAnnotation(me.zed_0xff.zombie_buddy.Patch.OnEnter.class);
@@ -852,15 +843,15 @@ final class ZombieTest {
         ZombiePatches.onLosEnter(null); ZombiePatches.onLosExit();
         java.util.Comparator<Object> c = (x, y) -> 0;
         assert ZombiePatches.onSortEnter(null, c, 0, 0) == c; ZombiePatches.onSortExit(c);
-        assert ZombiePatches.onStatsGet(null, null) == -1 && ZombiePatches.onFromInt(1) == null;
+        assert ZombiePatches.onStatsGet(null, null) == -1;
         ZombiePatches.onSchedEnter(0); ZombiePatches.onSchedExit(0); ZombiePatches.onFrameEnd();
         assert EntityTiming.samples() == 0 && EntityTiming.frameTotal(0) == 0;
         assert zombie.core.PerformanceSettings.numberZombiesBlended == 20;
         // enabled=false answers the same through the inits
         Settings.load(SelfTest.write("enabled=false\nzeroFacingFix=true\nplayerLosFast=true\nzombieCullSortFast=true\nstatsNoBox=true\n"
-            + "popmanFlagsFlyweight=true\nentityTiming=true\nnumberZombiesBlended=9\nzombieLodFixed3d=99\nzombieModelAddBudgetUs=9\nzombieSimLodTiles=9\n"));
+            + "entityTiming=true\nnumberZombiesBlended=9\nzombieLodFixed3d=99\nzombieModelAddBudgetUs=9\nzombieSimLodTiles=9\n"));
         ZombiePatches.init();
-        assert !FacingFix.guard.on && !ZombiePatches.losGuard.on && !CullSort.guard.on && !ZombieMisc.statsGuard.on && !ZombieMisc.flagsGuard.on
+        assert !FacingFix.guard.on && !ZombiePatches.losGuard.on && !CullSort.guard.on && !ZombieMisc.statsGuard.on 
             && !EntityTiming.guard.on && !ZombieLod.blendGuard.on && !ZombieLod.capGuard.on && !ZombieLod.budgetGuard.on && !ZombieLod.simGuard.on;
         Settings.load(SelfTest.write("enabled=true\n"));
         ZombiePatches.init();

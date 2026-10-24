@@ -77,10 +77,6 @@ import zombie.iso.IsoGridSquare;
  * statsget: Stats.get (stock) against the statsNoBox shim (ZombiePatches.onStatsGet + unpack) over every CharacterStat of one Stats with
  *          every second stat set (hits and default reads), 5 M reads a run, median of 7 runs after a warm-up; then the bytes allocated per
  *          read over 10 M reads of each. Prints a checksum of the floats read, equal for both (checked) and fixed between versions.
- * flags:   new ZombieStateFlags(v) against the popmanFlagsFlyweight shim (ZombiePatches.onFromInt), v random 0-63, 5 M objects a run,
- *          median of 7 runs after a warm-up, in two uses: "read" (isCrawling + asInt, nothing stored, so the JIT may drop stock's
- *          allocation) and "kept" (stored into a 1,024-slot ring and read back later, as a caller that keeps the object); then the bytes
- *          allocated per object over 10 M. Prints a checksum of the flags read, equal for both (checked) and fixed between versions.
  */
 public final class DeliveryBench {
     static final com.sun.management.ThreadMXBean MX = (com.sun.management.ThreadMXBean) ManagementFactory.getThreadMXBean();
@@ -109,8 +105,7 @@ public final class DeliveryBench {
             case "spotted" -> spotted();
             case "cullsort" -> { try { cullsort(); } catch (Throwable t) { throw new RuntimeException(t); } }
             case "statsget" -> statsget();
-            case "flags" -> flags();
-            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | uislice | readset | soundgate | cutaway | splash | edge | plan | gate | luagate | replay | luafiles | dedupe | scenecull | simlod | spotted | cullsort | statsget | flags");
+            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | uislice | readset | soundgate | cutaway | splash | edge | plan | gate | luagate | replay | luafiles | dedupe | scenecull | simlod | spotted | cullsort | statsget");
         }
     }
 
@@ -1270,56 +1265,5 @@ public final class DeliveryBench {
         }
         ZombieMisc.resetForTest();
         if (check[0] != check[1]) throw new IllegalStateException("statsget: the two reads disagree");
-    }
-
-    static long flagsRun(int[] vals, int count, boolean ours, boolean keep, Object[] ring) {
-        long sum = 0;
-        int m = vals.length - 1;
-        for (int i = 0; i < count; i++) {
-            int v = vals[i & m];
-            zombie.popman.ZombieStateFlags f = ours ? (zombie.popman.ZombieStateFlags) ZombiePatches.onFromInt(v) : null;
-            if (f == null) f = zombie.popman.ZombieStateFlags.fromInt(v);
-            if (keep) {
-                zombie.popman.ZombieStateFlags old = (zombie.popman.ZombieStateFlags) ring[i & 1023];
-                ring[i & 1023] = f;
-                if (old != null) sum = sum * 31 + old.asInt() + (old.isCrawling() ? 7 : 0);
-            } else sum = sum * 31 + f.asInt() + (f.isCrawling() ? 7 : 0);
-        }
-        return sum;
-    }
-
-    static void flags() {
-        final int count = 5_000_000, allocCount = 10_000_000;
-        java.util.Random rnd = new java.util.Random(12);
-        int[] vals = new int[4096];
-        for (int i = 0; i < vals.length; i++) vals[i] = rnd.nextInt(64);
-        Object[] ring = new Object[1024];
-        for (int keep = 0; keep < 2; keep++) {
-            long[] check = new long[2];
-            for (int kind = 0; kind < 2; kind++) {
-                ZombieMisc.resetForTest();
-                ZombieMisc.flagsGuard.on = kind == 1;
-                double[] ns = new double[7];
-                long sum = 0, first = 0;
-                for (int r = 0; r < 3 + 7; r++) {
-                    java.util.Arrays.fill(ring, null);
-                    long t0 = System.nanoTime();
-                    sum = flagsRun(vals, count, kind == 1, keep == 1, ring);
-                    long dt = System.nanoTime() - t0;
-                    if (r == 0) first = sum;
-                    else if (sum != first) throw new IllegalStateException("flags: checksum changed between runs");
-                    if (r >= 3) ns[r - 3] = dt / (double) count;
-                }
-                check[kind] = sum;
-                java.util.Arrays.fill(ring, null);
-                long b0 = MX.getCurrentThreadAllocatedBytes();
-                flagsRun(vals, allocCount, kind == 1, keep == 1, ring);
-                double bytes = (MX.getCurrentThreadAllocatedBytes() - b0) / (double) allocCount;
-                System.out.printf("flags %-5s %-12s: %6.2f ns/object (min %.2f, max %.2f), %5.2f bytes/object, checksum %d%n",
-                    keep == 0 ? "read" : "kept", kind == 0 ? "fromInt" : "flyweight", median(ns), ns[0], ns[6], bytes, sum);
-            }
-            if (check[0] != check[1]) throw new IllegalStateException("flags: the two kinds disagree");
-        }
-        ZombieMisc.resetForTest();
     }
 }

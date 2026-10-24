@@ -113,7 +113,6 @@ The mod creates `~/Zomboid/PZButter.properties` on first start and reads it once
 | `playerLosFast` | The player's sight pass checks "have I seen this one before" with a set instead of searching a list of every zombie seen recently (millions of checks a frame in a big horde). The same answers. Off by default. |
 | `zombieCullSortFast` | The sort that picks which zombies get 3D models works each zombie's score out once instead of twice per comparison. The same order. Off by default. |
 | `statsNoBox` | Character stat reads skip a throwaway object per read. The same values. Off by default. |
-| `popmanFlagsFlyweight` | Zombies the population hands over share their state-flag objects instead of one new object each. The same flags; a Java mod that changes such an object would change it for every zombie with the same flags. Off by default. |
 | `entityTiming` | Diagnostic. Once a minute the console gets the time per frame of the zombie update phases (sorting into update tiers, update, movement and animation, 3D model picking, the player's sight pass) and the zombie count; with `frameLog`, one line per frame in `Zomboid/pzbutter/entity.out`. Off by default. |
 
 Each line of `frames.out` has five fields:

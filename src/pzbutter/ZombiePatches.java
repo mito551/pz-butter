@@ -263,20 +263,13 @@ public final class ZombiePatches {
         public static void exit(@Patch.Argument(1) java.util.Comparator c) { ZombiePatches.onSortExit(c); }
     }
 
-    // ---- statsNoBox, popmanFlagsFlyweight: two allocation savers ----
+    // ---- statsNoBox: an allocation saver ----
 
     /** Stats.get entry: -1 runs stock; else the answer packed by ZombieMisc.statsGet. Any thread. */
     public static long onStatsGet(Object self, Object stat) {
         if (!ZombieMisc.statsGuard.on) return -1;
         try { return ZombieMisc.statsGet(self, stat); }
         catch (Throwable t) { ZombieMisc.statsGuard.fail(t); return -1; }
-    }
-
-    /** ZombieStateFlags.fromInt entry: the shared object for 0 to 63, else null (stock builds its own). Any thread. */
-    public static Object onFromInt(int v) {
-        if (!ZombieMisc.flagsGuard.on) return null;
-        try { return ZombieMisc.flags(v); }
-        catch (Throwable t) { ZombieMisc.flagsGuard.fail(t); return null; }
     }
 
     /** The only overload. The answer rides in a long local (bit 32 set) so nothing is boxed. */
@@ -291,21 +284,6 @@ public final class ZombiePatches {
         @Patch.OnExit
         public static void exit(@Patch.Return(readOnly = false) float ret, @Patch.Local("r") long r) {
             if (r >= 0) ret = Float.intBitsToFloat((int) r);
-        }
-    }
-
-    /** The only fromInt (static). */
-    @Patch(className = "zombie.popman.ZombieStateFlags", methodName = "fromInt")
-    public static class FlagsFromInt {
-        @Patch.OnEnter(skipOn = true)
-        public static boolean enter(@Patch.Argument(0) int v, @Patch.Local("f") Object f) {
-            f = ZombiePatches.onFromInt(v);
-            return f != null;
-        }
-
-        @Patch.OnExit
-        public static void exit(@Patch.Return(readOnly = false) zombie.popman.ZombieStateFlags ret, @Patch.Local("f") Object f) {
-            if (f != null) ret = (zombie.popman.ZombieStateFlags) f;
         }
     }
 

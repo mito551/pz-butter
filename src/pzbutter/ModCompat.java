@@ -128,7 +128,6 @@ final class ModCompat {
         Map.entry("ZombiePatches.UpdateLos", k("playerLosFast", "entityTiming")),
         Map.entry("ZombiePatches.CullSortHook", k("zombieCullSortFast")),
         Map.entry("ZombiePatches.StatsGet", k("statsNoBox")),
-        Map.entry("ZombiePatches.FlagsFromInt", k("popmanFlagsFlyweight")),
         Map.entry("ZombiePatches.SchedStart", k("entityTiming")),
         Map.entry("ZombiePatches.SchedUpdate", k("entityTiming")),
         Map.entry("ZombiePatches.SchedPost", k("entityTiming")),

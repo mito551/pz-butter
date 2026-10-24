@@ -235,8 +235,6 @@ public final class Settings {
       + "zombieCullSortFast=false\n"
       + "# statsNoBox: character stat reads skip a throwaway object per read; the same values.\n"
       + "statsNoBox=false\n"
-      + "# popmanFlagsFlyweight: zombies the population hands over share their state-flag objects instead of one new object each; the same flags.\n"
-      + "popmanFlagsFlyweight=false\n"
       + "# entityTiming: diagnostic; once a minute, the time per frame of the zombie update phases goes to the console (and entity.out with frameLog).\n"
       + "entityTiming=false\n"
       + "#\n"

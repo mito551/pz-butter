@@ -2,21 +2,17 @@ package pzbutter;
 
 import java.lang.invoke.VarHandle;
 import java.util.Map;
-import zombie.popman.ZombieStateFlags;
 
 /**
- * statsNoBox (SPEC 4.7) and popmanFlagsFlyweight (SPEC 6.1): two tiny allocation savers. Any thread.
+ * statsNoBox (SPEC 4.7): a tiny allocation saver. Any thread. (SPEC 6.1's popmanFlagsFlyweight was built, measured and dropped.)
  * <p>
  * {@code Stats.get(stat)} is {@code stats.getOrDefault(stat, Float.valueOf(stat.getDefaultValue())).floatValue()}: the default is
  * boxed on every read. {@link #statsGet} reads the map itself and boxes nothing; the answer travels packed in a long.
- * {@code ZombieStateFlags.fromInt(v)} is {@code new ZombieStateFlags(v)}: for 0 to 63 the 64 possible objects are built once and
- * shared (no caller in the game stores one or changes one; research, mismatch 7).
  */
 final class ZombieMisc {
     private ZombieMisc() {}
 
     static final Guard statsGuard = new Guard("statsNoBox");
-    static final Guard flagsGuard = new Guard("popmanFlagsFlyweight");
 
     /** Stats.stats (private final Map). A static final in a holder, so the JIT folds the handle into the read (a plain static field is not). */
     private static final class StatsMap {
@@ -29,12 +25,8 @@ final class ZombieMisc {
     /** getOrDefault's "key absent" answer: a Float no stat map holds. */
     private static final Float ABSENT = Float.valueOf(Float.NaN);
 
-    /** The 64 shared flag objects; published by a volatile write once all are built. */
-    private static volatile ZombieStateFlags[] shared;
-
     static void init() {
         statsGuard.on = Settings.flag("statsNoBox");
-        flagsGuard.on = Settings.flag("popmanFlagsFlyweight");
         if (statsGuard.on && StatsMap.H == null) {
             statsGuard.on = false;
             System.out.println("[PZButter] statsNoBox off: Stats.stats not found");
@@ -59,20 +51,7 @@ final class ZombieMisc {
         return (Map<Object, Object>) StatsMap.H.get(stats);
     }
 
-    /** The shared object for a flag value 0 to 63; null (stock) for anything else or with the key off. */
-    static ZombieStateFlags flags(int v) {
-        if (!flagsGuard.on || v < 0 || v >= 64) return null;
-        ZombieStateFlags[] s = shared;
-        if (s == null) {
-            s = new ZombieStateFlags[64];
-            for (int i = 0; i < 64; i++) s[i] = new ZombieStateFlags(i);
-            shared = s;
-        }
-        return s[v];
-    }
-
     static void resetForTest() {
-        statsGuard.on = flagsGuard.on = false;
-        shared = null;
+        statsGuard.on = false;
     }
 }
