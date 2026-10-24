@@ -36,6 +36,12 @@ final class LuaGate {
         boolean warned;
 
         Worker(Runnable r, String name) { super(r, name); setDaemon(true); }
+
+        /** However the body ends, a hold it still has is given back: the game thread must never wait for a dead owner. */
+        @Override public void run() {
+            try { super.run(); }
+            finally { abandon(this); }
+        }
     }
 
     // ---- the token: guarded by M; owner == null means free; UNCLAIMED means nobody holds it yet (workers wait) ----
@@ -47,14 +53,15 @@ final class LuaGate {
     private static volatile Thread holder;
     private static volatile int nWaiting;                       // workers in the queue (the holder's own place is not counted)
 
-    static final long WARN_NS = 2_000_000_000L;
+    /** The wait after which a thread logs once (SPEC constant; a test shortens it). */
+    static long warnNs = 2_000_000_000L;
     static final long PARK_SLICE_NS = 100_000L;
     static final long STAT_NS = 60_000_000_000L;
 
     // counters
     static long gatedCalls, waitNs, maxWaitNs, strays;
     private static final ArrayList<String> strayNames = new ArrayList<>();
-    private static long lastStatNs;
+    private static long lastStatNs, lastCalls, lastWaitNs, lastStrays;
 
     static void init() {
         guard.on = Settings.flag("luaWorkerGate");
@@ -83,7 +90,7 @@ final class LuaGate {
             w.holds++;
             return true;
         }
-        synchronized (M) { takeLocked(w); }
+        take(w);
         try {
             w.holds = 1;
             Supplier<KahluaThread[]> s = luaThreads;
@@ -97,8 +104,7 @@ final class LuaGate {
             }
         } catch (Throwable x) {
             w.holds = 0;
-            restore(w);
-            release(w);
+            try { restore(w); } finally { release(w); }
             throw x;
         }
         gatedCalls++;
@@ -108,8 +114,14 @@ final class LuaGate {
     static void exit() {
         if (!(Thread.currentThread() instanceof Worker w) || w.holds == 0) return;
         if (--w.holds > 0) return;
-        restore(w);
-        release(w);
+        try { restore(w); } finally { release(w); }
+    }
+
+    /** A worker's thread ended (or died) still holding: restore what it swapped and free the token. */
+    private static void abandon(Worker w) {
+        if (w.holds == 0) return;
+        w.holds = 0;
+        try { restore(w); } finally { release(w); }
     }
 
     /** Remembers k's owner once per outermost hold and makes the worker its owner. */
@@ -127,18 +139,22 @@ final class LuaGate {
 
     /** Puts back every value the worker changed, in reverse order. */
     private static void restore(Worker w) {
-        VarHandle slot = gameThreadSlot;
-        if (w.slotSwapped) {
-            if (slot != null) slot.set(w.savedGame);
-            w.slotSwapped = false;
-            w.savedGame = null;
+        try {
+            if (w.slotSwapped) {
+                VarHandle slot = gameThreadSlot;
+                Thread g = w.savedGame;
+                w.slotSwapped = false;
+                w.savedGame = null;
+                if (slot != null) slot.set(g);
+            }
+        } finally {                                                 // the Lua owner fields go back even when the slot would not
+            for (int i = w.swappedCount - 1; i >= 0; i--) {
+                w.swapped[i].debugOwnerThread = w.saved[i];
+                w.swapped[i] = null;
+                w.saved[i] = null;
+            }
+            w.swappedCount = 0;
         }
-        for (int i = w.swappedCount - 1; i >= 0; i--) {
-            w.swapped[i].debugOwnerThread = w.saved[i];
-            w.swapped[i] = null;
-            w.saved[i] = null;
-        }
-        w.swappedCount = 0;
     }
 
     private static void release(Thread t) {
@@ -157,43 +173,65 @@ final class LuaGate {
         }
     }
 
-    /**
-     * Takes the token for {@code self} (caller holds M): at once when it is free and nobody queues, else in arrival
-     * order. A worker that waited 2 s logs once.
-     */
-    private static void takeLocked(Thread self) {
-        if (owner == null && queue.isEmpty()) { owner = self; return; }
-        Worker w = self instanceof Worker x ? x : null;
+    /** Caller holds M: takes the token at once when it is free and nobody queues (true), else joins the queue (false). */
+    private static boolean arriveLocked(Thread self) {
+        if (owner == null && queue.isEmpty()) { owner = self; return true; }
         queue.addLast(self);
-        if (w != null) nWaiting++;
+        if (self instanceof Worker) nWaiting++;
+        return false;
+    }
+
+    /** Arrival and wait for the token in arrival order (caller does not hold M). */
+    private static void take(Thread self) {
+        boolean got;
+        synchronized (M) { got = arriveLocked(self); }
+        if (!got) awaitTurn(self);
+    }
+
+    /**
+     * Waits (queued by {@link #arriveLocked}) until the token is free and self is first, then owns it. A thread that waited 2 s logs
+     * once, outside the monitor. An interrupt does not end the wait; the flag is kept for the caller.
+     */
+    private static void awaitTurn(Thread self) {
+        Worker w = self instanceof Worker x ? x : null;
         long t0 = System.nanoTime();
-        boolean interrupted = false, taken = false;
+        boolean interrupted = false, taken = false, warned = w != null && w.warned, warnNow = false;
         try {
-            while (!(owner == null && queue.peekFirst() == self)) {
-                long ms = 0;                                        // 0: until notified
-                if (w != null && !w.warned) {
-                    long rem = WARN_NS - (System.nanoTime() - t0);
-                    if (rem <= 0) {
-                        w.warned = true;
-                        System.out.println("[PZButter] luaWorkerGate: " + self.getName() + " waited 2 s for the game thread");
-                    } else ms = Math.max(1, rem / 1_000_000L);
+            while (true) {
+                synchronized (M) {
+                    if (owner == null && queue.peekFirst() == self) {
+                        queue.pollFirst();
+                        if (w != null) nWaiting--;
+                        owner = self;
+                        taken = true;
+                        if (w != null) {
+                            long waited = System.nanoTime() - t0;
+                            waitNs += waited;
+                            if (waited > maxWaitNs) maxWaitNs = waited;
+                        }
+                        break;
+                    }
+                    long ms = 0;                                    // 0: until notified
+                    if (!warned) {
+                        long rem = warnNs - (System.nanoTime() - t0);
+                        if (rem <= 0) warned = warnNow = true;
+                        else ms = Math.max(1, rem / 1_000_000L);
+                    }
+                    if (!warnNow) try { M.wait(ms); } catch (InterruptedException e) { interrupted = true; }
                 }
-                try { M.wait(ms); } catch (InterruptedException e) { interrupted = true; }
-            }
-            queue.pollFirst();
-            if (w != null) nWaiting--;
-            owner = self;
-            taken = true;
-            if (w != null) {
-                long waited = System.nanoTime() - t0;
-                waitNs += waited;
-                if (waited > maxWaitNs) maxWaitNs = waited;
+                if (warnNow) {
+                    warnNow = false;
+                    if (w != null) w.warned = true;
+                    System.out.println("[PZButter] luaWorkerGate: " + self.getName() + (w != null ? " waited 2 s for the game thread" : " waited 2 s for a frame worker"));
+                }
             }
         } finally {
             if (!taken) {                                           // an Error out of the wait: leave the queue
-                queue.remove(self);
-                if (w != null) nWaiting--;
-                M.notifyAll();
+                synchronized (M) {
+                    queue.remove(self);
+                    if (w != null) nWaiting--;
+                    M.notifyAll();
+                }
             }
             if (interrupted) self.interrupt();
         }
@@ -213,17 +251,26 @@ final class LuaGate {
         }
     }
 
+    /**
+     * The holder waits for {@code done} with the token free. Not while another thread owns Lua (a world load): the token stays,
+     * so no worker can swap the owner fields away from the loader.
+     */
     static void awaitYielding(BooleanSupplier done) {
         Thread cur = Thread.currentThread();
         boolean mine;
         synchronized (M) {
-            mine = holder == cur && owner == cur;
+            mine = holder == cur && owner == cur && ownsLua(cur);
             if (mine) { owner = null; M.notifyAll(); }
         }
+        boolean interrupted = Thread.interrupted();                 // a set flag would end every park at once: keep it aside
         try {
-            while (!done.getAsBoolean()) java.util.concurrent.locks.LockSupport.parkNanos(PARK_SLICE_NS);
+            while (!done.getAsBoolean()) {
+                java.util.concurrent.locks.LockSupport.parkNanos(PARK_SLICE_NS);
+                if (Thread.interrupted()) interrupted = true;
+            }
         } finally {
-            if (mine) synchronized (M) { takeLocked(cur); }
+            if (mine) take(cur);
+            if (interrupted) cur.interrupt();
         }
     }
 
@@ -235,15 +282,18 @@ final class LuaGate {
     static int yieldPoint() {
         if (nWaiting == 0) return 0;
         Thread cur = Thread.currentThread();
+        int n;
+        boolean got;
         synchronized (M) {
-            if (owner != cur || holder != cur) return 0;
-            int n = nWaiting;
+            if (owner != cur || holder != cur || !ownsLua(cur)) return 0;
+            n = nWaiting;
             if (n == 0) return 0;
             owner = null;
             M.notifyAll();
-            takeLocked(cur);                                        // queues behind the n workers
-            return n;
+            got = arriveLocked(cur);                                // queues behind the n workers, in the same step as the release
         }
+        if (!got) awaitTurn(cur);
+        return n;
     }
 
     static int waiting() { return nWaiting; }
@@ -266,17 +316,20 @@ final class LuaGate {
         if (now - lastStatNs >= STAT_NS) {
             long elapsed = now - lastStatNs;
             lastStatNs = now;
-            if (gatedCalls != 0 || strays != 0) System.out.println(statLine(elapsed));
+            if (gatedCalls != lastCalls || strays != lastStrays) System.out.println(statLine(elapsed));
         }
     }
 
     static boolean available() { return guard.on && gameThreadSlot != null && holder != null; }
 
+    /** What happened since the previous line (the minute), not since the start. */
     static String statLine(long elapsedNs) {
         String names;
-        synchronized (M) { names = String.join(", ", strayNames); }
-        return String.format(Locale.ROOT, "[PZButter] luaWorkerGate: %d gated calls, %.3f ms waited (max %.3f), %d stray off-thread Lua calls [%s]",
-            gatedCalls, waitNs / 1e6, maxWaitNs / 1e6, strays, names);
+        synchronized (M) { names = String.join(", ", strayNames); strayNames.clear(); }
+        long calls = gatedCalls - lastCalls, wait = waitNs - lastWaitNs, st = strays - lastStrays, max = maxWaitNs;
+        lastCalls = gatedCalls; lastWaitNs = waitNs; lastStrays = strays; maxWaitNs = 0;
+        return String.format(Locale.ROOT, "[PZButter] luaWorkerGate: in %.0f s: %d gated calls, %.3f ms waited (max %.3f), %d stray off-thread Lua calls [%s]",
+            elapsedNs / 1e9, calls, wait / 1e6, max / 1e6, st, names);
     }
 
     static void resetForTest() {
@@ -287,9 +340,10 @@ final class LuaGate {
             nWaiting = 0;
             gatedCalls = waitNs = maxWaitNs = strays = 0;
             strayNames.clear();
-            lastStatNs = 0;
+            lastStatNs = lastCalls = lastWaitNs = lastStrays = 0;
             gameThreadSlot = null;
             luaThreads = null;
+            warnNs = 2_000_000_000L;
             guard.on = false;
             M.notifyAll();
         }

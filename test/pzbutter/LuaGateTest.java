@@ -32,6 +32,15 @@ final class LuaGateTest {
         gateKeyOffByDefault();
         gateInitResolvesSlot();
         awaitYieldingWakesAndRetakes();
+        workerThatEndsHoldingFreesTheToken();
+        failedRestoreStillReleases();
+        failedEnterStillReleases();
+        awaitYieldingKeepsTokenWhileLoaderOwnsLua();
+        yieldPointKeepsTokenWhileLoaderOwnsLua();
+        interruptFlagKeptAcrossWaits();
+        longWaitsLogOnce();
+        triggerEventNeverCountsStrays();
+        statLinesAreDeltas();
         gateHoldersBalanced();
         gateShimOffReadsNothing();
         gateShimRoutesWorker();
@@ -113,8 +122,14 @@ final class LuaGateTest {
 
     static volatile Thread fakeGame;
     static final VarHandle FAKE;
+    static final Thread FINAL_SLOT = null;
+    /** A slot whose set() throws (a final field): a restore or an enter that fails half way. */
+    static final VarHandle BAD_SLOT;
     static {
-        try { FAKE = MethodHandles.lookup().findStaticVarHandle(LuaGateTest.class, "fakeGame", Thread.class); }
+        try {
+            FAKE = MethodHandles.lookup().findStaticVarHandle(LuaGateTest.class, "fakeGame", Thread.class);
+            BAD_SLOT = MethodHandles.lookup().findStaticVarHandle(LuaGateTest.class, "FINAL_SLOT", Thread.class);
+        }
         catch (ReflectiveOperationException e) { throw new ExceptionInInitializerError(e); }
     }
 
@@ -333,6 +348,183 @@ final class LuaGateTest {
         LuaGate.resetForTest();
     }
 
+    // ---- review fixes: a holder that ends, restore/enter that fail, loader, interrupts, logs ----
+
+    /** A worker whose body ends (or dies) with a hold gives it back: Lua owner fields and gameThread restored, the token free. */
+    static void workerThatEndsHoldingFreesTheToken() throws Exception {
+        Lua l = new Lua("n = 0; function inc() n = n + 1 end"); setUp(l);
+        Thread main = Thread.currentThread();
+        Object inc = l.env.rawget("inc");
+        runWorkers(1, () -> { LuaGate.enter(l.kt); LuaGate.enter(l.kt); });                   // nested, never exited
+        assert fakeGame == main && l.kt.debugOwnerThread == main;
+        Thread dying = LuaGate.worker(() -> { LuaGate.enter(l.kt); throw new IllegalStateException("died holding"); }, "dying");
+        dying.setUncaughtExceptionHandler((t, e) -> { });                                      // really dies: the exception leaves run()
+        dying.start();
+        long t0 = System.nanoTime();
+        LuaGate.awaitYielding(() -> !dying.isAlive() || System.nanoTime() - t0 > 10_000_000_000L);
+        dying.join(5000);
+        assert !dying.isAlive();
+        assert fakeGame == main && l.kt.debugOwnerThread == main;
+        runWorkers(1, () -> gated(l, () -> l.caller.pcallvoid(l.kt, inc, (Object) null)));    // would queue forever behind a dead holder
+        assert ((Double) l.env.rawget("n")) == 1.0 && LuaGate.yieldPoint() == 0;
+        LuaGate.resetForTest();
+    }
+
+    /** exit() whose restore throws still releases; the Lua owner fields go back even though the slot would not. */
+    static void failedRestoreStillReleases() {
+        Lua l = new Lua("function f() end"); setUp(l);
+        Thread main = Thread.currentThread();
+        boolean[] threw = new boolean[1];
+        runWorkers(1, () -> {
+            assert LuaGate.enter(l.kt);
+            LuaGate.gameThreadSlot = BAD_SLOT;
+            try { LuaGate.exit(); } catch (UnsupportedOperationException expected) { threw[0] = true; }
+            LuaGate.gameThreadSlot = FAKE;
+        });
+        assert threw[0] && l.kt.debugOwnerThread == main;
+        runWorkers(1, () -> gated(l, () -> { }));                                              // the token was released
+        assert LuaGate.gatedCalls == 2;
+        LuaGate.resetForTest();
+    }
+
+    /** enter() failing after the token was taken releases it and puts the fields back. */
+    static void failedEnterStillReleases() {
+        Lua l = new Lua("function f() end"); setUp(l);
+        Thread main = Thread.currentThread();
+        boolean[] threw = new boolean[1];
+        LuaGate.gameThreadSlot = BAD_SLOT;
+        runWorkers(1, () -> { try { LuaGate.enter(l.kt); } catch (UnsupportedOperationException expected) { threw[0] = true; } });
+        LuaGate.gameThreadSlot = FAKE;
+        assert threw[0] && l.kt.debugOwnerThread == main && LuaGate.gatedCalls == 0;
+        runWorkers(1, () -> gated(l, () -> { }));
+        assert LuaGate.gatedCalls == 1;
+        LuaGate.resetForTest();
+    }
+
+    /** While a loader owns Lua, awaitYielding keeps the token: no worker runs on the loader's stack. */
+    static void awaitYieldingKeepsTokenWhileLoaderOwnsLua() throws Exception {
+        Lua l = new Lua("function f() end"); setUp(l);
+        Thread loader = new Thread(() -> { }, "loader");
+        l.kt.debugOwnerThread = loader;
+        Thread w = LuaGate.worker(() -> gated(l, () -> { }), "w");
+        w.start();
+        waitFor(() -> LuaGate.waiting() >= 1, "waiter");
+        int[] polls = {0};
+        LuaGate.awaitYielding(() -> ++polls[0] > 200);
+        assert w.isAlive() && LuaGate.gatedCalls == 0 && LuaGate.waiting() == 1;
+        l.kt.debugOwnerThread = Thread.currentThread();
+        assert LuaGate.yieldPoint() == 1;
+        w.join(5000);
+        assert !w.isAlive() && LuaGate.gatedCalls == 1;
+        LuaGate.resetForTest();
+    }
+
+    static void yieldPointKeepsTokenWhileLoaderOwnsLua() throws Exception {
+        Lua l = new Lua("function f() end"); setUp(l);
+        l.kt.debugOwnerThread = new Thread(() -> { }, "loader");
+        Thread w = LuaGate.worker(() -> gated(l, () -> { }), "w");
+        w.start();
+        waitFor(() -> LuaGate.waiting() >= 1, "waiter");
+        assert LuaGate.yieldPoint() == 0 && w.isAlive() && LuaGate.gatedCalls == 0;
+        l.kt.debugOwnerThread = Thread.currentThread();
+        assert LuaGate.yieldPoint() == 1;
+        w.join(5000);
+        assert !w.isAlive();
+        LuaGate.resetForTest();
+    }
+
+    /** Interrupts never end a wait for the token and the flag is still set afterwards (holder and worker alike). */
+    static void interruptFlagKeptAcrossWaits() throws Exception {
+        Lua l = new Lua("function f() end"); setUp(l);
+        // holder: interrupted inside awaitYielding, which neither spins on it nor drops it
+        Thread me = Thread.currentThread();
+        int[] polls = {0};
+        LuaGate.awaitYielding(() -> { if (polls[0]++ == 3) me.interrupt(); return polls[0] > 50; });
+        assert Thread.interrupted() && LuaGate.yieldPoint() == 0;                              // flag kept (and cleared here); token retaken
+        // worker waiting for the token is interrupted: it still gets the token, and keeps the flag
+        boolean[] kept = new boolean[2];
+        Thread w = LuaGate.worker(() -> { gated(l, () -> kept[0] = true); kept[1] = Thread.currentThread().isInterrupted(); }, "w-int");
+        w.start();
+        waitFor(() -> LuaGate.waiting() == 1, "waiter");
+        w.interrupt();
+        assert LuaGate.waiting() == 1 && w.isAlive();
+        assert LuaGate.yieldPoint() == 1;
+        w.join(5000);
+        assert !w.isAlive() && kept[0] && kept[1];
+        LuaGate.resetForTest();
+    }
+
+    /** A thread that waits past warnNs logs once (workers: for the game thread; the game thread: for a frame worker), outside the monitor. */
+    static void longWaitsLogOnce() throws Exception {
+        Lua l = new Lua("function f() end"); setUp(l);
+        java.io.PrintStream out = System.out;
+        java.io.ByteArrayOutputStream cap = new java.io.ByteArrayOutputStream();
+        try {
+            System.setOut(new java.io.PrintStream(cap, true));
+            LuaGate.warnNs = 20_000_000L;
+            // worker side: it waits for the (never yielding) game thread
+            Thread w = LuaGate.worker(() -> gated(l, () -> { }), "slow-worker");
+            w.start();
+            waitFor(() -> cap.toString().contains("slow-worker waited 2 s for the game thread"), "worker line");
+            Thread.sleep(60);                                                                  // an absence check, not an ordering: three more warn periods, still one line
+            assert LuaGate.yieldPoint() == 1;
+            w.join(5000);
+            assert !w.isAlive();
+            // game-thread side: a worker holds the token and does not let go until the game thread's line is out
+            java.util.concurrent.CountDownLatch holding = new java.util.concurrent.CountDownLatch(1), release = new java.util.concurrent.CountDownLatch(1);
+            Thread h = LuaGate.worker(() -> gated(l, () -> {
+                holding.countDown();
+                try { release.await(10, java.util.concurrent.TimeUnit.SECONDS); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+            }), "holding-worker");
+            h.start();
+            Thread opener = new Thread(() -> {
+                long t0 = System.nanoTime();
+                while (!cap.toString().contains("waited 2 s for a frame worker") && System.nanoTime() - t0 < 5_000_000_000L) Thread.onSpinWait();
+                release.countDown();
+            }, "opener");
+            opener.start();
+            LuaGate.awaitYielding(() -> holding.getCount() == 0);                              // frees the token; once the worker holds it, retakes it behind that worker
+            h.join(5000); opener.join(5000);
+            assert !h.isAlive() && !opener.isAlive();
+        } finally { System.setOut(out); }
+        String log = cap.toString();
+        assert count(log, "slow-worker waited 2 s for the game thread") == 1 : log;
+        assert count(log, "main waited 2 s for a frame worker") + count(log, Thread.currentThread().getName() + " waited 2 s for a frame worker") >= 1 : log;
+        LuaGate.resetForTest();
+    }
+
+    static int count(String s, String what) {
+        int n = 0;
+        for (int i = s.indexOf(what); i >= 0; i = s.indexOf(what, i + 1)) n++;
+        return n;
+    }
+
+    /** triggerEvent off the owner thread is safe in stock (it queues the event): not a stray, and nothing of LuaManager read. */
+    static void triggerEventNeverCountsStrays() throws Exception {
+        Lua l = new Lua("function f() end"); setUp(l);
+        boolean[] took = {true};
+        Thread other = new Thread(() -> took[0] = LuaPatches.gateEnterEvent(), "network-thread");
+        other.start(); other.join(5000);
+        assert !took[0] && LuaGate.strays == 0;
+        Thread hook = new Thread(() -> took[0] = LuaPatches.gateEnter(l.kt), "hook-thread");   // the keyed entries keep counting
+        hook.start(); hook.join(5000);
+        assert !took[0] && LuaGate.strays == 1;
+        LuaGate.guard.on = false;
+        assert !LuaPatches.gateEnterEvent();
+        LuaGate.resetForTest();
+    }
+
+    /** The minute line reports the minute, and the frame hook prints only when something happened since the last one. */
+    static void statLinesAreDeltas() {
+        Lua l = new Lua("function f() end"); setUp(l);
+        runWorkers(1, () -> { gated(l, () -> { }); gated(l, () -> { }); });
+        String a = LuaGate.statLine(60_000_000_000L), b = LuaGate.statLine(60_000_000_000L);
+        assert a.contains("in 60 s: 2 gated calls") && b.contains("0 gated calls") && b.contains("0 stray") : a + " / " + b;
+        runWorkers(1, () -> gated(l, () -> { }));
+        assert LuaGate.statLine(1_000_000_000L).contains("in 1 s: 1 gated calls");
+        LuaGate.resetForTest();
+    }
+
     // ---- Task 3: the hooks ----
 
     static void gateHoldersBalanced() throws Exception {
@@ -375,7 +567,7 @@ final class LuaGateTest {
         Lua l = new Lua("function f() end"); setUp(l);
         boolean[] took = new boolean[1];
         runWorkers(1, () -> { took[0] = LuaPatches.gateEnter(l.kt); if (took[0]) LuaPatches.gateExit(); });
-        assert took[0] && LuaGate.gatedCalls == 1 && fakeGame != null;
+        assert took[0] && LuaGate.gatedCalls == 1 && fakeGame == Thread.currentThread();   // the worker put the game thread back
         LuaGate.resetForTest();
     }
 

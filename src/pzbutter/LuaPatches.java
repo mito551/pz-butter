@@ -184,6 +184,16 @@ public final class LuaPatches {
         catch (Throwable t) { LuaGate.guard.fail(t); return false; }
     }
 
+    /**
+     * Entry of LuaEventManager.triggerEvent: stock queues an event raised off the owner thread (safe), so a non-worker caller is never a
+     * stray here and LuaManager is not read for it; only a frame worker takes the token (research Surprise 1).
+     */
+    public static boolean gateEnterEvent() {
+        if (!LuaGate.guard.on) return false;
+        try { return Thread.currentThread() instanceof LuaGate.Worker && LuaGate.enter(zombie.Lua.LuaManager.thread); }
+        catch (Throwable t) { LuaGate.guard.fail(t); return false; }
+    }
+
     /** Releases one hold taken by gateEnter; never checks the key (a hold taken before a switch-off is still released). */
     public static void gateExit() {
         try { LuaGate.exit(); } catch (Throwable t) { LuaGate.guard.fail(t); }
@@ -263,7 +273,7 @@ public final class LuaPatches {
     @Patch(className = "zombie.Lua.LuaEventManager", methodName = "triggerEvent")
     public static class TriggerEvent {
         @Patch.OnEnter
-        public static void enter(@Patch.Local("g") boolean g) { g = gateEnter(null); }
+        public static void enter(@Patch.Local("g") boolean g) { g = gateEnterEvent(); }
 
         @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
         public static void exit(@Patch.Local("g") boolean g) { if (g) gateExit(); }
