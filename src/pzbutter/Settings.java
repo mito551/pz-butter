@@ -238,6 +238,32 @@ public final class Settings {
       + "# entityTiming: diagnostic; once a minute, the time per frame of the zombie update phases goes to the console (and entity.out with frameLog).\n"
       + "entityTiming=false\n"
       + "#\n"
+      + "# Sprite buffers and GPU (Plan 9). Every key is off or at the game's value until its in-game check.\n"
+      + "# persistentVbo: the sprite and puddle ring buffers keep persistently mapped storage (OpenGL 4.4) instead of new storage and a map per 64 KB batch.\n"
+      + "persistentVbo=false\n"
+      + "# persistentVboSlots: with persistentVbo, storages per buffer, used in turn (1 to 8; fewer when the rings would pass 64 MB).\n"
+      + "persistentVboSlots=4\n"
+      + "# persistentVboFrameSync: acts only with persistentVbo. One fence per frame decides when a storage can be written again (false: one fence per batch).\n"
+      + "persistentVboFrameSync=true\n"
+      + "# vboBatchKb: batch size in KB of the drawer for lines, shapes, the map, fog and rain (0 = the game's 4; 8 to 1792).\n"
+      + "vboBatchKb=0\n"
+      + "# vboFastQuads: that drawer writes a textured quad's four vertices in one go; the same bytes.\n"
+      + "vboFastQuads=false\n"
+      + "# vboSizeClasses: that drawer's uploads go into storage of a few fixed sizes, orphan or subdata, instead of new storage of the exact size each time (off = the game's way).\n"
+      + "vboSizeClasses=off\n"
+      + "# vboSizeClassMinKb: with vboSizeClasses, the smallest storage size in KB (4 to 4096, rounded down to a power of two).\n"
+      + "vboSizeClassMinKb=64\n"
+      + "# smartTextureRelease: a character's or item's old combined texture goes back to the pool when it is rebuilt, instead of staying in video memory until the model is removed.\n"
+      + "smartTextureRelease=false\n"
+      + "# bakeNoSync: texture and framebuffer names come from a pool; framebuffer checks, uniform locations and the current shader are answered without asking the driver.\n"
+      + "bakeNoSync=false\n"
+      + "# bakeNoSyncCheck: diagnostic for bakeNoSync; every 256th answer is checked against the driver and mismatches go to the console.\n"
+      + "bakeNoSyncCheck=false\n"
+      + "# bakeBudgetGpu: with bakeBudgetAdaptive, the bake budget also counts the GPU's time for the frame (GPU timestamps read three frames later, never waited for).\n"
+      + "bakeBudgetGpu=false\n"
+      + "# gpuStats: diagnostic; once a minute, what the Plan 9 keys did goes to the console (and gpu.out with frameLog).\n"
+      + "gpuStats=false\n"
+      + "#\n"
       + "# Input.\n"
       + "# inputLatch: a fresh input poll when the frame starts.\n"
       + "inputLatch=true\n"
@@ -349,6 +375,7 @@ public final class Settings {
         "reflexSleep", "vsyncAdaptive", "luaBudget",
         "luaInternConstants", "luaSkipEmpty", "uiVerify", "uiRetainedMods", "uiTickStagger", "textWidthCache", "uiLuaFast", "mapStreetMemo", "mapStreetCache", "mapVisitedFast",   // these two only act with vsync on
         "audioLimiterStereoFold",
+        "persistentVboFrameSync",   // acts only with persistentVbo (Plan 9)
         "driveTreeCutaway", "glassTilesPerFrame", "translucentLightsPerFrame");   // stock-equivalent values (Plan 6), not passed features
 
     public static boolean flag(String key) {
