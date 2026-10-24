@@ -8,7 +8,7 @@ import zombie.iso.objects.GridSquareEdgeFacingDirection;
 import zombie.iso.objects.IsoWindow;
 import zombie.util.list.PZArrayList;
 
-/** Plan 6 edgeTestFast: hand-written isBlockedTo. See VARIANT.md for the open choices. */
+/** Plan 6 edgeTestFast: hand-written isBlockedTo. The choices (sign-pattern table, shared neighbours, lambda leaves) are recorded in the Plan 6 progress ledger. */
 final class EdgeTest {
     private EdgeTest() {}
 

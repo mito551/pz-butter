@@ -169,7 +169,7 @@ public final class Settings {
       + "translucentLightsPerFrame=true\n"
       + "# bloodFadeFix: blood pushed out of a chunk's 1,000 splats disappears at the next redraw instead of fading over hundreds of redraws.\n"
       + "bloodFadeFix=false\n"
-      + "# bakeMipLevels: chunk textures build only this many detail levels after a redraw (0 = all of them, the game's way; 3 is enough for the widest zoom).\n"
+      + "# bakeMipLevels: chunk textures keep only this many detail levels after a redraw (0 = all of them, the game's way; 3 keeps the full one and two smaller, enough for the widest zoom).\n"
       + "bakeMipLevels=0\n"
       + "# zoomEaseMs: a mouse-wheel zoom takes this long on a smooth curve at any frame rate (0 = the game's fixed step per frame).\n"
       + "zoomEaseMs=0\n"

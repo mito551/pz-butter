@@ -94,10 +94,15 @@ final class ZoomEase {
         return (float) axis(y1, y2, s);
     }
 
-    /** The zoom to show: the target once the time is up (or the ease is off), else along the curve. */
+    /**
+     * The zoom to show: the target once the time is up (or the ease is off), else along the curve. A curve whose y values leave
+     * [0, 1] (the config allows it) overshoots; the result stays between the start and the target, so it never leaves the
+     * zoom limits that the two of them are within.
+     */
     static float eased(float from, float to, long t0Ns, long nowNs, int ms, float[] c) {
         if (ms <= 0 || nowNs - t0Ns >= ms * 1_000_000L) return to;
-        return from + (to - from) * bezier(c, (nowNs - t0Ns) / (ms * 1e6f));
+        float z = from + (to - from) * bezier(c, (nowNs - t0Ns) / (ms * 1e6f));
+        return Math.max(Math.min(from, to), Math.min(z, Math.max(from, to)));
     }
 
     static void resetForTest() {

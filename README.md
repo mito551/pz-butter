@@ -82,7 +82,7 @@ The mod creates `~/Zomboid/PZButter.properties` on first start and reads it once
 | `glassTilesPerFrame` | With `translucentTilesInChunkTexture`, glass tiles stay per frame, so characters behind them stay visible. On by default. |
 | `translucentLightsPerFrame` | With `translucentTilesInChunkTexture`, lit fixtures stay per frame. On by default. |
 | `bloodFadeFix` | Blood pushed out of a chunk's 1,000 splats disappears at the chunk's next redraw instead of fading over hundreds of redraws. |
-| `bakeMipLevels` | `0` is the game's way (every detail level). `3` builds three levels after each chunk redraw, enough for the widest zoom. |
+| `bakeMipLevels` | `0` is the game's way (every detail level). `3` keeps three levels (the full one and two smaller) after each chunk redraw, enough for the widest zoom. |
 | `zoomEaseMs` | `0` is the game's fixed zoom step per frame. `300` makes a mouse-wheel zoom take 300 ms on a smooth curve at any frame rate. |
 | `zoomEase` | The zoom curve as a cubic Bézier `x1,y1,x2,y2`. Default `0.25,0.1,0.25,1.0` (CSS "ease"). Only with `zoomEaseMs`. |
 | `bakeScheduler` | Chunk texture redraws (cutaways, light, blood, redraws) are spread over frames under the budgets below; a waiting texture keeps its last picture. New chunks and object changes never wait. Off by default. |

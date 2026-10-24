@@ -118,8 +118,9 @@ public final class ChunkPatches {
     }
 
     /**
-     * Binds the first argument only: both overloads take the chunk first, and the 3-argument one only forwards to the
-     * 5-argument one, so clearing the same list again is harmless.
+     * Binds the first argument only: both overloads take the chunk first. The 3-argument one calls the 5-argument one on the
+     * neighbour chunk (offset 94), so a bake also clears the fading splats of its 8 neighbours, whose textures keep showing
+     * them until they re-bake. That fits the key: a pushed-out splat disappears at the next redraw.
      */
     @Patch(className = "zombie.iso.fboRenderChunk.FBORenderCell", methodName = "renderOneLevel_Blood")
     public static class BloodBake {

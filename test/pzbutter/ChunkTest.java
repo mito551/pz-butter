@@ -34,6 +34,7 @@ final class ChunkTest {
         parseRejectsBad();
         easeEndsOnTarget();
         easeCancelledByOtherTarget();
+        easeStaysBetweenEnds();
         zoomKeyDefaults();
         holdNeverForNewOrObject();
         budgetNearestFirst();
@@ -153,6 +154,23 @@ final class ChunkTest {
         float mid = ZoomEase.eased(1f, 2f, 0L, 150_000_000L, 300, c);
         assert mid > 1.5f && mid < 2f;
         assert ZoomEase.eased(1f, 2f, 0L, 5L, 0, c) == 2f;                            // off: jump to the target
+    }
+
+    /** A curve with y outside [0, 1] never takes the zoom outside the start and the target (zooming in and out). */
+    static void easeStaysBetweenEnds() {
+        float[] wild = ZoomEase.parse("0.5,-20,0.5,20");
+        float[] wild2 = ZoomEase.parse("0.5,20,0.5,-20");
+        boolean over = false;
+        for (float[] c : new float[][] {wild, wild2})
+            for (int i = 1; i < 300; i++) {
+                long now = i * 1_000_000L;
+                float in = ZoomEase.eased(1f, 2f, 0L, now, 300, c), out = ZoomEase.eased(2f, 0.5f, 0L, now, 300, c);
+                assert in >= 1f && in <= 2f : "zoom in: " + in;
+                assert out >= 0.5f && out <= 2f : "zoom out: " + out;
+                over |= Math.abs(ZoomEase.bezier(c, i / 300f) - 0.5f) > 0.5f;
+            }
+        assert over : "the curves really overshoot (the clamp is what keeps the zoom inside)";
+        assert ZoomEase.eased(1f, 2f, 0L, 300_000_000L, 300, wild) == 2f;
     }
 
     static void easeCancelledByOtherTarget() {
