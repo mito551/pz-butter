@@ -135,7 +135,6 @@ final class ModCompat {
         Map.entry("GpuPatches.SmartCalculate", k("smartTextureRelease", "gpuStats")),
         Map.entry("GpuPatches.VboFormat", k("vboBatchKb")),
         Map.entry("GpuPatches.BufferData", k("vboSizeClasses", "gpuStats")),
-        Map.entry("GpuPatches.VboQuad", k("vboFastQuads")),
         Map.entry("GpuPatches.VboMap", k("persistentVbo", "gpuStats")),
         Map.entry("GpuPatches.VboUnmap", k("persistentVbo", "gpuStats")),
         Map.entry("GpuPatches.RingRender", k("persistentVbo", "gpuStats")),

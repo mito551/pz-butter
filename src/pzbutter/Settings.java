@@ -247,8 +247,6 @@ public final class Settings {
       + "persistentVboFrameSync=true\n"
       + "# vboBatchKb: batch size in KB of the drawer for lines, shapes, the map, fog and rain (0 = the game's 4; 8 to 1792).\n"
       + "vboBatchKb=0\n"
-      + "# vboFastQuads: that drawer writes a textured quad's four vertices in one go; the same bytes.\n"
-      + "vboFastQuads=false\n"
       + "# vboSizeClasses: that drawer's uploads go into storage of a few fixed sizes, orphan or subdata, instead of new storage of the exact size each time (off = the game's way).\n"
       + "vboSizeClasses=off\n"
       + "# vboSizeClassMinKb: with vboSizeClasses, the smallest storage size in KB (4 to 4096, rounded down to a power of two).\n"

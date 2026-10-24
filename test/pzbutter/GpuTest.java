@@ -1,6 +1,6 @@
 package pzbutter;
 
-/** Plan 9 checks (sprite buffers and GPU; Task 1: keys and template, Task 2: size classes, Task 3: combined texture release, Task 4: batch size, Task 5: fast quads). Run from SelfTest.main. Later tasks append their calls to runAll(). */
+/** Plan 9 checks (sprite buffers and GPU; Task 1: keys and template, Task 2: size classes, Task 3: combined texture release, Task 4: batch size, Task 5 was fast quads, dropped). Run from SelfTest.main. Later tasks append their calls to runAll(). */
 final class GpuTest {
     private GpuTest() {}
 
@@ -29,10 +29,7 @@ final class GpuTest {
         uploadUsesClassesOnTheGlThread();
         uploadPassesOffThread();
         sizeClassInitReadsKeys();
-        fastQuadBytesAreStock();
-        fastQuadFallsBackBeforeFlush();
-        fastQuadOtherModesStock();
-        fastQuadFallsBackWhenIndicesFull();
+        removedFastQuadsKeyIsKept();
         slotWaitsForUnsignalledFrame();
         slotSameFrameFencesNow();
         perBatchFenceMode();
@@ -79,7 +76,7 @@ final class GpuTest {
         gpuStatsInitReadsKey();
     }
 
-    static final String[] PLAN9_FLAGS = {"persistentVbo", "vboFastQuads", "smartTextureRelease", "bakeNoSync", "bakeNoSyncCheck", "bakeBudgetGpu", "gpuStats"};
+    static final String[] PLAN9_FLAGS = {"persistentVbo", "smartTextureRelease", "bakeNoSync", "bakeNoSyncCheck", "bakeBudgetGpu", "gpuStats"};
 
     static void plan9KeysDefaults() {
         Settings.load(SelfTest.write(Settings.render(new java.util.Properties()).replace("\nenabled=false\n", "\nenabled=true\n")));
@@ -92,7 +89,7 @@ final class GpuTest {
     static void settingsTemplateHasPlan9Keys() {
         String t = Settings.render(new java.util.Properties());
         for (String k : new String[] {"persistentVbo=false", "persistentVboSlots=4", "persistentVboFrameSync=true", "vboBatchKb=0",
-                "vboFastQuads=false", "vboSizeClasses=off", "vboSizeClassMinKb=64", "smartTextureRelease=false", "bakeNoSync=false",
+                "vboSizeClasses=off", "vboSizeClassMinKb=64", "smartTextureRelease=false", "bakeNoSync=false",
                 "bakeNoSyncCheck=false", "bakeBudgetGpu=false", "gpuStats=false"})
             assert t.contains("\n" + k + "\n") : k;
         assert t.indexOf("\nentityTiming=false\n") < t.indexOf("\npersistentVbo=false\n") && t.indexOf("\ngpuStats=false\n") < t.indexOf("\ninputLatch=true\n");
@@ -303,74 +300,17 @@ final class GpuTest {
         UploadSizer.resetForTest();
     }
 
-    // ---- Task 5: vboFastQuads ----
-
-    static byte[] bytes(java.nio.ByteBuffer b) { byte[] o = new byte[b.position()]; b.duplicate().flip().get(o); return o; }
-
-    static void fastQuadBytesAreStock() throws Exception {
-        QuadWriter.resetForTest(); QuadWriter.guard.on = true; QuadWriter.init();
-        java.util.Random rnd = new java.util.Random(9);
-        for (int trial = 0; trial < 200; trial++) {
-            zombie.core.opengl.VBORenderer a = vbo(), b = vbo();
-            float dx = rnd.nextFloat(), dy = -rnd.nextFloat(), dz = rnd.nextFloat() * 3;
-            a.setOffset(dx, dy, dz); b.setOffset(dx, dy, dz);
-            int quads = 1 + rnd.nextInt(28);                         // at most 28 quads of 144 bytes stay below the 4,068-byte isFull mark: never a flush
-            for (int i = 0; i < quads; i++) {
-                float[] q = new float[24];
-                for (int j = 0; j < 24; j++) q[j] = (float) (rnd.nextGaussian() * Math.pow(10, rnd.nextInt(6) - 3));
-                a.addQuad(q[0], q[1], q[2], q[3], q[4], q[5], q[6], q[7], q[8], q[9], q[10], q[11], q[12], q[13], q[14], q[15], q[16], q[17], q[18], q[19], q[20], q[21], q[22], q[23]);
-                assert QuadWriter.tryQuad(b, q);
-            }
-            assert java.util.Arrays.equals(bytes((java.nio.ByteBuffer) field(a, "elements")), bytes((java.nio.ByteBuffer) field(b, "elements")));
-            assert java.util.Arrays.equals(bytes((java.nio.ByteBuffer) field(a, "indices")), bytes((java.nio.ByteBuffer) field(b, "indices")));
-            assert (int) field(field(a, "runInProgress"), "vertexCount") == (int) field(field(b, "runInProgress"), "vertexCount");
-        }
-        QuadWriter.resetForTest();
-    }
-
-    /** The game's own predicates, called reflectively without a flush: whether adding one quad would flush. */
-    static boolean stockWouldFlush(zombie.core.opengl.VBORenderer r) throws Exception {
-        java.lang.reflect.Method room = zombie.core.opengl.VBORenderer.class.getDeclaredMethod("hasRoomFor", int.class), full = zombie.core.opengl.VBORenderer.class.getDeclaredMethod("isFull");
-        room.setAccessible(true); full.setAccessible(true);
-        if (!(boolean) room.invoke(r, 4)) return true;
-        java.nio.ByteBuffer e = (java.nio.ByteBuffer) field(r, "elements"); Object run = field(r, "runInProgress");
-        java.lang.reflect.Field vc = run.getClass().getDeclaredField("vertexCount"); vc.setAccessible(true);
-        int p0 = e.position(), c0 = vc.getInt(run), es = (int) field(r, "elementSize");
-        try {
-            for (int k = 0; k < 4; k++) { e.position(p0 + k * es); vc.setInt(run, c0 + k); if ((boolean) full.invoke(r)) return true; }
-            return false;
-        } finally { e.position(p0); vc.setInt(run, c0); }
-    }
-
-    static void fastQuadFallsBackBeforeFlush() throws Exception {
-        QuadWriter.resetForTest(); QuadWriter.guard.on = true; QuadWriter.init();
-        for (int pos = 0; pos <= 4096 - 36; pos += 36) for (int vc = 0; vc < 8; vc++) {
-            zombie.core.opengl.VBORenderer r = vbo();
-            ((java.nio.ByteBuffer) field(r, "elements")).position(pos);
-            Object run = field(r, "runInProgress"); java.lang.reflect.Field f = run.getClass().getDeclaredField("vertexCount"); f.setAccessible(true); f.setInt(run, vc);
-            boolean stock = stockWouldFlush(r);
-            assert QuadWriter.flushWouldFire(7, vc, pos, 4096, 36, 4096 / 36) == stock : pos + "/" + vc;
-            if (stock) assert !QuadWriter.tryQuad(r, new float[24]) && ((java.nio.ByteBuffer) field(r, "elements")).position() == pos;
-        }
-        QuadWriter.resetForTest();
-    }
-
-    static void fastQuadOtherModesStock() throws Exception {
-        QuadWriter.resetForTest(); QuadWriter.guard.on = true; QuadWriter.init();
-        zombie.core.opengl.VBORenderer r = vbo();
-        Object run = field(r, "runInProgress"); java.lang.reflect.Field m = run.getClass().getDeclaredField("mode"); m.setAccessible(true);
-        for (int mode : new int[] {1, 4}) { m.setInt(run, mode); assert !QuadWriter.tryQuad(r, new float[24]); }
-        assert !GpuPatches.onAddQuad(null, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
-        QuadWriter.resetForTest();
-    }
-
-    /** A full index buffer leaves the quad to the game (which throws as it always did) before a byte of the elements changes. */
-    static void fastQuadFallsBackWhenIndicesFull() throws Exception {
-        QuadWriter.resetForTest(); QuadWriter.guard.on = true; QuadWriter.init();
-        zombie.core.opengl.VBORenderer r = vbo();
-        setField(r, "indices", java.nio.ByteBuffer.allocateDirect(6).order(java.nio.ByteOrder.nativeOrder()));
-        assert !QuadWriter.tryQuad(r, new float[24]) && ((java.nio.ByteBuffer) field(r, "elements")).position() == 0;
-        QuadWriter.resetForTest();
+    // vboFastQuads was dropped (no gain on the hooked path): a settings file that still names it keeps the line (as an unknown key) and loads
+    static void removedFastQuadsKeyIsKept() {
+        java.util.Properties p = new java.util.Properties();
+        p.setProperty("vboFastQuads", "true");
+        String t = Settings.render(p);
+        assert !Settings.render(new java.util.Properties()).contains("vboFastQuads") && t.contains("\nvboFastQuads=true\n") : t;
+        Settings.load(SelfTest.write("enabled=true\nvboFastQuads=true\n"));
+        GpuPatches.init();
+        Settings.load(SelfTest.write("enabled=true\n"));
+        GpuPatches.init();
+        assert !UploadSizer.guard.on && !BatchSize.guard.on;
     }
 
     // ---- Task 6: slot and fence cores ----
@@ -1028,11 +968,10 @@ final class GpuTest {
     }
 
     static void gpuShimsOffTouchNothing() {
-        UploadSizer.resetForTest(); SmartRelease.resetForTest(); BatchSize.resetForTest(); QuadWriter.resetForTest();
+        UploadSizer.resetForTest(); SmartRelease.resetForTest(); BatchSize.resetForTest();
         PersistentVbo.resetForTest(); NoSync.resetForTest(); GpuTimer.resetForTest(); GpuStats.resetForTest();
         assert !GpuPatches.onBufferData(null, null);
         GpuPatches.onSmartCalculate(null); GpuPatches.onVboFormat(null);
-        assert !GpuPatches.onAddQuad(null, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
         assert !GpuPatches.onMapEnter(null) && GpuPatches.onMapExit(null) == null && !GpuPatches.onUnmapEnter(null) && GpuPatches.onUnmapExit(true);
         GpuPatches.onRingRendered(null);
         assert !GpuPatches.onGenTexture() && GpuPatches.onGenTextureExit(3) == 3 && !GpuPatches.onFboStatus() && GpuPatches.onFboStatusExit(1) == 1;
