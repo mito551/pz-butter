@@ -52,6 +52,8 @@ final class GpuTimer {
 
     /** Samples read, and samples skipped because the driver had not finished them (or the pair was incomplete). */
     static long samples, skipped;
+    /** Sum of the samples in ms (gpuStats prints the minute's mean). */
+    static double sumMs;
 
     static void init() {
         guard.on = Settings.flag("bakeBudgetGpu") && Settings.flag("bakeBudgetAdaptive");
@@ -87,7 +89,7 @@ final class GpuTimer {
             if (slotFrame[s] == old && begun[s] && ended[s]) {
                 if (q.available(ids[2 * s]) && q.available(ids[2 * s + 1])) {
                     long b = q.value(ids[2 * s]), e = q.value(ids[2 * s + 1]);
-                    if (e >= b) { lastGpuMs = (e - b) / 1e6; samples++; }
+                    if (e >= b) { double ms = (e - b) / 1e6; lastGpuMs = ms; sumMs += ms; samples++; }
                     else skipped++;
                 } else skipped++;
             } else skipped++;
@@ -130,6 +132,7 @@ final class GpuTimer {
         inFrame = false;
         lastGpuMs = -1;
         samples = skipped = 0;
+        sumMs = 0;
         java.util.Arrays.fill(slotFrame, -1);
         java.util.Arrays.fill(begun, false);
         java.util.Arrays.fill(ended, false);

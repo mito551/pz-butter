@@ -18,6 +18,7 @@ public final class GpuPatches {
         PersistentVbo.init();
         NoSync.init();
         GpuTimer.init();
+        GpuStats.init();
     }
 
     /** True on the thread that owns the GL context: the render thread, once the first swap has set it. */
@@ -171,9 +172,14 @@ public final class GpuPatches {
 
     /** Display.swapBuffers exit, render thread: the frame's fence and the poll for the signalled ones. */
     public static void onSwapDone() {
-        if (!PersistentVbo.anyAttached) return;
-        try { PersistentVbo.onSwap(); }
-        catch (Throwable t) { PersistentVbo.guard.fail(t); }
+        if (PersistentVbo.anyAttached) {
+            try { PersistentVbo.onSwap(); }
+            catch (Throwable t) { PersistentVbo.guard.fail(t); }
+        }
+        if (GpuStats.guard.on) {
+            try { GpuStats.tick(); }
+            catch (Throwable t) { GpuStats.guard.fail(t); }
+        }
     }
 
     /** map() with no argument only (strictMatch with no @Argument, research Surprise 4): map(int) has no caller and stays the game's. */

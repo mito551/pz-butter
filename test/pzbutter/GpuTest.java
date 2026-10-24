@@ -73,6 +73,10 @@ final class GpuTest {
         gpuTimerIncompleteAndNotCapable();
         gpuTimerShimsGateOnThreadAndKey();
         gpuTimerInitNeedsAdaptive();
+        gpuStatsLineCountsTheMinute();
+        gpuStatsTickCadence();
+        gpuShimsOffTouchNothing();
+        gpuStatsInitReadsKey();
     }
 
     static final String[] PLAN9_FLAGS = {"persistentVbo", "vboFastQuads", "smartTextureRelease", "bakeNoSync", "bakeNoSyncCheck", "bakeBudgetGpu", "gpuStats"};
@@ -985,5 +989,69 @@ final class GpuTest {
             Settings.load(SelfTest.write("enabled=true\n"));
             GpuTimer.init(); GpuTimer.resetForTest();
         }
+    }
+
+    // ---- Task 11: gpuStats and the off-path check ----
+
+    static void gpuStatsLineCountsTheMinute() {
+        GpuStats.resetForTest(); UploadSizer.resetForTest(); SmartRelease.resetForTest();
+        UploadSizer.guard.on = true; UploadSizer.uploads = 120; UploadSizer.bytes = 3L << 20; UploadSizer.reallocs = 2;
+        String a = GpuStats.line(60_000);
+        assert a.contains("uploads 120 (3.0 MiB, 2 storage changes") && a.contains("textures returned -") : a;
+        assert a.startsWith("[PZButter] gpu: maps -;") && a.contains("names pooled -; answers -; gpu -") : a;
+        UploadSizer.uploads = 150;
+        assert GpuStats.line(120_000).contains("uploads 30 (");
+        GpuStats.resetForTest(); UploadSizer.resetForTest();
+    }
+
+    static void gpuStatsTickCadence() {
+        GpuStats.resetForTest(); UploadSizer.resetForTest(); SmartRelease.resetForTest(); PersistentVbo.resetForTest(); NoSync.resetForTest(); GpuTimer.resetForTest();
+        java.util.List<String> got = new java.util.ArrayList<>();
+        GpuStats.out = got::add; GpuStats.file = t -> { };
+        try {
+            SmartRelease.guard.on = true; SmartRelease.released = 5; SmartRelease.skipped = 1;
+            NoSync.guard.on = true; NoSync.namesPooled = 64; NoSync.fboAnswered = 7; NoSync.uniformsAnswered = 9; NoSync.programAnswered = 11; NoSync.checker.mismatches = 2;
+            PersistentVbo.guard.on = true; PersistentVbo.saved = 40; PersistentVbo.waits = 3; PersistentVbo.stalls = 1; PersistentVbo.slotCount = 4;
+            GpuTimer.guard.on = true; GpuTimer.samples = 2; GpuTimer.sumMs = 9.0;
+            GpuStats.tick(1_000);                                // the minute starts here; what happened before it is not in the line
+            GpuStats.tick(30_000);
+            assert got.isEmpty();
+            SmartRelease.released = 8; NoSync.fboAnswered = 17; PersistentVbo.saved = 100; GpuTimer.samples = 4; GpuTimer.sumMs = 21.0;
+            GpuStats.tick(61_000);
+            assert got.size() == 1;
+            String l = got.get(0);
+            assert l.contains("maps 60 saved, 0 waits, 0 stalls, slots 4;") && l.contains("textures returned 3 (0 already pooled)")
+                && l.contains("answers fbo 10 uniform 0 shader 0 (0 mismatches)") && l.contains("gpu 6.0 ms") : l;
+            GpuStats.tick(100_000);
+            assert got.size() == 1;                              // not before the next 60 s
+        } finally { GpuStats.resetForTest(); UploadSizer.resetForTest(); SmartRelease.resetForTest(); PersistentVbo.resetForTest(); NoSync.resetForTest(); GpuTimer.resetForTest(); }
+    }
+
+    static void gpuShimsOffTouchNothing() {
+        UploadSizer.resetForTest(); SmartRelease.resetForTest(); BatchSize.resetForTest(); QuadWriter.resetForTest();
+        PersistentVbo.resetForTest(); NoSync.resetForTest(); GpuTimer.resetForTest(); GpuStats.resetForTest();
+        assert !GpuPatches.onBufferData(null, null);
+        GpuPatches.onSmartCalculate(null); GpuPatches.onVboFormat(null);
+        assert !GpuPatches.onAddQuad(null, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+        assert !GpuPatches.onMapEnter(null) && GpuPatches.onMapExit(null) == null && !GpuPatches.onUnmapEnter(null) && GpuPatches.onUnmapExit(true);
+        GpuPatches.onRingRendered(null);
+        assert !GpuPatches.onGenTexture() && GpuPatches.onGenTextureExit(3) == 3 && !GpuPatches.onFboStatus() && GpuPatches.onFboStatusExit(1) == 1;
+        assert !GpuPatches.onUniform(1, null) && !GpuPatches.onGetInteger(0x8B8D) && GpuPatches.onGetIntegerExit(0x8B8D, 4) == 4;
+        GpuPatches.onFboInitEnter(null, null, false); GpuPatches.onFboInitExit(); GpuPatches.onUseProgram(1); GpuPatches.onProgramGone(1);
+        GpuPatches.onRenderFrameStart(); GpuPatches.onSwapBegin(); GpuPatches.onSwapDone();
+        assert UploadSizer.uploads == 0 && SmartRelease.released == 0 && NoSync.namesPooled == 0 && GpuTimer.lastGpuMs == -1;
+        assert PersistentVbo.saved == 0 && !PersistentVbo.anyAttached && NoSync.programs.current == NoSync.ProgramRecord.UNKNOWN;
+        assert !GpuStats.guard.on && GpuTimer.samples == 0 && GpuTimer.skipped == 0;
+    }
+
+    static void gpuStatsInitReadsKey() {
+        try {
+            Settings.load(SelfTest.write("enabled=true\ngpuStats=true\n"));
+            GpuStats.init();
+            assert GpuStats.guard.on;
+            Settings.load(SelfTest.write("enabled=true\n"));
+            GpuStats.init();
+            assert !GpuStats.guard.on;
+        } finally { Settings.load(SelfTest.write("enabled=true\n")); GpuStats.init(); GpuStats.resetForTest(); }
     }
 }
