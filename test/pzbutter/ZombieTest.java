@@ -117,16 +117,19 @@ final class ZombieTest {
         } finally { FrameClock.mainThread = saved; }
     }
 
-    // another thread: the zero-length call runs stock (no skip) and nothing is counted; the join is bounded
+    // any thread: the zero-length call is skipped and counted on a worker, and before the game thread is known (mainThread null)
     static void facingOtherThreadPassesThrough() throws InterruptedException {
         Thread saved = FrameClock.mainThread;
         FrameClock.mainThread = Thread.currentThread();
         try {
             FacingFix.resetForTest(); FacingFix.guard.on = true;
-            boolean[] skipped = {true};
-            Thread t = new Thread(() -> skipped[0] = ZombiePatches.onForward(0f, 0f));
+            boolean[] skipped = {false, false};
+            Thread t = new Thread(() -> { skipped[0] = ZombiePatches.onForward(0f, 0f); skipped[1] = ZombiePatches.onForward(0f, 1f); });
             t.start(); t.join(5000);
-            assert !t.isAlive() && !skipped[0] && FacingFix.kept == 0;
+            assert !t.isAlive() && skipped[0] && !skipped[1] && FacingFix.kept == 1;
+            FrameClock.mainThread = null;
+            assert ZombiePatches.onForward(0f, 0f) && FacingFix.kept == 2;
+            assert FacingFix.drain() == 2 && FacingFix.drain() == 0;
             FacingFix.resetForTest();
         } finally { FrameClock.mainThread = saved; }
     }

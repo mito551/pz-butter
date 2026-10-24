@@ -5,7 +5,7 @@ import me.zed_0xff.zombie_buddy.Patch;
 /**
  * Plan 8 hooks (zombies and entities): one holder per game method. Advice is inlined into the game class, so it reaches only
  * public members: each holder's advice is one call into a public static shim here, which catches its own Throwable into the
- * feature's Guard. Every shim acts only on the game thread and returns at its first static read while its key is off.
+ * feature's Guard. Every shim acts only on the game thread (except the pure ones: the facing and stats shims run on any) and returns at its first static read while its key is off.
  */
 public final class ZombiePatches {
     private ZombiePatches() {}
