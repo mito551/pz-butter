@@ -61,20 +61,35 @@ final class LightChecks {
         return false;
     }
 
-    /**
-     * FBORenderCell.hasAnyDirtyChunkTextures for player p: the same walk over the on-screen chunks, asking each on-screen
-     * level for dirt outside the lighting flag. Null when a handle is missing (the stock method then runs).
-     */
-    static Boolean anyDirtyOutsideLighting(Object cell, int p) {
+    /** True when the on-screen chunk list can be read (the handles resolved). */
+    static boolean hasChunkHandles() { return perPlayer != null && onScreenChunks != null; }
+
+    /** The player's on-screen chunk list; null when a handle is missing. */
+    static ArrayList<?> onScreen(Object cell, int p) {
         if (perPlayer == null || onScreenChunks == null) return null;
         Object[] players = (Object[]) perPlayer.get(cell);
-        ArrayList<?> chunks = (ArrayList<?>) onScreenChunks.get(players[p]);
+        return (ArrayList<?>) onScreenChunks.get(players[p]);
+    }
+
+    /**
+     * FBORenderCell.hasAnyDirtyChunkTextures for player p: the same walk over the on-screen chunks, asking each on-screen
+     * level for dirt in {@code mask} (-1: any dirt, as stock asks). With {@code skipHeld} a level whose pair waits this
+     * frame (bakeScheduler) does not count. Null when a handle is missing (the stock method then runs).
+     */
+    static Boolean anyDirty(Object cell, int p, long mask, boolean skipHeld) {
+        ArrayList<?> chunks = onScreen(cell, p);
+        if (chunks == null) return null;
         float zoom = Core.getInstance().getZoom(p);
+        long frame = FrameClock.frameNo;
         for (int i = 0; i < chunks.size(); i++) {
             IsoChunk c = (IsoChunk) chunks.get(i);
             FBORenderLevels levels = c.getRenderLevels(p);
-            for (int lvl = c.minLevel; lvl <= c.maxLevel; lvl++)
-                if (levels.isOnScreen(lvl) && levels.isDirty(lvl, NON_LIGHT, zoom)) return Boolean.TRUE;
+            for (int lvl = c.minLevel; lvl <= c.maxLevel; lvl++) {
+                if (!levels.isOnScreen(lvl)) continue;
+                if (!(mask == -1L ? levels.isDirty(lvl, zoom) : levels.isDirty(lvl, mask, zoom))) continue;
+                if (skipHeld && !BakeHold.countsLevel(levels, lvl, frame)) continue;
+                return Boolean.TRUE;
+            }
         }
         return Boolean.FALSE;
     }

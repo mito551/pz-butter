@@ -33,6 +33,7 @@ public class Main {
         LightChecks.init();
         GridGate.init();
         Cutaways.init();
+        BakeHold.init();
         Weather.init();
         ChunkTrees.init();
         BakeMisc.init();

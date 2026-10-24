@@ -2,6 +2,7 @@ package pzbutter;
 
 import java.lang.management.ManagementFactory;
 import java.util.Arrays;
+import zombie.iso.IsoChunk;
 import zombie.iso.IsoGridSquare;
 
 /**
@@ -29,6 +30,10 @@ import zombie.iso.IsoGridSquare;
  * plan:    ns per BakeHold.plan call (one player, one frame) over 40 pairs all REDRAW; 120 mixed (10 % CUTAWAY, 30 % REDRAW,
  *          50 % LIGHT, 10 % BLOOD); 400 mostly LIGHT (dusk at the widest zoom). Prints a checksum of the grant array and the
  *          left* counts, which must not change between versions.
+ * gate:    ns per frame of the bake-hold shims for one player: BakeHold.planChunks (classes, light delta, plan) then
+ *          BakeHold.gate for every level of every chunk, on real FBORenderLevels (no GL). Scenarios: 60 clean levels (gate
+ *          cost only), 60 lighting-dirty levels, 200 levels at the widest zoom (10 % redraw, 60 % light, 30 % clean; the
+ *          light drifts every frame). Prints the number of held gate answers and a checksum of them, which must not change.
  */
 public final class DeliveryBench {
     static final com.sun.management.ThreadMXBean MX = (com.sun.management.ThreadMXBean) ManagementFactory.getThreadMXBean();
@@ -47,7 +52,8 @@ public final class DeliveryBench {
             case "splash" -> splash();
             case "edge" -> edge();
             case "plan" -> plan();
-            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | uislice | readset | soundgate | cutaway | splash | edge | plan");
+            case "gate" -> gate();
+            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | uislice | readset | soundgate | cutaway | splash | edge | plan | gate");
         }
     }
 
@@ -485,5 +491,81 @@ public final class DeliveryBench {
             Arrays.sort(ns);
             System.out.printf("plan %-9s: %9.1f ns/plan (min %.1f, max %.1f), checksum %d, counted %d%n", names[sc], ns[3], ns[0], ns[6], chk, sum / (reps * 9L));
         }
+    }
+
+    static IsoChunk benchChunk(int wx, int wy) {
+        IsoChunk c = new IsoChunk((zombie.iso.IsoCell) null);
+        c.minLevel = 0; c.maxLevel = 1; c.wx = wx; c.wy = wy;
+        c.squares = new IsoGridSquare[2][64];
+        for (int z = 0; z < 2; z++)
+            for (int i = 0; i < 64; i++) {
+                IsoGridSquare sq = new IsoGridSquare(null, null, wx * 8 + i % 8, wy * 8 + i / 8, z);
+                sq.setLightInfoServerGUIOnly(new zombie.core.textures.ColorInfo(0.5f, 0.5f, 0.5f, 1f));
+                c.squares[z][i] = sq;
+            }
+        zombie.iso.fboRenderChunk.FBORenderLevels lv = c.getRenderLevels(0);
+        lv.setOnScreen(0, true); lv.setOnScreen(1, true);
+        lv.getOrCreateFBOForLevel(0, 1f).isInit = true;
+        lv.clearDirty(0, 1f);
+        return c;
+    }
+
+    static void gate() throws Exception {
+        java.io.File f = java.io.File.createTempFile("pzbutter-gate", ".properties");
+        f.deleteOnExit();
+        java.nio.file.Files.writeString(f.toPath(), "enabled=true\nbakeScheduler=true\n");
+        Settings.load(f);
+        LightChecks.init();
+        BakeHold.init();
+        if (!ChunkPatches.holdGuard.on) throw new IllegalStateException("bakeScheduler did not switch on (game members)");
+        zombie.iso.fboRenderChunk.FBORenderChunkManager mgr = new zombie.iso.fboRenderChunk.FBORenderChunkManager();
+        zombie.iso.fboRenderChunk.FBORenderChunkManager.instance = mgr;
+        zombie.iso.IsoCamera.frameState.playerIndex = 0;
+        zombie.iso.IsoCamera.frameState.camCharacterX = 40f; zombie.iso.IsoCamera.frameState.camCharacterY = 40f;
+        FrameClock.on = true;
+        String[] names = {"60 clean", "60 light", "200 widest"};
+        int[] counts = {30, 30, 100};
+        for (int sc = 0; sc < 3; sc++) {
+            int n = counts[sc];
+            java.util.Random r = new java.util.Random(11 + sc);
+            java.util.ArrayList<IsoChunk> chunks = new java.util.ArrayList<>();
+            for (int i = 0; i < n; i++) chunks.add(benchChunk(i % 10, i / 10));
+            // dirt: clean / all light / 10 % redraw, 60 % light, 30 % clean; re-applied every frame because a grant leaves dirt in place here
+            long[] dirt = new long[n];
+            for (int i = 0; i < n; i++) dirt[i] = sc == 0 ? 0 : sc == 1 ? 32 : (r.nextInt(10) == 0 ? 1024 : r.nextInt(10) < 6 ? 32 : 0);
+            int frames = 1500;
+            double[] ns = new double[7];
+            long heldCount = 0, chk = 17;
+            for (int rr = -2; rr < 7; rr++) {
+                long held = 0, h = 17;
+                long t0 = System.nanoTime();
+                for (int fr = 0; fr < frames; fr++) {
+                    long frame = (long) (rr + 2) * frames + fr + 1;
+                    long now = frame * 16;
+                    for (int i = 0; i < n; i++) {
+                        IsoChunk c = chunks.get(i);
+                        if (dirt[i] != 0) {
+                            c.getRenderLevels(0).invalidateLevel(0, dirt[i]);
+                            if ((dirt[i] & 32) != 0) c.squares[(int) (frame & 1)][(int) ((frame + i) & 63)].getLightInfo(0).r = 0.5f + ((frame * 7 + i) % 40) / 255f;
+                        }
+                    }
+                    BakeHold.planChunks(chunks, 0, 1f, frame, now);
+                    for (int i = 0; i < n; i++) {
+                        IsoChunk c = chunks.get(i);
+                        for (int lvl = 0; lvl <= 1; lvl++) {
+                            boolean hd = BakeHold.gate(mgr, c, lvl, 1f, 0, frame, now);
+                            if (hd) held++;
+                            h = h * 31 + (hd ? 1 : 0);
+                        }
+                    }
+                }
+                long t1 = System.nanoTime();
+                if (rr >= 0) ns[rr] = (t1 - t0) / (double) frames;
+                heldCount = held; chk = h;
+            }
+            Arrays.sort(ns);
+            System.out.printf("gate %-10s: %9.1f ns/frame (min %.1f, max %.1f), held answers per run %d, checksum %d%n", names[sc], ns[3], ns[0], ns[6], heldCount, chk);
+        }
+        FrameClock.on = false;
     }
 }

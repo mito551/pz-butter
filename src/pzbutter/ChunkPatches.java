@@ -22,6 +22,7 @@ public final class ChunkPatches {
     static final Guard edgeGuard = new Guard("edgeTestFast");
     static final Guard translucentGuard = new Guard("translucentTilesInChunkTexture");
     static final Guard zoomGuard = new Guard("zoomEaseMs");
+    static final Guard holdGuard = new Guard("bakeScheduler");
 
     /** FBORenderCell.isTreeRenderedEveryFrame entry: the answer when treesInChunkTexture is on; null runs stock. */
     public static Boolean onTreeEveryFrame(Object obj) {
@@ -84,6 +85,27 @@ public final class ChunkPatches {
         if (!zoomGuard.on) return;
         try { ZoomEase.updateExit(fbo); }
         catch (Throwable t) { zoomGuard.fail(t); }
+    }
+
+    /** FBORenderCell.prepareChunksForUpdating entry: the bake-hold plan for player p, before the stock prepare step. */
+    public static void onPlan(Object cell, int p) {
+        if (!holdGuard.on) return;
+        try { BakeHold.plan(cell, p); }
+        catch (Throwable t) { holdGuard.fail(t); }
+    }
+
+    /** FBORenderChunkManager.beginRenderChunkLevel entry: true when the level is held (stock skipped, the old texture shows). */
+    public static boolean onGateEnter(Object mgr, IsoChunk chunk, int level, float zoom) {
+        if (!holdGuard.on) return false;
+        try { return BakeHold.gate(mgr, chunk, level, zoom); }
+        catch (Throwable t) { holdGuard.fail(t); return false; }
+    }
+
+    /** FBORenderCell.prepareChunkForUpdating entry (holder in WorldPatches): true when the pair waits this frame. */
+    public static boolean onPrepareEnter(int p, IsoChunk chunk, int level) {
+        if (!holdGuard.on) return false;
+        try { return BakeHold.prepareHeld(p, chunk, level); }
+        catch (Throwable t) { holdGuard.fail(t); return false; }
     }
 
     /**
@@ -152,6 +174,32 @@ public final class ChunkPatches {
         @Patch.OnExit
         public static void exit(@Patch.Argument(0) IsoObject obj, @Patch.Return(readOnly = false) ObjectRenderLayer ret) {
             ret = onObjectLayer(obj, ret);
+        }
+    }
+
+    /** Private, one caller, once per player per frame: the planner runs before stock prepares the dirty pairs. */
+    @Patch(className = "zombie.iso.fboRenderChunk.FBORenderCell", methodName = "prepareChunksForUpdating")
+    public static class Plan {
+        @Patch.OnEnter
+        public static void enter(@Patch.This Object self, @Patch.Argument(0) int p) { onPlan(self, p); }
+    }
+
+    /**
+     * The bake gate. A held level runs the stock preamble itself (renderChunk, xoff, yoff) and answers false; stock's own
+     * OnExit rewrite is not enough here (at the pair's first level the stock body would already have opened the recording).
+     */
+    @Patch(className = "zombie.iso.fboRenderChunk.FBORenderChunkManager", methodName = "beginRenderChunkLevel")
+    public static class BakeGate {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This Object self, @Patch.Argument(0) IsoChunk chunk, @Patch.Argument(1) int level,
+                                    @Patch.Argument(2) float zoom, @Patch.Local("h") Object h) {
+            h = onGateEnter(self, chunk, level, zoom) ? Boolean.TRUE : null;
+            return h != null;
+        }
+
+        @Patch.OnExit
+        public static void exit(@Patch.Return(readOnly = false) boolean ret, @Patch.Local("h") Object h) {
+            if (h != null) ret = false;
         }
     }
 

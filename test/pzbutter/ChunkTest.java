@@ -1,6 +1,8 @@
 package pzbutter;
 
+import zombie.iso.IsoCamera;
 import zombie.iso.IsoCell;
+import zombie.iso.IsoChunk;
 import zombie.iso.IsoGridSquare;
 import zombie.iso.IsoObject;
 import zombie.iso.SpriteDetails.IsoFlagType;
@@ -45,6 +47,15 @@ final class ChunkTest {
         globalMoveDemotesStrong();
         strongDeltaDetected();
         planKeepsNoStateBetweenCalls();
+        gateDecisionSharedByPair();
+        preparedOnlyWhenGranted();
+        occlusionCountsGrantedOnly();
+        grantResetsHold();
+        slotMatchesStockPairs();
+        yoffMatchesStockOrder();
+        plan6aHoldKeysNeedMaster();
+        holdFlowHeadless();
+        lightClassesHeadless();
     }
 
     static void bakeableOnlyFlagReason() {
@@ -504,5 +515,208 @@ final class ChunkTest {
         int granted = 0;
         for (boolean x : a) if (x) granted++;
         assert granted == 9;
+    }
+
+    // ---- Task 7: bake-hold planner hooks ----
+
+    static void gateDecisionSharedByPair() {
+        BakeHold.PairState st = new BakeHold.PairState();
+        BakeHold.Budget b = budget(1, 0, 0, 0); b.leftTotal = 0;                      // budget used up by the plan
+        boolean first = BakeHold.gateDecision(st, 7, BakeHold.REDRAW, 1000, b);
+        boolean second = BakeHold.gateDecision(st, 7, BakeHold.REDRAW, 1000, b);      // the pair's second level, same frame
+        assert first && second && st.heldFrames == 1;
+        b.leftTotal = 1;
+        assert !BakeHold.gateDecision(new BakeHold.PairState(), 7, BakeHold.REDRAW, 1000, b) && b.leftTotal == 0;
+        assert !BakeHold.gateDecision(new BakeHold.PairState(), 7, BakeHold.NEW, 1000, b);   // never held
+        // the plan's decision stands for the gate, whatever the budget says by then
+        BakeHold.PairState planned = new BakeHold.PairState();
+        planned.planFrame = 7; planned.held = false;
+        b.leftTotal = 0;
+        assert !BakeHold.gateDecision(planned, 7, BakeHold.REDRAW, 1000, b) && planned.heldFrames == 0;
+        // a stale plan decides again
+        assert BakeHold.gateDecision(planned, 8, BakeHold.REDRAW, 1000, b) && planned.planFrame == 8 && planned.heldFrames == 1;
+    }
+
+    static void preparedOnlyWhenGranted() {
+        BakeHold.PairState st = new BakeHold.PairState();
+        st.planFrame = 5; st.held = true;
+        assert BakeHold.skipPrepare(st, 5) && !BakeHold.skipPrepare(st, 6);         // a stale plan never skips
+        st.held = false;
+        assert !BakeHold.skipPrepare(st, 5);
+    }
+
+    static void occlusionCountsGrantedOnly() {
+        BakeHold.PairState st = new BakeHold.PairState();
+        st.planFrame = 5; st.held = true;
+        assert !BakeHold.countsForOcclusion(st, 5) && BakeHold.countsForOcclusion(st, 6);
+        st.held = false;
+        assert BakeHold.countsForOcclusion(st, 5);
+    }
+
+    static void grantResetsHold() {
+        BakeHold.PairState st = new BakeHold.PairState();
+        st.heldFrames = 4; st.dirtySinceMs = 10;
+        BakeHold.granted(st, 99);
+        assert st.heldFrames == 0 && st.dirtySinceMs == -1 && st.lastBakeMs == 99;
+    }
+
+    static void slotMatchesStockPairs() {
+        for (int lvl = -32; lvl < 32; lvl++)
+            assert BakeHold.slot(lvl) == (zombie.iso.fboRenderChunk.FBORenderLevels.calculateMinLevel(lvl) + 32) / 2 : lvl;
+    }
+
+    static void yoffMatchesStockOrder() {
+        assert BakeHold.yoff(0, 1, 96, 0) == 192f && BakeHold.yoff(2, 3, 192, 64) == 2 * 192f + 2 * 192f + 64f;
+        assert BakeHold.yoff(-2, -1, 96, 0) == 2 * 96f - 2 * 96f;
+    }
+
+    static void plan6aHoldKeysNeedMaster() {
+        Settings.load(SelfTest.write("enabled=true\nbakeFrameBudget=4\n"));
+        BakeHold.init();
+        assert !ChunkPatches.holdGuard.on;                                          // numbers alone do nothing
+        assert BakeHold.frameBudget == 4;
+        Settings.load(SelfTest.write("enabled=false\nbakeScheduler=true\n"));
+        BakeHold.init();
+        assert !ChunkPatches.holdGuard.on;
+        Settings.load(SelfTest.write("enabled=true\nbakeFrameBudget=9999\nlightingStrongDelta=999\nrebakeBudget=0\n"));
+        BakeHold.init();
+        assert BakeHold.frameBudget == 256 && BakeHold.strongDelta == 255 && BakeHold.rebakeBudget == 0;
+    }
+
+    // a chunk with two levels, on screen, with a texture that has been baked once
+    private static IsoChunk holdChunk(int wx, int wy, boolean baked) {
+        IsoChunk c = new IsoChunk((IsoCell) null);
+        c.minLevel = 0; c.maxLevel = 1; c.wx = wx; c.wy = wy;
+        c.squares = new zombie.iso.IsoGridSquare[2][64];
+        for (int z = 0; z < 2; z++)
+            for (int i = 0; i < 64; i++) {
+                zombie.iso.IsoGridSquare sq = new zombie.iso.IsoGridSquare(null, null, wx * 8 + i % 8, wy * 8 + i / 8, z);
+                sq.setLightInfoServerGUIOnly(new zombie.core.textures.ColorInfo(0.5f, 0.5f, 0.5f, 1f));
+                c.squares[z][i] = sq;
+            }
+        zombie.iso.fboRenderChunk.FBORenderLevels lv = c.getRenderLevels(0);
+        lv.setOnScreen(0, true); lv.setOnScreen(1, true);
+        zombie.iso.fboRenderChunk.FBORenderChunk rc = lv.getOrCreateFBOForLevel(0, 1f);
+        rc.isInit = baked;
+        lv.clearDirty(0, 1f);
+        return c;
+    }
+
+    private static void setLight(IsoChunk c, float v) {
+        for (int z = 0; z < 2; z++) for (int i = 0; i < 64; i++) c.squares[z][i].getLightInfo(0).r = v;
+    }
+
+    /** The planner, the gate, the prepare skip and the occlusion count on real chunk levels (no GL; the textures are never drawn). */
+    static void holdFlowHeadless() {
+        boolean clock = FrameClock.on;
+        long frameNo = FrameClock.frameNo;
+        zombie.iso.fboRenderChunk.FBORenderChunkManager mgrWas = zombie.iso.fboRenderChunk.FBORenderChunkManager.instance;
+        zombie.iso.fboRenderChunk.FBORenderChunkManager mgr = new zombie.iso.fboRenderChunk.FBORenderChunkManager();
+        zombie.iso.fboRenderChunk.FBORenderChunkManager.instance = mgr;
+        IsoCamera.frameState.playerIndex = 0;
+        IsoCamera.frameState.camCharacterX = 4f; IsoCamera.frameState.camCharacterY = 4f;
+        try {
+            FrameClock.on = true;
+            Settings.load(SelfTest.write("enabled=true\nbakeScheduler=true\nbakeFrameBudget=1\nrebakeBudget=0\nrebakeMaxFrames=3\n"));
+            LightChecks.init();
+            BakeHold.init();
+            assert ChunkPatches.holdGuard.on : "handles must resolve headless";
+            IsoChunk near = holdChunk(0, 0, true), far = holdChunk(1, 0, true);
+            zombie.iso.fboRenderChunk.FBORenderLevels ln = near.getRenderLevels(0), lf = far.getRenderLevels(0);
+            java.util.ArrayList<IsoChunk> chunks = new java.util.ArrayList<>(java.util.List.of(far, near));
+            ln.invalidateLevel(0, 1024); lf.invalidateLevel(0, 1024);                    // both want a redraw, one fits
+            BakeHold.planChunks(chunks, 0, 1f, 100, 1000);
+            assert !BakeHold.peek(ln, 0).held && BakeHold.peek(lf, 0).held : "nearest first";
+            assert BakeHold.peek(lf, 0).cls == BakeHold.REDRAW;
+            // the gate: the held pair answers for both its levels and shows its old texture
+            assert BakeHold.gate(mgr, far, 0, 1f, 0, 100, 1000) && BakeHold.gate(mgr, far, 1, 1f, 0, 100, 1000);
+            assert mgr.renderChunk == lf.getFBOForLevel(0, 1f);
+            assert !BakeHold.gate(mgr, near, 0, 1f, 0, 100, 1000);
+            assert BakeHold.peek(ln, 0).lastBakeMs == 1000;                             // a grant is recorded at the pair's min level
+            assert !BakeHold.gate(mgr, near, 1, 1f, 0, 100, 1000);
+            assert BakeHold.prepareHeld(0, far, 0, 100) && !BakeHold.prepareHeld(0, near, 0, 100) && !BakeHold.prepareHeld(0, far, 0, 101);
+            assert !BakeHold.countsLevel(lf, 0, 100) && !BakeHold.countsLevel(lf, 1, 100) && BakeHold.countsLevel(ln, 0, 100);
+            // a held pair is bounded: held for rebakeMaxFrames plans, then granted even with the budget spent
+            BakeHold.planChunks(chunks, 0, 1f, 101, 1016);
+            BakeHold.planChunks(chunks, 0, 1f, 102, 1032);
+            assert BakeHold.peek(lf, 0).held && BakeHold.peek(lf, 0).heldFrames == 3;
+            BakeHold.planChunks(chunks, 0, 1f, 103, 1048);
+            assert !BakeHold.peek(lf, 0).held : "overdue pair goes";
+            assert !BakeHold.gate(mgr, far, 0, 1f, 0, 103, 1048) && BakeHold.peek(lf, 0).heldFrames == 0;
+            assert !BakeHold.prepareHeld(0, far, 0, 103);
+            // clean levels reset their hold
+            lf.clearDirty(0, 1f);
+            BakeHold.planChunks(chunks, 0, 1f, 104, 1064);
+            assert BakeHold.peek(lf, 0).heldFrames == 0 && BakeHold.peek(lf, 0).dirtySinceMs == -1;
+            assert !BakeHold.gate(mgr, far, 0, 1f, 0, 104, 1064);                        // not dirty: stock answers
+            // never held: object dirt, a new texture, create
+            IsoChunk obj = holdChunk(2, 0, true), fresh = holdChunk(3, 0, false), created = holdChunk(0, 1, true);
+            obj.getRenderLevels(0).invalidateLevel(0, 64 | 1024);
+            fresh.getRenderLevels(0).invalidateLevel(0, 1024);
+            created.getRenderLevels(0).invalidateLevel(0, 512);
+            chunks = new java.util.ArrayList<>(java.util.List.of(obj, fresh, created, near));
+            BakeHold.planChunks(chunks, 0, 1f, 110, 2000);
+            assert !BakeHold.peek(obj.getRenderLevels(0), 0).held && !BakeHold.peek(fresh.getRenderLevels(0), 0).held && !BakeHold.peek(created.getRenderLevels(0), 0).held;
+            assert BakeHold.peek(obj.getRenderLevels(0), 0).cls == BakeHold.OBJECT && BakeHold.peek(fresh.getRenderLevels(0), 0).cls == BakeHold.NEW;
+            // dirt that arrives after the plan is decided at the gate with the budget left; the second level follows
+            IsoChunk late = holdChunk(0, 2, true);
+            zombie.iso.fboRenderChunk.FBORenderLevels ll = late.getRenderLevels(0);
+            ll.invalidateLevel(0, 1024);
+            assert BakeHold.gate(mgr, late, 0, 1f, 0, 110, 2000) && BakeHold.gate(mgr, late, 1, 1f, 0, 110, 2000);
+            assert BakeHold.peek(ll, 0).planFrame == 110 && BakeHold.peek(ll, 0).held;
+            // a hold never leaves xoff / yoff or the texture unset
+            assert mgr.renderChunk == ll.getFBOForLevel(0, 1f);
+        } finally {
+            FrameClock.on = clock;
+            FrameClock.frameNo = frameNo;
+            zombie.iso.fboRenderChunk.FBORenderChunkManager.instance = mgrWas;
+            ChunkPatches.holdGuard.on = false;
+        }
+    }
+
+    /** The light snapshot at a grant, STRONG from a square's move, and a global move demoting STRONG. */
+    static void lightClassesHeadless() {
+        boolean clock = FrameClock.on;
+        zombie.iso.fboRenderChunk.FBORenderChunkManager mgrWas = zombie.iso.fboRenderChunk.FBORenderChunkManager.instance;
+        zombie.iso.fboRenderChunk.FBORenderChunkManager mgr = new zombie.iso.fboRenderChunk.FBORenderChunkManager();
+        zombie.iso.fboRenderChunk.FBORenderChunkManager.instance = mgr;
+        IsoCamera.frameState.playerIndex = 0;
+        IsoCamera.frameState.camCharacterX = 4f; IsoCamera.frameState.camCharacterY = 4f;
+        try {
+            FrameClock.on = true;
+            Settings.load(SelfTest.write("enabled=true\nbakeScheduler=true\nlightingStrongDelta=6\nlightingGlobalDeltaPct=2\nlightingRebakeMs=250\n"));
+            BakeHold.init();
+            IsoChunk a = holdChunk(0, 0, true), b = holdChunk(1, 0, true);
+            zombie.iso.fboRenderChunk.FBORenderLevels la = a.getRenderLevels(0), lb = b.getRenderLevels(0);
+            java.util.ArrayList<IsoChunk> chunks = new java.util.ArrayList<>(java.util.List.of(a, b));
+            la.invalidateLevel(0, 32); lb.invalidateLevel(0, 32);
+            BakeHold.planChunks(chunks, 0, 1f, 1, 10_000);
+            assert BakeHold.peek(la, 0).cls == BakeHold.LIGHT : "no snapshot yet: not strong";
+            assert !BakeHold.gate(mgr, a, 0, 1f, 0, 1, 10_000);                           // granted: the snapshot is taken
+            assert BakeHold.peek(la, 0).light != null && BakeHold.peek(la, 0).light.length == 384;
+            // the light moves a little: still LIGHT. One square moves a lot: STRONG
+            a.squares[0][5].getLightInfo(0).r = 0.5f + 3 / 255f;
+            la.invalidateLevel(0, 32);
+            BakeHold.planChunks(chunks, 0, 1f, 2, 10_016);
+            assert BakeHold.peek(la, 0).cls == BakeHold.LIGHT;
+            a.squares[1][9].getLightInfo(0).g = 0.5f + 12 / 255f;
+            BakeHold.planChunks(chunks, 0, 1f, 3, 10_032);
+            assert BakeHold.peek(la, 0).cls == BakeHold.STRONG : "a torch beam goes first";
+            // both chunks move a lot over every square: a global move, so STRONG is spread like LIGHT
+            assert !BakeHold.gate(mgr, b, 0, 1f, 0, 3, 10_032);                           // b gets its snapshot too (it was dirty, granted by budget)
+            setLight(a, 0.9f); setLight(b, 0.9f);
+            la.invalidateLevel(0, 32); lb.invalidateLevel(0, 32);
+            BakeHold.planChunks(chunks, 0, 1f, 4, 10_048);
+            assert BakeHold.peek(la, 0).cls == BakeHold.LIGHT && BakeHold.peek(lb, 0).cls == BakeHold.LIGHT : "global move";
+            // strong delta 0: every light-only pair is strong
+            Settings.load(SelfTest.write("enabled=true\nbakeScheduler=true\nlightingStrongDelta=0\n"));
+            BakeHold.init();
+            BakeHold.planChunks(chunks, 0, 1f, 5, 10_064);
+            assert BakeHold.peek(la, 0).cls == BakeHold.STRONG;
+        } finally {
+            FrameClock.on = clock;
+            zombie.iso.fboRenderChunk.FBORenderChunkManager.instance = mgrWas;
+            ChunkPatches.holdGuard.on = false;
+        }
     }
 }

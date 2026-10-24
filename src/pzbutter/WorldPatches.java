@@ -23,11 +23,20 @@ public final class WorldPatches {
     static final Guard splashGuard = new Guard("rainSplashesFast");
     static final Guard maskGuard = new Guard("weatherMaskIdleSkip");
 
-    /** FBORenderCell.hasAnyDirtyChunkTextures entry: the answer when occlusionSkipLightingOnly is on; null runs stock. */
+    /**
+     * FBORenderCell.hasAnyDirtyChunkTextures entry: the answer when occlusionSkipLightingOnly or (with bakeScheduler)
+     * occlusionGrantedOnly is on, null runs stock. The two compose: lighting-only dirt ignored, held pairs ignored, either, both.
+     */
     public static Boolean onDirtyEnter(Object cell, int p) {
-        if (!occlusionGuard.on) return null;
-        try { return LightChecks.anyDirtyOutsideLighting(cell, p); }
-        catch (Throwable t) { occlusionGuard.fail(t); return null; }
+        boolean lighting = occlusionGuard.on;
+        boolean granted = ChunkPatches.holdGuard.on && BakeHold.occlusionGranted && FrameClock.on;
+        if (!lighting && !granted) return null;
+        try { return LightChecks.anyDirty(cell, p, lighting ? LightChecks.NON_LIGHT : -1L, granted); }
+        catch (Throwable t) {
+            if (lighting) occlusionGuard.fail(t);
+            if (granted) ChunkPatches.holdGuard.fail(t);
+            return null;
+        }
     }
 
     /** JNILighting.updateFBORenderChunk exit: stamps a clean square with the current lighting counter. */
@@ -178,11 +187,23 @@ public final class WorldPatches {
         }
     }
 
-    /** FBORenderCell.prepareChunkForUpdating exit: every level of the chunk is stale for that player. */
+    /**
+     * FBORenderCell.prepareChunkForUpdating: a pair the bake-hold planner holds this frame is not prepared (enter skips
+     * the body); a prepared chunk's stored masks are stale for that player (exit, only when the body ran).
+     */
     @Patch(className = "zombie.iso.fboRenderChunk.FBORenderCell", methodName = "prepareChunkForUpdating")
     public static class ChunkPrepared {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.Argument(0) int p, @Patch.Argument(1) IsoChunk chunk, @Patch.Argument(2) int level,
+                                    @Patch.Local("s") Object s) {
+            s = ChunkPatches.onPrepareEnter(p, chunk, level) ? Boolean.TRUE : null;
+            return s != null;
+        }
+
         @Patch.OnExit
-        public static void exit(@Patch.Argument(0) int p, @Patch.Argument(1) IsoChunk chunk) { onChunkPrepared(p, chunk); }
+        public static void exit(@Patch.Argument(0) int p, @Patch.Argument(1) IsoChunk chunk, @Patch.Local("s") Object s) {
+            if (s == null) onChunkPrepared(p, chunk);
+        }
     }
 
     @Patch(className = "zombie.gameStates.IngameState", methodName = "enter")
