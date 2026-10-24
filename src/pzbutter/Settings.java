@@ -232,6 +232,16 @@ public final class Settings {
     public static volatile boolean frameLog;
     private static volatile Properties props = new Properties();
 
+    /** Keys modCompat=auto switched off (ModCompat.init, after load): they answer the stock value whatever the file says. Cleared by load. */
+    static final java.util.Set<String> forcedOff = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    /** What modProfile sets, whatever the file says for these keys (SPEC 3.10). */
+    static final java.util.Map<String, String> PERFORMANCE = java.util.Map.of("modCompat", "report", "uiRetainedMods", "true");
+    static final java.util.Map<String, String> COMPATIBILITY = java.util.Map.of("modCompat", "auto", "uiRetainedMods", "false");
+
+    /** Switches whose stock value is true (they only add a PZ Butter deviation when false): forced off means true. */
+    static final java.util.Set<String> STOCK_ON = java.util.Set.of("driveTreeCutaway", "glassTilesPerFrame", "translucentLightsPerFrame");
+
     private Settings() {}
 
     public static void load() { load(new File(System.getProperty("user.home"), "Zomboid/PZButter.properties")); }
@@ -239,6 +249,7 @@ public final class Settings {
     public static void load(File f) {
         enabled = frameLog = false;
         props = new Properties();
+        forcedOff.clear();
         try {
             if (!f.exists()) try (FileWriter w = new FileWriter(f)) { w.write(DEFAULTS); }
             Properties p = new Properties();
@@ -318,11 +329,33 @@ public final class Settings {
         "audioLimiterStereoFold",
         "driveTreeCutaway", "glassTilesPerFrame", "translucentLightsPerFrame");   // stock-equivalent values (Plan 6), not passed features
 
-    public static boolean flag(String key) { return enabled && bool(props, key, ON_BY_DEFAULT.contains(key)); }
+    public static boolean flag(String key) {
+        if (!enabled) return false;
+        if (forcedOff.contains(key)) return STOCK_ON.contains(key);
+        return bool(raw(key), ON_BY_DEFAULT.contains(key));
+    }
+
+    /**
+     * The value for a key: the one modProfile sets (performance, compatibility) for the two keys it owns, else the file's;
+     * null when missing.
+     */
+    static String raw(String key) {
+        Properties p = props;
+        String profile = p.getProperty("modProfile");
+        if (profile != null) {
+            java.util.Map<String, String> m = switch (profile.trim().toLowerCase(Locale.ROOT)) {
+                case "performance" -> PERFORMANCE;
+                case "compatibility" -> COMPATIBILITY;
+                default -> null;
+            };
+            if (m != null && m.containsKey(key)) return m.get(key);
+        }
+        return p.getProperty(key);
+    }
 
     /** A number key, clamped to [min, max]; the default when missing or unreadable. */
     public static int num(String key, int dflt, int min, int max) {
-        String v = props.getProperty(key);
+        String v = forcedOff.contains(key) ? null : raw(key);
         int n = dflt;
         if (v != null) try { n = Integer.parseInt(v.trim()); } catch (NumberFormatException e) { n = dflt; }
         return Math.max(min, Math.min(max, n));
@@ -330,14 +363,14 @@ public final class Settings {
 
     /** A text key; the default when missing. */
     public static String text(String key, String dflt) {
-        String v = props.getProperty(key);
+        String v = forcedOff.contains(key) ? null : raw(key);
         return v == null ? dflt : v.trim();
     }
 
     /** "off", "on" or "auto"; "off" when the master switch is off or the value is unreadable. */
     public static String mode(String key) {
-        if (!enabled) return "off";
-        String v = props.getProperty(key);
+        if (!enabled || forcedOff.contains(key)) return "off";
+        String v = raw(key);
         if (v == null) return "off";
         switch (v.trim().toLowerCase(Locale.ROOT)) {
             case "on": case "true": case "yes": case "1": return "on";
@@ -346,8 +379,9 @@ public final class Settings {
         }
     }
 
-    static boolean bool(Properties p, String key, boolean dflt) {
-        String v = p.getProperty(key);
+    static boolean bool(Properties p, String key, boolean dflt) { return bool(p.getProperty(key), dflt); }
+
+    static boolean bool(String v, boolean dflt) {
         if (v == null) return dflt;
         switch (v.trim().toLowerCase(Locale.ROOT)) {
             case "true": case "yes": case "on": case "1": return true;

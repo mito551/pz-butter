@@ -72,6 +72,15 @@ final class LuaGateTest {
         logShimOffAndErrors();
         logShimSkipsFilteredLines();
         logHoldersShape();
+        scanFindsPatchAnnotations();
+        scanReadsEveryReplacingForm();
+        nameMatchesZbRules();
+        conflictOnlyWhenOneReplaces();
+        profileSetsTheTwoKeys();
+        forcedOffAnswersStock();
+        forcedOffStockTrueKeys();
+        otherJarsNeverThrows();
+        jarsFromKeepsLoadedAndDropsOwn();
     }
 
     static void plan7KeysDefaults() {
@@ -793,5 +802,138 @@ final class LuaGateTest {
             assert enters == 1 : p.methodName();
         }
         assert seen.equals(want) : seen;
+    }
+
+    // ---- Task 9: mod scan, profile, forced-off answers ----
+
+    static byte[] classBytes(Class<?> c) throws Exception {
+        try (java.io.InputStream in = c.getResourceAsStream(c.getName().substring(c.getName().lastIndexOf('.') + 1) + ".class")) { return in.readAllBytes(); }
+    }
+
+    static void scanFindsPatchAnnotations() throws Exception {
+        java.nio.file.Path jar = SelfTest.tmp("modcompat/other.jar").toPath();
+        try (java.util.jar.JarOutputStream out = new java.util.jar.JarOutputStream(java.nio.file.Files.newOutputStream(jar))) {
+            for (Class<?> c : new Class<?>[] {LuaPatches.Call.class, LuaPatches.Trigger.class, LuaFast.class}) {
+                out.putNextEntry(new java.util.jar.JarEntry(c.getName().replace('.', '/') + ".class")); out.write(classBytes(c)); out.closeEntry();
+            }
+            out.putNextEntry(new java.util.jar.JarEntry("broken/Bad.class")); out.write(new byte[] {1, 2, 3}); out.closeEntry();   // skipped, not fatal
+            out.putNextEntry(new java.util.jar.JarEntry("readme.txt")); out.write("x".getBytes()); out.closeEntry();
+        }
+        java.util.List<ModCompat.Target> t = ModCompat.scanJar(jar);
+        assert t.size() == 2 : t;                                                   // LuaFast has no @Patch
+        assert t.contains(new ModCompat.Target("se.krka.kahlua.integration.LuaCaller", "protectedCallVoid", true, "other.jar"));
+        assert t.contains(new ModCompat.Target("zombie.Lua.Event", "trigger", false, "other.jar"));
+    }
+
+    /** The four ways a @Patch replaces stock, and the ones that do not; the last is a class built here (isAdvice = false). */
+    static void scanReadsEveryReplacingForm() throws Exception {
+        java.util.function.Function<Class<?>, Boolean> replaces = c -> {
+            try {
+                java.util.List<ModCompat.Target> t = ModCompat.scanClass(classBytes(c), "x");
+                assert t.size() == 1 : c;
+                return t.get(0).replaces();
+            } catch (Exception e) { throw new RuntimeException(e); }
+        };
+        assert replaces.apply(LuaPatches.Call.class);                               // OnEnter(skipOn = true)
+        assert replaces.apply(DeliveryPatches.RightDelay.class);                    // Return(readOnly = false), no skipOn
+        assert !replaces.apply(DeliveryPatches.Step.class);                         // OnEnter only
+        assert !replaces.apply(LuaPatches.Rawset.class);                            // Argument and This with the default readOnly
+        assert !replaces.apply(DeliveryPatches.Acquire.class);                      // Return with the default readOnly
+        java.lang.constant.ClassDesc patch = java.lang.constant.ClassDesc.of("me.zed_0xff.zombie_buddy.Patch");
+        java.util.function.Function<Boolean, byte[]> fake = isAdvice -> java.lang.classfile.ClassFile.of().build(java.lang.constant.ClassDesc.of("x.Fake"),
+            cb -> cb.with(java.lang.classfile.attribute.RuntimeVisibleAnnotationsAttribute.of(java.lang.classfile.Annotation.of(patch,
+                java.lang.classfile.AnnotationElement.ofString("className", "a.B"), java.lang.classfile.AnnotationElement.ofString("methodName", "m"),
+                java.lang.classfile.AnnotationElement.ofBoolean("isAdvice", isAdvice)))));
+        assert ModCompat.scanClass(fake.apply(false), "f").equals(java.util.List.of(new ModCompat.Target("a.B", "m", true, "f")));
+        assert ModCompat.scanClass(fake.apply(true), "f").equals(java.util.List.of(new ModCompat.Target("a.B", "m", false, "f")));
+        assert ModCompat.scanClass(classBytes(LuaFast.class), "f").isEmpty() && ModCompat.scanClass(new byte[] {1, 2}, "f").isEmpty();
+    }
+
+    static void nameMatchesZbRules() {
+        assert ModCompat.nameMatches("update", "update") && !ModCompat.nameMatches("update", "updateX");
+        assert ModCompat.nameMatches("*", "anything") && ModCompat.nameMatches("<init>", "<init>") && !ModCompat.nameMatches("<init>", "init");
+        assert ModCompat.nameMatches("/get.*Writer/", "getFileWriter") && !ModCompat.nameMatches("/get.*Writer/", "getFileWriterX");
+        assert ModCompat.nameMatches("*Writer", "getFileWriter") && ModCompat.nameMatches("get*", "getFileWriter") && ModCompat.nameMatches("*File*", "getFileWriter");
+        assert !ModCompat.nameMatches("*Reader", "getFileWriter") && !ModCompat.nameMatches("set*", "getFileWriter") && !ModCompat.nameMatches("*Nope*", "getFileWriter");
+        assert !ModCompat.nameMatches("/(/", "anything");                          // a bad regex matches nothing
+    }
+
+    static void conflictOnlyWhenOneReplaces() {
+        ModCompat.Target ourSkip = new ModCompat.Target("a.B", "m", true, "LuaPatches.Call"), ourObs = new ModCompat.Target("a.B", "m", false, "LuaPatches.Trigger");
+        ModCompat.Target theirObs = new ModCompat.Target("a.B", "m", false, "x.jar"), theirSkip = new ModCompat.Target("a.B", "*", true, "y.jar");
+        assert ModCompat.conflicts(java.util.List.of(ourObs), java.util.List.of(theirObs)).isEmpty();
+        assert ModCompat.conflicts(java.util.List.of(ourSkip), java.util.List.of(theirObs)).get(0)[3].equals("ours");
+        assert ModCompat.conflicts(java.util.List.of(ourObs), java.util.List.of(theirSkip)).get(0)[3].equals("theirs");
+        assert ModCompat.conflicts(java.util.List.of(ourSkip), java.util.List.of(theirSkip)).get(0)[3].equals("both");
+        assert ModCompat.conflicts(java.util.List.of(ourSkip), java.util.List.of(new ModCompat.Target("a.C", "m", true, "z.jar"))).isEmpty();
+        assert ModCompat.conflicts(java.util.List.of(ourSkip), java.util.List.of(new ModCompat.Target("a.B", "other", true, "z.jar"))).isEmpty();
+        String[] c = ModCompat.conflicts(java.util.List.of(ourSkip), java.util.List.of(theirObs)).get(0);
+        assert c[0].equals("LuaPatches.Call") && c[1].equals("a.B.m") && c[2].equals("x.jar");
+    }
+
+    static void profileSetsTheTwoKeys() {
+        Settings.load(SelfTest.write("enabled=true\nmodProfile=compatibility\nmodCompat=report\nuiRetainedMods=true\n"));
+        assert ModCompat.mode().equals("auto") && !Settings.flag("uiRetainedMods");
+        Settings.load(SelfTest.write("enabled=true\nmodProfile=performance\nmodCompat=off\nuiRetainedMods=false\n"));
+        assert ModCompat.mode().equals("report") && Settings.flag("uiRetainedMods");
+        Settings.load(SelfTest.write("enabled=true\nmodProfile=custom\nmodCompat=auto\nuiRetainedMods=false\n"));
+        assert ModCompat.mode().equals("auto") && !Settings.flag("uiRetainedMods");
+        Settings.load(SelfTest.write("enabled=true\nmodProfile=Performance\n"));                // case and spaces do not matter, a missing line is the profile's
+        assert ModCompat.mode().equals("report") && Settings.flag("uiRetainedMods");
+        Settings.load(SelfTest.write("enabled=true\nmodProfile=nonsense\nmodCompat=report\n"));   // an unknown profile is custom
+        assert ModCompat.mode().equals("report");
+        Settings.load(SelfTest.write("enabled=true\nmodCompat=bogus\n"));
+        assert ModCompat.mode().equals("off");
+        Settings.load(SelfTest.write("enabled=true\n"));                                          // shipped defaults: no scan
+        assert ModCompat.mode().equals("off");
+        Settings.load(SelfTest.write("enabled=false\nmodProfile=performance\n"));
+        assert ModCompat.mode().equals("off");
+    }
+
+    static void forcedOffAnswersStock() {
+        Settings.load(SelfTest.write("enabled=true\nlimiterSleep=true\nsoundTickHz=60\npresentPacing=on\nzoomEase=0.1,0.2,0.3,0.4\n"));
+        assert Settings.flag("limiterSleep") && Settings.num("soundTickHz", 0, 0, 1000) == 60 && Settings.mode("presentPacing").equals("on");
+        Settings.forcedOff.addAll(java.util.Set.of("limiterSleep", "soundTickHz", "presentPacing", "zoomEase"));
+        assert !Settings.flag("limiterSleep") && Settings.num("soundTickHz", 0, 0, 1000) == 0 && Settings.mode("presentPacing").equals("off");
+        assert Settings.text("zoomEase", "0.25,0.1,0.25,1.0").equals("0.25,0.1,0.25,1.0");
+        assert Settings.flag("luaBudget");                                         // keys not forced answer as before
+        Settings.load(SelfTest.write("enabled=true\nlimiterSleep=true\n"));
+        assert Settings.forcedOff.isEmpty() && Settings.flag("limiterSleep");
+    }
+
+    /** A switch whose stock value is true answers true when forced off (false would be the deviation), and still false without the master switch. */
+    static void forcedOffStockTrueKeys() {
+        Settings.load(SelfTest.write("enabled=true\ndriveTreeCutaway=false\nglassTilesPerFrame=false\ntranslucentLightsPerFrame=false\n"));
+        assert !Settings.flag("driveTreeCutaway") && !Settings.flag("glassTilesPerFrame");
+        Settings.forcedOff.addAll(java.util.Set.of("driveTreeCutaway", "glassTilesPerFrame", "translucentLightsPerFrame"));
+        assert Settings.flag("driveTreeCutaway") && Settings.flag("glassTilesPerFrame") && Settings.flag("translucentLightsPerFrame");
+        Settings.load(SelfTest.write("enabled=false\n"));
+        Settings.forcedOff.add("driveTreeCutaway");
+        assert !Settings.flag("driveTreeCutaway");
+        Settings.load(SelfTest.write("enabled=true\n"));
+    }
+
+    static void otherJarsNeverThrows() {
+        java.util.List<java.nio.file.Path> j = ModCompat.otherJars();                // headless: ZB's map is empty or missing
+        assert j != null && j.isEmpty();
+    }
+
+    /** The JavaModLoadState records ZombieBuddy keeps: loaded ones count, refused or undecided ones and our own jar do not. */
+    static void jarsFromKeepsLoadedAndDropsOwn() throws Exception {
+        Class<?> st = Class.forName("me.zed_0xff.zombie_buddy.Loader$JavaModLoadState");
+        java.lang.reflect.Constructor<?> ctor = st.getDeclaredConstructors()[0];
+        ctor.setAccessible(true);
+        java.nio.file.Path a = java.nio.file.Path.of("/mods/a.jar"), b = java.nio.file.Path.of("/mods/b.jar"), c = java.nio.file.Path.of("/mods/c.jar"),
+            own = java.nio.file.Path.of("/mods/pzbutter.jar");
+        java.util.Map<java.nio.file.Path, Object> m = new java.util.LinkedHashMap<>();
+        m.put(a, ctor.newInstance("a", a, null, "loaded", "h", Boolean.TRUE));
+        m.put(b, ctor.newInstance("b", b, null, "denied", "h", Boolean.FALSE));
+        m.put(c, ctor.newInstance("c", c, null, "pending", "h", null));
+        m.put(own, ctor.newInstance("pzbutter", own, null, "loaded", "h", Boolean.TRUE));
+        try {
+            assert ModCompat.jarsFrom(m, own).equals(java.util.List.of(a));
+            assert ModCompat.jarsFrom(java.util.Map.of(), own).isEmpty();
+        } catch (Exception | Error e) { throw e; }
+        catch (Throwable t) { throw new AssertionError(t); }
     }
 }
