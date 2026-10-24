@@ -15,6 +15,7 @@ public final class ZombiePatches {
         ZombieLod.init();
         losGuard.on = Settings.flag("playerLosFast");
         CullSort.init();
+        ZombieMisc.init();
     }
 
     /** IsoGameCharacter.setForwardDirection(float, float) entry: true skips the body (the character keeps its facing). */
@@ -231,5 +232,51 @@ public final class ZombiePatches {
 
         @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
         public static void exit(@Patch.Argument(1) java.util.Comparator c) { ZombiePatches.onSortExit(c); }
+    }
+
+    // ---- statsNoBox, popmanFlagsFlyweight: two allocation savers ----
+
+    /** Stats.get entry: -1 runs stock; else the answer packed by ZombieMisc.statsGet. Any thread. */
+    public static long onStatsGet(Object self, Object stat) {
+        if (!ZombieMisc.statsGuard.on) return -1;
+        try { return ZombieMisc.statsGet(self, stat); }
+        catch (Throwable t) { ZombieMisc.statsGuard.fail(t); return -1; }
+    }
+
+    /** ZombieStateFlags.fromInt entry: the shared object for 0 to 63, else null (stock builds its own). Any thread. */
+    public static Object onFromInt(int v) {
+        if (!ZombieMisc.flagsGuard.on) return null;
+        try { return ZombieMisc.flags(v); }
+        catch (Throwable t) { ZombieMisc.flagsGuard.fail(t); return null; }
+    }
+
+    /** The only overload. The answer rides in a long local (bit 32 set) so nothing is boxed. */
+    @Patch(className = "zombie.characters.Stats", methodName = "get")
+    public static class StatsGet {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This Object self, @Patch.Argument(0) Object stat, @Patch.Local("r") long r) {
+            r = ZombiePatches.onStatsGet(self, stat);
+            return r >= 0;
+        }
+
+        @Patch.OnExit
+        public static void exit(@Patch.Return(readOnly = false) float ret, @Patch.Local("r") long r) {
+            if (r >= 0) ret = Float.intBitsToFloat((int) r);
+        }
+    }
+
+    /** The only fromInt (static). */
+    @Patch(className = "zombie.popman.ZombieStateFlags", methodName = "fromInt")
+    public static class FlagsFromInt {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.Argument(0) int v, @Patch.Local("f") Object f) {
+            f = ZombiePatches.onFromInt(v);
+            return f != null;
+        }
+
+        @Patch.OnExit
+        public static void exit(@Patch.Return(readOnly = false) zombie.popman.ZombieStateFlags ret, @Patch.Local("f") Object f) {
+            if (f != null) ret = (zombie.popman.ZombieStateFlags) f;
+        }
     }
 }

@@ -46,6 +46,11 @@ final class ZombieTest {
         cullSortShimPicksStockOnly();
         cullSortInitFindsGameClass();
         cullSortHolderTargetsStock();
+        statsGetMatchesStock();
+        statsGetFallsBackToStock();
+        statsShimOffTouchesNothing();
+        flagsFlyweightSameFlags();
+        smallHoldersTargetStock();
     }
 
     static final String[] PLAN8_FLAGS = {"zeroFacingFix", "playerLosFast", "zombieCullSortFast", "statsNoBox", "popmanFlagsFlyweight", "entityTiming"};
@@ -566,5 +571,100 @@ final class ZombieTest {
             if (x != null) exit = x.onThrowable() == Throwable.class && x.suppress() == Throwable.class;
         }
         assert exit;
+    }
+
+    // ---- Task 8: stat reads and state flags ----
+
+    static void statsGetMatchesStock() {
+        Settings.load(SelfTest.write("enabled=true\nstatsNoBox=true\n"));
+        ZombieMisc.init();
+        try {
+            assert ZombieMisc.statsGuard.on;
+            zombie.characters.Stats s = new zombie.characters.Stats();
+            java.util.Random r = new java.util.Random(4);
+            zombie.characters.CharacterStat[] all = zombie.characters.CharacterStat.ORDERED_STATS;
+            assert all.length > 0;
+            for (int round = 0; round < 50; round++) {
+                for (zombie.characters.CharacterStat c : all) {
+                    if (r.nextInt(3) == 0) s.set(c, r.nextFloat() * 2f - 0.5f);
+                    long v = ZombieMisc.statsGet(s, c);
+                    assert v >= 0 && Float.intBitsToFloat((int) v) == s.get(c) : c;
+                    long w = ZombiePatches.onStatsGet(s, c);                      // the shim, guard on
+                    assert w == v : c;
+                }
+            }
+            ZombieMisc.statsGuard.on = false;
+            assert ZombiePatches.onStatsGet(null, null) == -1;
+        } finally { ZombieMisc.resetForTest(); }
+    }
+
+    /** Mine: a stored null (stock throws), a null stat and a failing read leave the stock path to run. */
+    static void statsGetFallsBackToStock() {
+        Settings.load(SelfTest.write("enabled=true\nstatsNoBox=true\n"));
+        ZombieMisc.init();
+        try {
+            zombie.characters.Stats s = new zombie.characters.Stats();
+            zombie.characters.CharacterStat c = zombie.characters.CharacterStat.HUNGER;
+            java.util.Map<Object, Object> m = ZombieMisc.statsMapOf(s);
+            m.put(c, null);                                                           // a key mapped to null: stock's getOrDefault gives null, then NPE
+            assert ZombieMisc.statsGet(s, c) == -1;
+            boolean threw = false;
+            try { s.get(c); } catch (NullPointerException e) { threw = true; }
+            assert threw;
+            assert ZombieMisc.statsGet(s, null) == -1;
+            m.remove(c);
+            long v = ZombieMisc.statsGet(s, c);
+            assert v >= 0 && Float.intBitsToFloat((int) v) == c.getDefaultValue() && Float.intBitsToFloat((int) v) == s.get(c);
+            // -0f and NaN survive the packing bit for bit
+            m.put(c, -0f);
+            assert Float.floatToRawIntBits(Float.intBitsToFloat((int) ZombieMisc.statsGet(s, c))) == Float.floatToRawIntBits(-0f);
+            m.put(c, Float.NaN);
+            assert Float.isNaN(Float.intBitsToFloat((int) ZombieMisc.statsGet(s, c)));
+            // an object that is not a Stats: the shim catches, counts one failure and answers stock
+            assert ZombiePatches.onStatsGet(new Object(), c) == -1 && ZombieMisc.statsGuard.on;
+        } finally { ZombieMisc.resetForTest(); Settings.load(SelfTest.write("enabled=true\n")); }
+    }
+
+    static void statsShimOffTouchesNothing() {
+        ZombieMisc.resetForTest();
+        assert ZombiePatches.onStatsGet(null, null) == -1 && ZombiePatches.onFromInt(3) == null;
+        Settings.load(SelfTest.write("enabled=false\nstatsNoBox=true\npopmanFlagsFlyweight=true\n"));
+        ZombieMisc.init();
+        assert !ZombieMisc.statsGuard.on && !ZombieMisc.flagsGuard.on;
+        Settings.load(SelfTest.write("enabled=true\n"));
+    }
+
+    static void flagsFlyweightSameFlags() {
+        ZombieMisc.resetForTest();
+        ZombieMisc.flagsGuard.on = true;
+        try {
+            for (int v = 0; v < 64; v++) {
+                zombie.popman.ZombieStateFlags shared = ZombieMisc.flags(v), stock = new zombie.popman.ZombieStateFlags(v);
+                assert shared == ZombieMisc.flags(v) && shared != stock && shared.asInt() == stock.asInt() && shared.toString().equals(stock.toString());
+                assert ZombiePatches.onFromInt(v) == shared;
+                assert shared.isInitialized() == stock.isInitialized() && shared.isCrawling() == stock.isCrawling() && shared.isCanWalk() == stock.isCanWalk()
+                    && shared.isFakeDead() == stock.isFakeDead() && shared.isCanCrawlUnderVehicle() == stock.isCanCrawlUnderVehicle()
+                    && shared.isReanimatedForGrappleOnly() == stock.isReanimatedForGrappleOnly();
+            }
+            assert ZombieMisc.flags(64) == null && ZombieMisc.flags(-1) == null && ZombieMisc.flags(Integer.MIN_VALUE) == null && ZombieMisc.flags(Integer.MAX_VALUE) == null;
+            ZombieMisc.flagsGuard.on = false;
+            assert ZombieMisc.flags(3) == null && ZombiePatches.onFromInt(3) == null;
+        } finally { ZombieMisc.resetForTest(); }
+    }
+
+    static void smallHoldersTargetStock() throws Exception {
+        me.zed_0xff.zombie_buddy.Patch p = ZombiePatches.StatsGet.class.getAnnotation(me.zed_0xff.zombie_buddy.Patch.class);
+        assert p.className().equals("zombie.characters.Stats") && p.methodName().equals("get");
+        p = ZombiePatches.FlagsFromInt.class.getAnnotation(me.zed_0xff.zombie_buddy.Patch.class);
+        assert p.className().equals("zombie.popman.ZombieStateFlags") && p.methodName().equals("fromInt");
+        for (Class<?> h : new Class<?>[] {ZombiePatches.StatsGet.class, ZombiePatches.FlagsFromInt.class}) {
+            boolean enterSkips = false, exitReturns = false;
+            for (java.lang.reflect.Method m : h.getDeclaredMethods()) {
+                me.zed_0xff.zombie_buddy.Patch.OnEnter e = m.getAnnotation(me.zed_0xff.zombie_buddy.Patch.OnEnter.class);
+                if (e != null) enterSkips = e.skipOn();
+                if (m.getAnnotation(me.zed_0xff.zombie_buddy.Patch.OnExit.class) != null) exitReturns = true;
+            }
+            assert enterSkips && exitReturns : h;
+        }
     }
 }

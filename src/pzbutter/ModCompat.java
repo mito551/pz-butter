@@ -127,6 +127,8 @@ final class ModCompat {
         Map.entry("ZombiePatches.SimLevel", k("zombieSimLodTiles", "zombieSimLodSteps")),
         Map.entry("ZombiePatches.UpdateLos", k("playerLosFast", "entityTiming")),
         Map.entry("ZombiePatches.CullSortHook", k("zombieCullSortFast")),
+        Map.entry("ZombiePatches.StatsGet", k("statsNoBox")),
+        Map.entry("ZombiePatches.FlagsFromInt", k("popmanFlagsFlyweight")),
         // log
         Map.entry("LogPatches.Writeln", k("logDedupe")),
         Map.entry("LogPatches.PrefixLine", k("logDedupe")),
