@@ -80,13 +80,20 @@ final class WorkerList {
             String[] p = line.split("\\s+");
             if (p.length == 2 && p[0].equals("revision") && rev == null) rev = p[1];
             else if (p.length == 2 && p[0].equals("class")) classes.add(p[1]);
-            else if (p.length == 5 && p[0].equals("scratch") && isInt(p[1]) && Integer.parseInt(p[1]) == scratch.size())
-                scratch.add(new Scratch(scratch.size(), p[2], p[3], p[4]));
+            else if (p.length == 5 && p[0].equals("scratch") && isInt(p[1]) && scratchOk(scratch, Integer.parseInt(p[1]), p[3], p[4]))
+                scratch.add(new Scratch(Integer.parseInt(p[1]), p[2], p[3], p[4]));
             else if (p.length == 4 && p[0].equals("field")) fields.add(new Field(p[1], p[2], p[3]));
             else throw new IllegalArgumentException("line " + no + ": " + raw);
         }
         if (rev == null) throw new IllegalArgumentException("no revision line");
         return new WorkerList(rev, classes, scratch, fields, text.hashCode());
+    }
+
+    /** k is the next new index, or a repeat of an earlier k for the same field name and descriptor (another owner name). */
+    private static boolean scratchOk(List<Scratch> have, int k, String field, String desc) {
+        int next = have.isEmpty() ? 0 : have.get(have.size() - 1).k() + 1;
+        if (k == next) return true;
+        return have.stream().anyMatch(s -> s.k() == k && s.field().equals(field) && s.desc().equals(desc));
     }
 
     private static boolean isInt(String s) {

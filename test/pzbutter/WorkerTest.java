@@ -23,6 +23,7 @@ final class WorkerTest {
         transformerSkipsRedefinition();
         transformRewritesScratchRead();
         scratchListFindsMutableStatics();
+        workerListRepeatedK();
     }
 
     static void workersResourceInJar() {
@@ -114,13 +115,25 @@ final class WorkerTest {
 
     static void scratchListFindsMutableStatics() throws Exception {
         java.nio.file.Path jar = WorkerTestSynth.writeScratchJar(SelfTest.tmp("scratch/t.jar").toPath());
-        List<String> out = ScratchList.run(jar, List.of("t.A.m:()V"), "r", new String[] {"t/"});
+        List<String> out = ScratchList.run(jar, List.of("t.A.m:()V"), "r", new String[] {"t/"}, t -> t.equals("t/V") || t.equals("java/util/ArrayList"));
         assert out.get(0).equals("revision r");
         assert out.contains("class t.A") && out.contains("class t.B");
         assert out.stream().anyMatch(l -> l.startsWith("scratch ") && l.contains(" t/A L Ljava/util/ArrayList; "));
         assert out.stream().anyMatch(l -> l.startsWith("scratch ") && l.contains(" t/B V Lt/V; "));
         assert out.stream().noneMatch(l -> l.startsWith("scratch ") && l.contains(" t/A S "));
         assert out.stream().anyMatch(l -> l.startsWith("# written") && l.contains("t.A.counter:I"));
-        WorkerList.parse(String.join("\n", out));   // the output is a valid list
+        assert out.contains("class t.C");
+        assert out.stream().anyMatch(l -> l.startsWith("scratch 1 t/C V Lt/V;"));   // same k as t/B V
+        WorkerList w = WorkerList.parse(String.join("\n", out));
+        assert w.scratchIndex("t/C", "V", "Lt/V;") == w.scratchIndex("t/B", "V", "Lt/V;") && w.scratchIndex("t/B", "V", "Lt/V;") == 1;   // the output is a valid list
+    }
+
+    static void workerListRepeatedK() {
+        WorkerList l = WorkerList.parse("revision r\nscratch 0 a/B V La/V;\nscratch 0 a/C V La/V;\nscratch 1 a/B W La/V;\n");
+        assert l.scratchIndex("a/C", "V", "La/V;") == 0 && l.scratchIndex("a/B", "W", "La/V;") == 1;
+        try { WorkerList.parse("revision r\nscratch 0 a/B V La/V;\nscratch 0 a/C X La/V;\n"); assert false; }
+        catch (IllegalArgumentException e) { assert e.getMessage().contains("3"); }
+        try { WorkerList.parse("revision r\nscratch 0 a/B V La/V;\nscratch 0 a/C V La/W;\n"); assert false; }
+        catch (IllegalArgumentException e) { assert e.getMessage().contains("3"); }
     }
 }

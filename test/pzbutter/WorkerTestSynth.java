@@ -74,7 +74,7 @@ final class WorkerTestSynth {
 
     /** A jar with t.A (L: ArrayList, S: String, counter: int; m() reads L and S, writes counter, calls t.B.n()), t.B (V: t.V) and t.V. */
     static java.nio.file.Path writeScratchJar(java.nio.file.Path jar) throws java.io.IOException {
-        ClassDesc a = ClassDesc.of("t.A"), bb = ClassDesc.of("t.B"), v = ClassDesc.of("t.V");
+        ClassDesc a = ClassDesc.of("t.A"), bb = ClassDesc.of("t.B"), cc = ClassDesc.of("t.C"), v = ClassDesc.of("t.V");
         MethodTypeDesc voidM = MethodTypeDesc.of(ConstantDescs.CD_void);
         int sf = ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC | ClassFile.ACC_FINAL;
         byte[] ca = ClassFile.of().build(a, cb -> {
@@ -89,7 +89,7 @@ final class WorkerTestSynth {
                 .getstatic(a, "L", AL).invokevirtual(AL, "clear", voidM)
                 .getstatic(a, "S", ConstantDescs.CD_String).pop()
                 .iconst_1().putstatic(a, "counter", ConstantDescs.CD_int)
-                .invokestatic(bb, "n", voidM).return_());
+                .invokestatic(bb, "n", voidM).invokestatic(cc, "p", voidM).return_());
         });
         byte[] cbb = ClassFile.of().build(bb, cb -> {
             cb.withFlags(ClassFile.ACC_PUBLIC);
@@ -99,6 +99,11 @@ final class WorkerTestSynth {
             cb.withMethodBody("n", voidM, ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC, b -> b
                 .getstatic(bb, "V", v).iconst_1().putfield(v, "x", ConstantDescs.CD_int).return_());
         });
+        byte[] ccb = ClassFile.of().build(cc, cb -> {   // reads t.B.V through the subclass name
+            cb.withFlags(ClassFile.ACC_PUBLIC).withSuperclass(bb);
+            cb.withMethodBody("p", voidM, ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC, b -> b
+                .getstatic(cc, "V", v).iconst_2().putfield(v, "x", ConstantDescs.CD_int).return_());
+        });
         byte[] cv = ClassFile.of().build(v, cb -> {
             cb.withFlags(ClassFile.ACC_PUBLIC);
             cb.withField("x", ConstantDescs.CD_int, ClassFile.ACC_PUBLIC);
@@ -106,7 +111,7 @@ final class WorkerTestSynth {
                 .aload(0).invokespecial(ConstantDescs.CD_Object, "<init>", voidM).return_());
         });
         try (java.util.zip.ZipOutputStream z = new java.util.zip.ZipOutputStream(java.nio.file.Files.newOutputStream(jar))) {
-            for (var e : java.util.Map.of("t/A.class", ca, "t/B.class", cbb, "t/V.class", cv).entrySet()) {
+            for (var e : java.util.Map.of("t/A.class", ca, "t/B.class", cbb, "t/C.class", ccb, "t/V.class", cv).entrySet()) {
                 z.putNextEntry(new java.util.zip.ZipEntry(e.getKey()));
                 z.write(e.getValue());
                 z.closeEntry();

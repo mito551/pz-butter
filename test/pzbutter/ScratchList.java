@@ -40,7 +40,11 @@ final class ScratchList {
 
     private static final String[] WALK = {"zombie/", "se/krka/", "org/lwjgl/util/vector/", "org/joml/"};
     // Lua, sound, physics and network owners are side effects, not scratch: the walk stops there
-    private static final String[] STOP = {"zombie/Lua/", "zombie/network/", "zombie/core/network/", "zombie/audio/", "zombie/core/physics/", "zombie/core/raknet/"};
+    private static final String[] STOP = {"zombie/Lua/", "zombie/network/", "zombie/core/network/", "zombie/audio/", "zombie/core/physics/", "zombie/core/raknet/",
+        // packages frame workers never run
+        "zombie/ui/", "zombie/core/opengl/", "zombie/core/textures/", "zombie/core/Styles/", "zombie/core/sprite/", "zombie/core/SpriteRenderer",
+        "zombie/iso/sprite/", "zombie/iso/fboRenderChunk/", "zombie/worldMap/", "zombie/scripting/", "zombie/debug/", "zombie/gameStates/",
+        "zombie/input/", "org/lwjgl/opengl/", "org/lwjglx/"};
     private static final Set<String> IMMUTABLE = Set.of("java/lang/String", "java/lang/Class", "java/lang/Boolean", "java/lang/Byte",
         "java/lang/Character", "java/lang/Short", "java/lang/Integer", "java/lang/Long", "java/lang/Float", "java/lang/Double",
         "java/util/regex/Pattern", "java/util/Locale");
@@ -131,6 +135,7 @@ final class ScratchList {
 
     private static boolean walked(String owner, String[] walk) {
         for (String p : STOP) if (owner.startsWith(p)) return false;
+        if (owner.startsWith("zombie/vehicles/") && owner.substring(owner.lastIndexOf('/') + 1).contains("Render")) return false;
         for (String p : walk) if (owner.startsWith(p)) return true;
         return false;
     }
@@ -149,6 +154,11 @@ final class ScratchList {
 
     /** As above, walking only owners with one of the given internal-name prefixes. */
     static List<String> run(Path jar, List<String> roots, String revision, String[] walk) throws IOException {
+        return run(jar, roots, revision, walk, ScratchList::valueType);
+    }
+
+    /** As above, with the predicate that decides which internal type names are value scratch (the rest are `# review`). */
+    static List<String> run(Path jar, List<String> roots, String revision, String[] walk, java.util.function.Predicate<String> value) throws IOException {
         Index ix = new Index(jar);
         Deque<Ref> todo = new ArrayDeque<>();
         Set<Ref> seen = new HashSet<>();
@@ -160,6 +170,7 @@ final class ScratchList {
         }
         Map<Field, Set<String>> readers = new HashMap<>();      // field -> reader methods ("owner.name")
         Map<Field, Set<String>> writers = new HashMap<>();
+        Map<Field, Set<String>> named = new HashMap<>();        // field -> owner names its reads use
         while (!todo.isEmpty()) {
             Ref r = todo.poll();
             if (!seen.add(r)) continue;
@@ -178,12 +189,13 @@ final class ScratchList {
                     if (decl == null) continue;
                     Field key = new Field(decl, f.name().stringValue(), f.type().stringValue());
                     (f.opcode() == Opcode.GETSTATIC ? readers : writers).computeIfAbsent(key, k -> new TreeSet<>()).add(who);
+                    if (f.opcode() == Opcode.GETSTATIC) named.computeIfAbsent(key, k -> new TreeSet<>()).add(f.owner().asInternalName());
                 }
             }
         }
 
         TreeMap<String, Field> scratch = new TreeMap<>();
-        TreeSet<String> unsupported = new TreeSet<>(), written = new TreeSet<>(), classes = new TreeSet<>();
+        TreeSet<String> review = new TreeSet<>(), shared = new TreeSet<>(), unsupported = new TreeSet<>(), written = new TreeSet<>(), classes = new TreeSet<>();
         for (var en : readers.entrySet()) {
             Field f = en.getKey();
             FieldModel fm = ix.classes.get(f.owner()).fields().stream().filter(x -> x.fieldName().equalsString(f.name())).findFirst().orElseThrow();
@@ -192,7 +204,13 @@ final class ScratchList {
             if (!f.desc().startsWith("L") && !f.desc().startsWith("[")) continue;
             String type = f.desc().startsWith("L") ? f.desc().substring(1, f.desc().length() - 1) : null;
             if (type != null && immutable(ix, type)) continue;
-            if (type != null && !hasPublicNoArg(ix, type)) { unsupported.add(f.owner().replace('/', '.') + "." + f.name() + " " + f.desc()); continue; }
+            String name = f.owner().replace('/', '.') + "." + f.name();
+            Set<String> rs = readers.get(f);
+            String info = (type == null ? f.desc() : type.replace('/', '.')) + " " + rs.size() + " " + rs.iterator().next();
+            if (type != null && (type.equals("java/lang/ThreadLocal") || type.startsWith("java/util/concurrent/"))) { shared.add(name + " " + info.substring(0, info.indexOf(' '))); continue; }
+            if (type == null && f.desc().replaceFirst("^\\[+", "").length() != 1) { review.add(name + " " + info); continue; }   // object arrays
+            if (type != null && !value.test(type)) { review.add(name + " " + info); continue; }
+            if (type != null && !hasPublicNoArg(ix, type)) { unsupported.add(name + " " + f.desc()); continue; }
             scratch.put(f.key(), f);
         }
         for (var en : writers.entrySet()) {
@@ -207,17 +225,27 @@ final class ScratchList {
         for (Field f : scratch.values()) {
             Set<String> rs = readers.get(f);
             rs.forEach(w -> classes.add(w.substring(0, w.lastIndexOf('.'))));
-            lines.add("scratch " + k++ + " " + f.owner() + " " + f.name() + " " + f.desc() + "   # "
+            lines.add("scratch " + k + " " + f.owner() + " " + f.name() + " " + f.desc() + "   # "
                 + (f.desc().startsWith("[") ? f.desc() : f.desc().substring(1, f.desc().length() - 1).replace('/', '.'))
                 + " readers=" + rs.size() + " first=" + rs.iterator().next());
+            for (String o : named.get(f))
+                if (!o.equals(f.owner())) lines.add("scratch " + k + " " + o + " " + f.name() + " " + f.desc() + "   # named through a subclass");
+            k++;
         }
         out.add("revision " + revision);
         out.add("# generated by pzbutter.ScratchList; roots: " + String.join(" ", roots));
         classes.forEach(c -> out.add("class " + c));
         out.addAll(lines);
+        review.forEach(u -> out.add("# review " + u));
+        shared.forEach(u -> out.add("# shared " + u));
         unsupported.forEach(u -> out.add("# unsupported " + u));
         written.forEach(w -> out.add("# written " + w));
         return out;
+    }
+
+    private static boolean valueType(String t) {
+        if (t.equals("zombie/iso/Vector2") || t.equals("zombie/iso/Vector3") || t.startsWith("org/lwjgl/util/vector/")) return true;
+        return t.matches("org/joml/(Vector|Matrix|Quaternion)[^/]*");
     }
 
     private static boolean immutable(Index ix, String type) {
