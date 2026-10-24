@@ -49,6 +49,9 @@ final class ScratchList {
         "java/lang/Character", "java/lang/Short", "java/lang/Integer", "java/lang/Long", "java/lang/Float", "java/lang/Double",
         "java/util/regex/Pattern", "java/util/Locale");
 
+    private static final Set<String> READ_ONLY_ARRAYS = Set.of("equals", "hashCode", "toString", "binarySearch", "stream", "asList",
+        "copyOf", "copyOfRange", "mismatch", "compare", "deepEquals", "deepHashCode", "deepToString");
+
     record Ref(String owner, String name, String desc) {}
 
     private static final class Index {
@@ -180,6 +183,9 @@ final class ScratchList {
             for (CodeElement e : mm.code().orElseThrow()) {
                 if (e instanceof InvokeInstruction i) {
                     String o = i.owner().asInternalName();
+                    if (o.equals("java/lang/System") && i.name().equalsString("arraycopy")
+                        || o.equals("java/util/Arrays") && !READ_ONLY_ARRAYS.contains(i.name().stringValue()))
+                        stores.computeIfAbsent(who, k -> new HashSet<>()).add(Opcode.INVOKESTATIC);
                     if (walked(o, walk)) todo.addAll(ix.targets(o, i.name().stringValue(), i.type().stringValue(), i.opcode() != Opcode.INVOKESTATIC && i.opcode() != Opcode.INVOKESPECIAL, walk));
                 } else if (e instanceof InvokeDynamicInstruction d) {
                     for (var arg : d.bootstrapArgs())
@@ -215,7 +221,7 @@ final class ScratchList {
                 readonly.add(name + " " + f.desc());
                 continue;
             }
-            if (type == null && f.desc().replaceFirst("^\\[+", "").length() != 1) { review.add(name + " " + info); continue; }   // object arrays
+            if (type == null && !primitiveArray(f.desc())) { review.add(name + " " + info); continue; }   // object and multi-dimensional arrays: clone() is shallow
             if (type != null && !value.test(type)) { review.add(name + " " + info); continue; }
             if (type != null && !hasPublicNoArg(ix, type)) { unsupported.add(name + " " + f.desc()); continue; }
             scratch.put(f.key(), f);
@@ -251,16 +257,20 @@ final class ScratchList {
         return out;
     }
 
-    private static boolean primitiveArray(String desc) { return desc.startsWith("[") && desc.replaceFirst("^\\[+", "").length() == 1; }
+    private static boolean primitiveArray(String desc) { return desc.length() == 2 && desc.charAt(0) == '['; }
 
     /** Does any reader method store an element of the array's element type (bastore covers boolean and byte). */
     private static boolean stored(String desc, Set<String> readers, Map<String, Set<Opcode>> stores) {
-        String el = desc.replaceFirst("^\\[+", "");
+        String el = desc.substring(1);
         Opcode op = switch (el) {
             case "I" -> Opcode.IASTORE; case "F" -> Opcode.FASTORE; case "B", "Z" -> Opcode.BASTORE; case "C" -> Opcode.CASTORE;
             case "S" -> Opcode.SASTORE; case "J" -> Opcode.LASTORE; default -> Opcode.DASTORE;
         };
-        for (String r : readers) if (stores.getOrDefault(r, Set.of()).contains(op)) return true;
+        for (String r : readers) {
+            if (r.endsWith(".<clinit>")) continue;
+            Set<Opcode> st = stores.getOrDefault(r, Set.of());
+            if (st.contains(op) || st.contains(Opcode.INVOKESTATIC)) return true;   // INVOKESTATIC: marker for an array copy or fill
+        }
         return false;
     }
 

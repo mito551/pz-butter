@@ -104,6 +104,20 @@ final class WorkerTestSynth {
             cb.withMethodBody("p", voidM, ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC, b -> b
                 .getstatic(cc, "V", v).iconst_2().putfield(v, "x", ConstantDescs.CD_int).return_());
         });
+        ClassDesc d = ClassDesc.of("t.D"), fa2 = ConstantDescs.CD_float.arrayType(2), ia = ConstantDescs.CD_int.arrayType();
+        byte[] cd = ClassFile.of().build(d, cb -> {   // G: 2-D, outer aastore; H: 1-D, only arraycopy into it
+            cb.withFlags(ClassFile.ACC_PUBLIC);
+            cb.withField("G", fa2, sf);
+            cb.withField("H", ia, sf);
+            cb.withMethodBody("<clinit>", voidM, ClassFile.ACC_STATIC, b -> b
+                .iconst_1().anewarray(ConstantDescs.CD_float.arrayType()).putstatic(d, "G", fa2)
+                .iconst_1().newarray(java.lang.classfile.TypeKind.INT).putstatic(d, "H", ia).return_());
+            cb.withMethodBody("q", voidM, ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC, b -> b
+                .getstatic(d, "G", fa2).iconst_0().aconst_null().aastore()
+                .getstatic(d, "H", ia).iconst_0().getstatic(d, "H", ia).iconst_0().iconst_1()
+                .invokestatic(ClassDesc.of("java.lang.System"), "arraycopy", MethodTypeDesc.of(ConstantDescs.CD_void, ConstantDescs.CD_Object,
+                    ConstantDescs.CD_int, ConstantDescs.CD_Object, ConstantDescs.CD_int, ConstantDescs.CD_int)).return_());
+        });
         byte[] cv = ClassFile.of().build(v, cb -> {
             cb.withFlags(ClassFile.ACC_PUBLIC);
             cb.withField("x", ConstantDescs.CD_int, ClassFile.ACC_PUBLIC);
@@ -111,7 +125,7 @@ final class WorkerTestSynth {
                 .aload(0).invokespecial(ConstantDescs.CD_Object, "<init>", voidM).return_());
         });
         try (java.util.zip.ZipOutputStream z = new java.util.zip.ZipOutputStream(java.nio.file.Files.newOutputStream(jar))) {
-            for (var e : java.util.Map.of("t/A.class", ca, "t/B.class", cbb, "t/C.class", ccb, "t/V.class", cv).entrySet()) {
+            for (var e : java.util.Map.of("t/A.class", ca, "t/B.class", cbb, "t/C.class", ccb, "t/D.class", cd, "t/V.class", cv).entrySet()) {
                 z.putNextEntry(new java.util.zip.ZipEntry(e.getKey()));
                 z.write(e.getValue());
                 z.closeEntry();

@@ -22,6 +22,7 @@ class zombie.core.skinnedmodel.model.WorldItemAtlas$WeaponPartParams
 class zombie.erosion.utils.Noise2D
 class zombie.iso.IsoDirections
 class zombie.iso.IsoGridSquare
+class zombie.iso.IsoLot
 class zombie.iso.IsoMovingObject
 class zombie.iso.IsoObjectPicker$ClickObject
 class zombie.iso.IsoPuddlesCompute
@@ -156,8 +157,8 @@ scratch 107 zombie/iso/IsoRoofFixer interiorAirSpaces [I   # [I readers=2 first=
 scratch 108 zombie/iso/IsoWaterFlow TEMP_VEC3F Lorg/joml/Vector3f;   # org.joml.Vector3f readers=1 first=zombie.iso.IsoWaterFlow.getFlow
 scratch 109 zombie/iso/IsoWaterGeometry tempVector2f Lorg/joml/Vector2f;   # org.joml.Vector2f readers=1 first=zombie.iso.IsoWaterGeometry.initRender
 scratch 110 zombie/iso/LightingJNI$JNILighting lightInts [I   # [I readers=2 first=zombie.iso.LightingJNI$JNILighting.update
-scratch 111 zombie/iso/LightingJNI ForcedVis [[I   # [[I readers=2 first=zombie.iso.LightingJNI$JNILighting.update
-scratch 112 zombie/iso/LightingJNI updateCounter [I   # [I readers=2 first=zombie.iso.LightingJNI$JNILighting.update
+scratch 111 zombie/iso/LightingJNI updateCounter [I   # [I readers=2 first=zombie.iso.LightingJNI$JNILighting.update
+scratch 112 zombie/iso/LotHeader LOTPACK_MAGIC [B   # [B readers=1 first=zombie.iso.IsoLot.load
 scratch 113 zombie/iso/PlayerCamera offVec Lzombie/iso/Vector2;   # zombie.iso.Vector2 readers=1 first=zombie.iso.PlayerCamera.update
 scratch 114 zombie/iso/PlayerCamera s_tempVector3f_1 Lorg/joml/Vector3f;   # org.joml.Vector3f readers=1 first=zombie.iso.PlayerCamera.calculateFixForJigglyModels
 scratch 115 zombie/iso/PlayerCamera s_viewport [I   # [I readers=1 first=zombie.iso.PlayerCamera.worldToUI
@@ -222,14 +223,12 @@ scratch 140 zombie/vehicles/VehicleInterpolation tempQuaternionB Lorg/joml/Quate
 # readonly zombie.iso.BentFences$1.$SwitchMap$zombie$iso$IsoDirections [I
 # readonly zombie.iso.BrokenFences$1.$SwitchMap$zombie$iso$IsoDirections [I
 # readonly zombie.iso.IsoChunk.comparatorBool4 [Z
-# readonly zombie.iso.IsoChunk.renderByIndex [[B
 # readonly zombie.iso.IsoGridSquare$1.$SwitchMap$zombie$iso$IsoDirections [I
 # readonly zombie.iso.IsoGridSquare$1.$SwitchMap$zombie$iso$SpriteDetails$IsoObjectType [I
 # readonly zombie.iso.IsoGridSquare$1.$SwitchMap$zombie$iso$objects$GridSquareEdgeFacingDirection [I
 # readonly zombie.iso.IsoMovingObject$1.$SwitchMap$zombie$iso$IsoDirections [I
 # readonly zombie.iso.IsoObject$42.$SwitchMap$zombie$core$properties$FasciaEdge [I
 # readonly zombie.iso.IsoRoofFixer$1.$SwitchMap$zombie$iso$IsoDirections [I
-# readonly zombie.iso.LotHeader.LOTPACK_MAGIC [B
 # readonly zombie.iso.areas.isoregion.jobs.RegionJobManager$1.$SwitchMap$zombie$iso$areas$isoregion$jobs$RegionJobType [I
 # readonly zombie.iso.objects.IsoBarricade$1.$SwitchMap$zombie$iso$IsoDirections [I
 # readonly zombie.iso.objects.IsoCurtain$1.$SwitchMap$zombie$iso$SpriteDetails$IsoObjectType [I
@@ -252,7 +251,6 @@ scratch 140 zombie/vehicles/VehicleInterpolation tempQuaternionB Lorg/joml/Quate
 # readonly zombie.iso.objects.IsoThumpable$1.$SwitchMap$zombie$iso$enums$MaterialType [I
 # readonly zombie.iso.objects.IsoTree.LOGS_PER_SIZE [I
 # readonly zombie.iso.objects.ObjectRenderEffects$1.$SwitchMap$zombie$iso$objects$RenderEffectType [I
-# readonly zombie.iso.weather.WeatherShader.floatArrs [[F
 # readonly zombie.iso.weather.fog.ImprovedFog.offsets [F
 # readonly zombie.iso.worldgen.WorldGenParams.FILE_MAGIC [B
 # readonly zombie.pathfind.PathFindBehavior2$1.$SwitchMap$zombie$iso$IsoDirections [I
@@ -1029,6 +1027,7 @@ scratch 140 zombie/vehicles/VehicleInterpolation tempQuaternionB Lorg/joml/Quate
 # review zombie.iso.IsoChunk.Locks java.util.ArrayList 2 zombie.iso.IsoChunk.acquireLock
 # review zombie.iso.IsoChunk.WriteLock java.lang.Object 1 zombie.iso.IsoChunk.Save
 # review zombie.iso.IsoChunk.loadGridSquare zombie.util.CappedConcurrentQueue 1 zombie.iso.IsoChunk.resetForStore
+# review zombie.iso.IsoChunk.renderByIndex [[B 1 zombie.iso.IsoChunkMap.renderBloodForChunks
 # review zombie.iso.IsoChunk.sanityCheck zombie.iso.IsoChunk$SanityCheck 2 zombie.iso.IsoChunk.SafeWrite
 # review zombie.iso.IsoChunkLevel.pool zombie.util.CappedConcurrentQueue 2 zombie.iso.IsoChunkLevel.alloc
 # review zombie.iso.IsoChunkMap.chunkStore zombie.util.CappedConcurrentQueue 1 zombie.iso.IsoChunk.doReuseGridsquares
@@ -1088,6 +1087,7 @@ scratch 140 zombie/vehicles/VehicleInterpolation tempQuaternionB Lorg/joml/Quate
 # review zombie.iso.IsoWaterGeometry.pool zombie.popman.ObjectPool 2 zombie.iso.IsoGridSquare.clearWater
 # review zombie.iso.IsoWorld$s_performance.isoWorldRender zombie.core.profiling.PerformanceProfileProbe 1 zombie.iso.IsoWorld.render
 # review zombie.iso.IsoWorld.compScoreToPlayer zombie.iso.IsoWorld$CompScoreToPlayer 1 zombie.iso.IsoWorld.sceneCullZombies
+# review zombie.iso.LightingJNI.ForcedVis [[I 2 zombie.iso.LightingJNI$JNILighting.update
 # review zombie.iso.SliceY.SliceBuffer java.nio.ByteBuffer 9 zombie.GameWindow.save
 # review zombie.iso.SliceY.SliceBufferLock java.lang.Object 5 zombie.characters.animals.AnimalCell.save
 # review zombie.iso.SpriteDetails.IsoFlagType.fromStringMap java.util.HashMap 1 zombie.iso.SpriteDetails.IsoFlagType.FromString
@@ -1129,6 +1129,7 @@ scratch 140 zombie/vehicles/VehicleInterpolation tempQuaternionB Lorg/joml/Quate
 # review zombie.iso.sprite.shapers.WallShaperN.instance zombie.iso.sprite.shapers.WallShaperN 2 zombie.iso.IsoGridSquare.DoWallLightingNW
 # review zombie.iso.sprite.shapers.WallShaperW.instance zombie.iso.sprite.shapers.WallShaperW 2 zombie.iso.IsoGridSquare.DoWallLightingNW
 # review zombie.iso.sprite.shapers.WallShaperWhole.instance zombie.iso.sprite.shapers.WallShaperWhole 5 zombie.iso.IsoGridSquare.DoCutawayShaderSprite
+# review zombie.iso.weather.WeatherShader.floatArrs [[F 1 zombie.iso.weather.WeatherShader.getFreeFloatArray
 # review zombie.iso.weather.WorldFlares.flares java.util.ArrayList 1 zombie.iso.weather.WorldFlares.debugRender
 # review zombie.iso.weather.fog.FogShader.instance zombie.iso.weather.fog.FogShader 1 zombie.iso.weather.fog.ImprovedFog.renderFogSegmentOld
 # review zombie.iso.weather.fog.ImprovedFog.drawers [[Lzombie/iso/weather/fog/ImprovedFogDrawer; 1 zombie.iso.weather.fog.ImprovedFog.getDrawer

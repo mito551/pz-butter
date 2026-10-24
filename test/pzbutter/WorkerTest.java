@@ -24,6 +24,7 @@ final class WorkerTest {
         transformRewritesScratchRead();
         scratchListFindsMutableStatics();
         workerListRepeatedK();
+        scratchListArrays();
         transformRewritesArrayRead();
         transformVerifiesOnGameClasses();
     }
@@ -161,11 +162,23 @@ final class WorkerTest {
                 .orElse(java.lang.classfile.ClassHierarchyResolver.defaultResolver())));
         for (String c : list.classes()) {
             byte[] bytes;
-            try (java.io.InputStream in = ClassLoader.getSystemResourceAsStream(c.replace('.', '/') + ".class")) { bytes = in.readAllBytes(); }
+            try (java.io.InputStream in = ClassLoader.getSystemResourceAsStream(c.replace('.', '/') + ".class")) {
+                assert in != null : c + ": class file not found";
+                bytes = in.readAllBytes();
+            }
             byte[] out = WorkerTransform.transform(bytes, list);
             assert out != null : c + " not transformed";
             var errors = cf.verify(out);
             assert errors.isEmpty() : c + ": " + errors.get(0).getMessage();
         }
+    }
+
+    static void scratchListArrays() throws Exception {
+        java.nio.file.Path jar = WorkerTestSynth.writeScratchJar(SelfTest.tmp("scratch/t2.jar").toPath());
+        List<String> out = ScratchList.run(jar, List.of("t.D.q:()V"), "r", new String[] {"t/"});
+        assert out.stream().noneMatch(l -> l.startsWith("scratch ") && l.contains(" t/D G "));
+        assert out.stream().anyMatch(l -> l.startsWith("# review t.D.G "));
+        assert out.stream().anyMatch(l -> l.startsWith("scratch ") && l.contains(" t/D H [I "));
+        assert out.stream().noneMatch(l -> l.startsWith("# readonly t.D.H"));
     }
 }
