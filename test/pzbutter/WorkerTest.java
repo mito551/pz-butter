@@ -32,6 +32,11 @@ final class WorkerTest {
         scratchCopiesArrays();
         scratchProbeReportsUncopyable();
         scratchUnresolvableOwner();
+        batchRunsEachIndexOnce();
+        batchUsesWorkersAndCaller();
+        batchRethrowsAfterAllFinish();
+        batchNestedRunsInline();
+        batchWorkerReachesLuaThroughGate();
     }
 
     static void workersResourceInJar() {
@@ -294,5 +299,54 @@ final class WorkerTest {
             assert seen[0] == null;
             assert Scratch.probe().startsWith("t/Nope.F: ") && Scratch.uncopyable() == 1;
         } finally { Scratch.loader = ClassLoader.getSystemClassLoader(); }
+    }
+
+    static void batchRunsEachIndexOnce() throws Exception {
+        LuaGate.resetForTest(); LuaGate.guard.on = true; LuaGate.claim();
+        FrameBatch.start(4);
+        for (int n : new int[] {0, 1, 2, 7, 10_000}) {
+            java.util.concurrent.atomic.AtomicIntegerArray hits = new java.util.concurrent.atomic.AtomicIntegerArray(Math.max(n, 1));
+            FrameBatch.run(n, i -> hits.incrementAndGet(i));
+            for (int i = 0; i < n; i++) assert hits.get(i) == 1 : n + "/" + i;
+        }
+        FrameBatch.stopForTest(); LuaGate.resetForTest();
+    }
+
+    static void batchUsesWorkersAndCaller() throws Exception {
+        LuaGate.resetForTest(); LuaGate.guard.on = true; LuaGate.claim();
+        FrameBatch.start(4);
+        java.util.Set<Thread> seen = java.util.concurrent.ConcurrentHashMap.newKeySet();
+        java.util.concurrent.CountDownLatch all = new java.util.concurrent.CountDownLatch(4);
+        FrameBatch.run(4, i -> { seen.add(Thread.currentThread()); all.countDown(); try { all.await(5, java.util.concurrent.TimeUnit.SECONDS); } catch (InterruptedException e) { throw new RuntimeException(e); } });
+        assert seen.size() == 4 && seen.contains(Thread.currentThread());
+        FrameBatch.stopForTest(); LuaGate.resetForTest();
+    }
+
+    static void batchRethrowsAfterAllFinish() throws Exception {
+        LuaGate.resetForTest(); LuaGate.guard.on = true; LuaGate.claim();
+        FrameBatch.start(3);
+        java.util.concurrent.atomic.AtomicInteger done = new java.util.concurrent.atomic.AtomicInteger();
+        try { FrameBatch.run(100, i -> { if (i == 17) throw new IllegalStateException("17"); done.incrementAndGet(); }); assert false; }
+        catch (IllegalStateException e) { assert e.getMessage().equals("17") && done.get() == 99; }
+        FrameBatch.stopForTest(); LuaGate.resetForTest();
+    }
+
+    static void batchNestedRunsInline() throws Exception {
+        LuaGate.resetForTest(); LuaGate.guard.on = true; LuaGate.claim();
+        FrameBatch.start(3);
+        java.util.concurrent.atomic.AtomicInteger inner = new java.util.concurrent.atomic.AtomicInteger();
+        FrameBatch.run(6, i -> { Thread t = Thread.currentThread(); FrameBatch.run(5, j -> { assert Thread.currentThread() == t; inner.incrementAndGet(); }); });
+        assert inner.get() == 30;
+        FrameBatch.stopForTest(); LuaGate.resetForTest();
+    }
+
+    static void batchWorkerReachesLuaThroughGate() throws Exception {
+        LuaGateTest.Lua l = new LuaGateTest.Lua("n = 0; function inc() n = n + 1 end");
+        LuaGateTest.setUp(l);
+        FrameBatch.start(4);
+        Object inc = l.env.rawget("inc");
+        FrameBatch.run(400, i -> LuaGateTest.gated(l, () -> l.caller.pcallvoid(l.kt, inc, (Object) null)));
+        assert ((Double) l.env.rawget("n")) == 400.0;
+        FrameBatch.stopForTest(); LuaGate.resetForTest();
     }
 }

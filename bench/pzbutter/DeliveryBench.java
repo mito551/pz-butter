@@ -95,6 +95,8 @@ import zombie.iso.IsoGridSquare;
  *          Prints a checksum of the answers, fixed between versions and equal for every run.
  * scratch: ns per read of a listed scratch field (ArrayList.size() on it) in a class rewritten by WorkerTransform: plain getstatic baseline (untransformed),
  *          Scratch.get on a non-worker thread, and on a worker with a warm copy; median of 7 runs of 50 M reads after 3 warm-ups. Prints a checksum.
+ * batch: FrameBatch.run: ns per run for n = 0, 16, 256, 2000 trivial tasks (an array write) at widths 2, 4, 8, and ms per batch of 2000 tasks of ~5 us
+ *          at widths 1, 4, 8; median of 7 after warm-up. Prints a checksum.
  */
 public final class DeliveryBench {
     static final com.sun.management.ThreadMXBean MX = (com.sun.management.ThreadMXBean) ManagementFactory.getThreadMXBean();
@@ -127,6 +129,7 @@ public final class DeliveryBench {
             case "vboslots" -> vboslots();
             case "glrecord" -> glrecord();
             case "scratch" -> scratch();
+            case "batch" -> batch();
             default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | uislice | readset | soundgate | cutaway | splash | edge | plan | gate | luagate | replay | luafiles | dedupe | scenecull | simlod | spotted | cullsort | statsget | vbosize | vboslots | glrecord");
         }
     }
@@ -1568,6 +1571,44 @@ public final class DeliveryBench {
             System.out.printf("scratch %-32s %.2f ns/read%n", names[sc], ns[3]);
         }
         System.out.println("scratch checksum " + chk + " copies " + Scratch.copies());
+    }
+
+    static void batch() throws Exception {
+        LuaGate.resetForTest(); LuaGate.guard.on = true; LuaGate.claim();
+        long chk = 0;
+        int[] out = new int[2000];
+        for (int w : new int[] {2, 4, 8}) {
+            FrameBatch.start(w);
+            for (int n : new int[] {0, 16, 256, 2000}) {
+                double[] ns = new double[7];
+                int reps = n < 256 ? 20_000 : 2_000;
+                for (int rr = -3; rr < 7; rr++) {
+                    long t0 = System.nanoTime();
+                    for (int k = 0; k < reps; k++) FrameBatch.run(n, i -> out[i] = i + 1);
+                    if (rr >= 0) ns[rr] = (System.nanoTime() - t0) / (double) reps;
+                }
+                Arrays.sort(ns);
+                for (int i = 0; i < n; i++) chk += out[i];
+                System.out.printf("batch trivial width %d n %4d %10.0f ns/run%n", w, n, ns[3]);
+            }
+            FrameBatch.stopForTest();
+        }
+        long[] sink = new long[2000];
+        for (int w : new int[] {1, 4, 8}) {
+            if (w > 1) FrameBatch.start(w);
+            double[] ms = new double[7];
+            for (int rr = -3; rr < 7; rr++) {
+                long t0 = System.nanoTime();
+                for (int k = 0; k < 20; k++) FrameBatch.run(2000, i -> { long a = i; for (int j = 0; j < 3000; j++) a = a * 31 + j; sink[i] = a; });
+                if (rr >= 0) ms[rr] = (System.nanoTime() - t0) / 20e6;
+            }
+            Arrays.sort(ms);
+            for (long v : sink) chk += v;
+            System.out.printf("batch 2000 x ~5us width %d %8.3f ms/batch%n", w, ms[3]);
+            if (w > 1) FrameBatch.stopForTest();
+        }
+        LuaGate.resetForTest();
+        System.out.println("batch checksum " + chk);
     }
 
     static void benchSet(Object o, String f, Object v) throws Exception { java.lang.reflect.Field x = o.getClass().getDeclaredField(f); x.setAccessible(true); x.set(o, v); }

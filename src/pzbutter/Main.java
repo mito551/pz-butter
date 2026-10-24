@@ -24,6 +24,7 @@ public class Main {
         LuaFast.init();
         LuaTiming.init();
         LuaGate.init();
+        FrameBatch.init();
         LuaFiles.init();
         LogDedupe.init();
         ZombiePatches.init();

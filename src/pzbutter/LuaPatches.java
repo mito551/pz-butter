@@ -201,7 +201,7 @@ public final class LuaPatches {
 
     /** GameWindow.frameStep entry (game thread): claim the token, hand it to stray waiters. */
     public static void onFrameYield() {
-        if (LuaGate.guard.on) try { LuaGate.frameYield(); } catch (Throwable t) { LuaGate.guard.fail(t); }
+        if (LuaGate.guard.on) try { LuaGate.frameYield(); FrameBatch.frameTick(); } catch (Throwable t) { LuaGate.guard.fail(t); }
     }
 
     // every overload: (thread, fn, arg) ... (thread, fn, Object[]); the third argument is typed Object for all
