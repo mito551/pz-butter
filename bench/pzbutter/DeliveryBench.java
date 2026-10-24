@@ -87,6 +87,12 @@ import zombie.iso.IsoGridSquare;
  *          (1) key off: ns per GpuPatches.onAddQuad(null, ...) (50 M calls a run); (2) ns per quad for the game's addQuad, for
  *          QuadWriter.tryQuad(renderer, float[]), and for GpuPatches.onAddQuad (the hooked path: pack + tryQuad). Prints a CRC of the
  *          vertex and index bytes after each run, equal for all three (checked) and fixed between versions.
+ * vboslots: persistent sprite buffers over a no-op GL (PersistentVbo.map / SlotRing.decide through GpuPatches.onMapEnter / onMapExit /
+ *          onUnmapEnter / onUnmapExit / onRingRendered / onSwapDone, Plan 9), median of 7 runs after a warm-up. (1) key off: ns per
+ *          onMapEnter(null) + onUnmapEnter(null) (50 M pairs a run). (2) frame fences, 128 ring buffers (vertex + index) x 4 slots, 300 batches
+ *          a frame (each batch maps and unmaps its vertex and its index buffer), the fake GL signalling every fence at once, 3,000 frames a run:
+ *          ns per map + unmap of one buffer. (3) per-batch fences (onRingRendered after each batch; a frame fence is made per swap too), same load.
+ *          Prints a checksum of the sequence of GL names bound and the wait counts: fixed between versions, equal for every run of a case.
  */
 public final class DeliveryBench {
     static final com.sun.management.ThreadMXBean MX = (com.sun.management.ThreadMXBean) ManagementFactory.getThreadMXBean();
@@ -117,7 +123,8 @@ public final class DeliveryBench {
             case "statsget" -> statsget();
             case "vbosize" -> vbosize();
             case "vboquad" -> vboquad();
-            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | uislice | readset | soundgate | cutaway | splash | edge | plan | gate | luagate | replay | luafiles | dedupe | scenecull | simlod | spotted | cullsort | statsget | vbosize | vboquad");
+            case "vboslots" -> vboslots();
+            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | uislice | readset | soundgate | cutaway | splash | edge | plan | gate | luagate | replay | luafiles | dedupe | scenecull | simlod | spotted | cullsort | statsget | vbosize | vboquad | vboslots");
         }
     }
 
@@ -1338,6 +1345,102 @@ public final class DeliveryBench {
             PresentLog.renderThread = wasThread;
             UploadSizer.resetForTest();
         }
+    }
+
+    /** The no-op GL of the vboslots bench: a checksum of every bind, fences signalled at once. */
+    static final class SlotGl implements PersistentVbo.Gl {
+        long sum, fences;
+        int names = 1000;
+        final java.nio.ByteBuffer shared = java.nio.ByteBuffer.allocateDirect(65536).order(java.nio.ByteOrder.nativeOrder());
+        public boolean capable() { return true; }
+        public int genBuffer() { return ++names; }
+        public void storage(int type, long size) { }
+        public java.nio.ByteBuffer mapPersistent(int type, long size) { return shared.duplicate().order(java.nio.ByteOrder.nativeOrder()); }
+        public void bind(int type, int name) { sum = sum * 31 + name + type; }
+        public void unmapAndDelete(int type, int name) { }
+        public void deleteBuffer(int name) { }
+        public long fence() { return ++fences; }
+        public boolean signalled(long f) { return true; }
+        public boolean await(long f, long ns) { return true; }
+        public void deleteFence(long f) { }
+        public int error() { return 0; }
+        public long context() { return 1; }
+    }
+
+    static void vboslots() throws Exception {
+        final int offCalls = 50_000_000, frames = 3_000, perFrame = 300, ring = 128;
+        PersistentVbo.resetForTest();
+        double[] ns = new double[7];
+        for (int r = 0; r < 3 + 7; r++) {
+            long t0 = System.nanoTime();
+            int hits = 0;
+            for (int i = 0; i < offCalls; i++) {
+                if (GpuPatches.onMapEnter(null)) hits++;
+                if (GpuPatches.onUnmapEnter(null)) hits++;
+            }
+            long dt = System.nanoTime() - t0;
+            if (hits != 0) throw new IllegalStateException("vboslots: key off took a map");
+            if (r >= 3) ns[r - 3] = dt / (double) offCalls;
+        }
+        System.out.printf("vboslots key off              : %6.2f ns/pair (min %.2f, max %.2f)%n", median(ns), ns[0], ns[6]);
+
+        Class<?> rbc = Class.forName("zombie.core.SpriteRenderer$RingBuffer");
+        java.lang.reflect.Constructor<?> rbk = rbc.getDeclaredConstructor(); rbk.setAccessible(true);
+        Thread wasThread = PresentLog.renderThread;
+        PresentLog.renderThread = Thread.currentThread();
+        try {
+            for (int scen = 0; scen < 2; scen++) {
+                double[] t = new double[7];
+                long firstSum = 0, firstWaits = -1;
+                for (int r = 0; r < 3 + 7; r++) {
+                    PersistentVbo.resetForTest();
+                    SlotGl g = new SlotGl();
+                    PersistentVbo.gl = g;
+                    PersistentVbo.guard.on = true;
+                    PersistentVbo.frameSync = scen == 0;
+                    PersistentVbo.wantSlots = 4;
+                    PersistentVbo.ringBytes = 12_500_000L;
+                    zombie.core.VBO.GLVertexBufferObject[] vbo = new zombie.core.VBO.GLVertexBufferObject[ring], ibo = new zombie.core.VBO.GLVertexBufferObject[ring];
+                    Object[] rbs = new Object[ring];
+                    for (int i = 0; i < ring; i++) {
+                        vbo[i] = new zombie.core.VBO.GLVertexBufferObject(65536, 34962, 35040);
+                        ibo[i] = new zombie.core.VBO.GLVertexBufferObject(5460, 34963, 35040);
+                        rbs[i] = rbk.newInstance();
+                        benchSet(rbs[i], "vbo", vbo); benchSet(rbs[i], "ibo", ibo); benchSet(rbs[i], "sequence", i);
+                    }
+                    long t0 = System.nanoTime();
+                    int k = 0;
+                    for (int f = 0; f < frames; f++) {
+                        for (int i = 0; i < perFrame; i++, k++) {
+                            int seq = k & (ring - 1);
+                            slotBatch(vbo[seq]); slotBatch(ibo[seq]);
+                            GpuPatches.onRingRendered(rbs[seq]);
+                        }
+                        GpuPatches.onSwapDone();
+                    }
+                    long dt = System.nanoTime() - t0;
+                    if (!PersistentVbo.guard.on) throw new IllegalStateException("vboslots: the feature went off");
+                    if (scen == 1 && g.fences < 2L * frames * perFrame) throw new IllegalStateException("vboslots: per-batch mode made no batch fences");
+                    if (scen == 0 && g.fences > 2L * frames) throw new IllegalStateException("vboslots: frame mode made batch fences");
+                    long sum = g.sum;
+                    if (r == 0) { firstSum = sum; firstWaits = PersistentVbo.waits; }
+                    else if (sum != firstSum || PersistentVbo.waits != firstWaits) throw new IllegalStateException("vboslots: checksum changed between runs");
+                    if (r >= 3) t[r - 3] = dt / (2.0 * frames * perFrame);
+                }
+                System.out.printf("vboslots %-21s: %6.2f ns/map+unmap (min %.2f, max %.2f), checksum %d, waits %d, stalls %d%n",
+                    scen == 0 ? "frame fences 128x4" : "batch fences 128x4", median(t), t[0], t[6], firstSum, firstWaits, PersistentVbo.stalls);
+            }
+        } finally {
+            PresentLog.renderThread = wasThread;
+            PersistentVbo.resetForTest();
+        }
+    }
+
+    /** One buffer of a batch, as the ring does it: map, take the returned buffer, unmap. */
+    static void slotBatch(zombie.core.VBO.GLVertexBufferObject v) {
+        if (!GpuPatches.onMapEnter(v)) throw new IllegalStateException("vboslots: map refused");
+        if (GpuPatches.onMapExit(null) == null) throw new IllegalStateException("vboslots: no buffer");
+        if (!GpuPatches.onUnmapEnter(v) || !GpuPatches.onUnmapExit(false)) throw new IllegalStateException("vboslots: unmap refused");
     }
 
     static void benchSet(Object o, String f, Object v) throws Exception { java.lang.reflect.Field x = o.getClass().getDeclaredField(f); x.setAccessible(true); x.set(o, v); }

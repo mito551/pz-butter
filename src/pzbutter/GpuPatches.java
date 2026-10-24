@@ -15,6 +15,7 @@ public final class GpuPatches {
         BatchSize.init();
         UploadSizer.init();
         QuadWriter.init();
+        PersistentVbo.init();
     }
 
     /** True on the thread that owns the GL context: the render thread, once the first swap has set it. */
@@ -91,5 +92,94 @@ public final class GpuPatches {
     public static class VboFormat {
         @Patch.OnExit
         public static void exit(@Patch.This Object self) { GpuPatches.onVboFormat(self); }
+    }
+
+    // ---- persistentVbo ----
+
+    /**
+     * GLVertexBufferObject.map() entry: true serves the batch from a persistently mapped storage (the buffer's id and binding are set
+     * here and the buffer waits in {@code pending} for the exit advice) and skips the game's body. Any failure sends this buffer back to the
+     * game's own storage first (a persistent name must never meet the game's map()), then lets the game's body run.
+     */
+    public static boolean onMapEnter(Object self) {
+        if (!PersistentVbo.guard.on && !PersistentVbo.anyAttached) return false;
+        if (!glThread()) return false;
+        try {
+            java.nio.ByteBuffer b = PersistentVbo.map(self);
+            if (b == null) return false;
+            PersistentVbo.pending = b;
+            return true;
+        } catch (Throwable t) {
+            PersistentVbo.guard.fail(t);
+            PersistentVbo.failover(self);
+            return false;
+        }
+    }
+
+    /** GLVertexBufferObject.map() exit: the persistent buffer when the enter served one, else the game's answer. */
+    public static java.nio.ByteBuffer onMapExit(java.nio.ByteBuffer ret) {
+        java.nio.ByteBuffer p = PersistentVbo.pending;
+        if (p == null || !glThread()) return ret;
+        PersistentVbo.pending = null;
+        return p;
+    }
+
+    /** GLVertexBufferObject.unmap() entry: true for a buffer served by map() above (persistent mappings stay mapped). */
+    public static boolean onUnmapEnter(Object self) {
+        if (!PersistentVbo.anyAttached || !glThread()) return false;
+        try {
+            if (!PersistentVbo.unmap(self)) return false;
+            PersistentVbo.unmapSkipped = true;
+            return true;
+        } catch (Throwable t) { PersistentVbo.guard.fail(t); return false; }
+    }
+
+    /** GLVertexBufferObject.unmap() exit: true (the game's answer for a buffer that is not mapped) when the enter skipped the body. */
+    public static boolean onUnmapExit(boolean ret) {
+        if (!PersistentVbo.unmapSkipped || !glThread()) return ret;
+        PersistentVbo.unmapSkipped = false;
+        return true;
+    }
+
+    /** SpriteRenderer$RingBuffer.render() exit, per-batch fence mode only. */
+    public static void onRingRendered(Object ring) {
+        if (!PersistentVbo.anyAttached || PersistentVbo.frameSync || ring == null || !glThread()) return;
+        try { PersistentVbo.afterRingRender(ring); }
+        catch (Throwable t) { PersistentVbo.guard.fail(t); PersistentVbo.batchFailed(); }
+    }
+
+    /** Display.swapBuffers entry, render thread (after DeliveryPatches' own thread test). */
+    public static void onSwapBegin() { }
+
+    /** Display.swapBuffers exit, render thread: the frame's fence and the poll for the signalled ones. */
+    public static void onSwapDone() {
+        if (!PersistentVbo.anyAttached) return;
+        try { PersistentVbo.onSwap(); }
+        catch (Throwable t) { PersistentVbo.guard.fail(t); }
+    }
+
+    /** map() with no argument only (strictMatch with no @Argument, research Surprise 4): map(int) has no caller and stays the game's. */
+    @Patch(className = "zombie.core.VBO.GLVertexBufferObject", methodName = "map", strictMatch = true)
+    public static class VboMap {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This Object self) { return GpuPatches.onMapEnter(self); }
+
+        @Patch.OnExit
+        public static void exit(@Patch.Return(readOnly = false) java.nio.ByteBuffer ret) { ret = GpuPatches.onMapExit(ret); }
+    }
+
+    @Patch(className = "zombie.core.VBO.GLVertexBufferObject", methodName = "unmap")
+    public static class VboUnmap {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This Object self) { return GpuPatches.onUnmapEnter(self); }
+
+        @Patch.OnExit
+        public static void exit(@Patch.Return(readOnly = false) boolean ret) { ret = GpuPatches.onUnmapExit(ret); }
+    }
+
+    @Patch(className = "zombie.core.SpriteRenderer$RingBuffer", methodName = "render")
+    public static class RingRender {
+        @Patch.OnExit
+        public static void exit(@Patch.This Object self) { GpuPatches.onRingRendered(self); }
     }
 }

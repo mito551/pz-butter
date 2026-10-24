@@ -99,7 +99,7 @@ final class ModCompat {
         Map.entry("DeliveryPatches.DisplayModeSet", k("borderlessFullscreen")),
         Map.entry("DeliveryPatches.IsFullscreen", k("borderlessFullscreen")),
         Map.entry("DeliveryPatches.Swap", k("gpuMaxFrames", "presentPacing", "vblankLock", "frameStartGate", "reflexSleep", "vrrCap",
-            "vsyncAdaptive", "vrr", "borderlessFullscreen")),
+            "vsyncAdaptive", "vrr", "borderlessFullscreen", "persistentVbo")),
         // Lua
         Map.entry("LuaPatches.Rawget", k("luaRawgetFast", "uiCensus", "uiRetained", "uiRetainCheck")),
         Map.entry("LuaPatches.Rawset", UI_RETAIN),
@@ -136,6 +136,9 @@ final class ModCompat {
         Map.entry("GpuPatches.VboFormat", k("vboBatchKb")),
         Map.entry("GpuPatches.BufferData", k("vboSizeClasses", "gpuStats")),
         Map.entry("GpuPatches.VboQuad", k("vboFastQuads")),
+        Map.entry("GpuPatches.VboMap", k("persistentVbo", "gpuStats")),
+        Map.entry("GpuPatches.VboUnmap", k("persistentVbo", "gpuStats")),
+        Map.entry("GpuPatches.RingRender", k("persistentVbo", "gpuStats")),
         // log
         Map.entry("LogPatches.Writeln", k("logDedupe")),
         Map.entry("LogPatches.PrefixLine", k("logDedupe")),

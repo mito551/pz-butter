@@ -267,6 +267,7 @@ public final class DeliveryPatches {
         Thread me = Thread.currentThread();
         if (PresentLog.renderThread == null) PresentLog.renderThread = me;
         else if (PresentLog.renderThread != me) return;
+        GpuPatches.onSwapBegin();
         if (GpuQueue.guard.on) try { GpuQueue.beforeSwap(); } catch (Throwable t) { GpuQueue.guard.fail(t); }
         if (SwapHold.guard.on) holdSwap();
         if (VblankLock.guard.on) vblankWait();
@@ -294,6 +295,7 @@ public final class DeliveryPatches {
         if (VblankLock.guard.on) VblankLock.smoothedSwapNs = Reflex.ewma(VblankLock.smoothedSwapNs, PresentLog.lastSwapNs);
         if (GpuQueue.guard.on) try { GpuQueue.afterSwap(); } catch (Throwable t) { GpuQueue.guard.fail(t); }
         if (Caps.guard.on || Vrr.guard.on) updateRefresh();
+        GpuPatches.onSwapDone();
     }
 
     // ---- vblankLock ----

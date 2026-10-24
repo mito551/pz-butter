@@ -1364,10 +1364,11 @@ final class LuaGateTest {
         // the numbers and modes, through the features' own init, with values in the file that are not stock
         Settings.load(SelfTest.write("enabled=true\naimHoldMs=999\ncutawayRadius=9\ngridStackInterval=9\nroofHideDebounceFrames=9\nzoomEaseMs=9\n"
             + "bakeMipLevels=9\ntreeBakeMaxChunksPerSec=9\nsoundTickHz=9\nlightSwitchCheckFrames=9\nlightingFps=9\npresentPacing=on\nvrr=on\nborderlessFullscreen=on\n"
-            + "numberZombiesBlended=9\nzombieLodFixed3d=99\nzombieModelAddBudgetUs=9\nzombieSimLodTiles=9\nzombieSimLodSteps=3\nvboBatchKb=512\nvboSizeClasses=orphan\n"));
+            + "numberZombiesBlended=9\nzombieLodFixed3d=99\nzombieModelAddBudgetUs=9\nzombieSimLodTiles=9\nzombieSimLodSteps=3\nvboBatchKb=512\nvboSizeClasses=orphan\npersistentVbo=true\n"));
         Settings.forcedOff.addAll(VALUE_KEYS);
+        Settings.forcedOff.add("persistentVbo");                                   // a switch, forced like the table's others (load cleared them)
         AimHold.init(); Cutaways.init(); GridGate.init(); ZoomEase.init(); BakeMisc.init(); ChunkTrees.init(); SoundTick.init();
-        LightChecks.init(); SwapHold.init(); Vrr.init(); ZombieLod.init(); BatchSize.init(); UploadSizer.init();
+        LightChecks.init(); SwapHold.init(); Vrr.init(); ZombieLod.init(); BatchSize.init(); UploadSizer.init(); PersistentVbo.init();
         try {
             assert AimHold.holdMs == 150 && Cutaways.radius == 0 && GridGate.interval == 0 && GridGate.roofFrames == 0 && ZoomEase.ms == 0;
             assert BakeMisc.mipLevels == 0 && ChunkTrees.maxPerSec == 0 && !SoundPatches.tickGuard.on && LightChecks.switchTtl == 0 && LightChecks.lightingFps == 0;
@@ -1376,11 +1377,12 @@ final class LuaGateTest {
             assert ZombieLod.simTiles == 0 && ZombieLod.simSteps == 1 && !ZombieLod.simGuard.on;
             assert BatchSize.kb == 0 && !BatchSize.guard.on;                       // vboBatchKb: stock 4 KB, nothing installed
             assert UploadSizer.mode == 0 && !UploadSizer.guard.on;                  // vboSizeClasses: the game's upload
+            assert !PersistentVbo.guard.on;                                         // persistentVbo: the game's map and unmap
             // gpuMaxFrames (stock-off means a different number) has its own test below
         } finally {
             Settings.load(SelfTest.write("enabled=true\n"));                         // back to the shipped values for the features that follow
             AimHold.init(); Cutaways.init(); GridGate.init(); ZoomEase.init(); BakeMisc.init(); ChunkTrees.init(); SoundTick.init();
-            LightChecks.init(); SwapHold.init(); Vrr.init(); ZombieLod.init(); BatchSize.init(); UploadSizer.init();
+            LightChecks.init(); SwapHold.init(); Vrr.init(); ZombieLod.init(); BatchSize.init(); UploadSizer.init(); PersistentVbo.init();
         }
     }
 

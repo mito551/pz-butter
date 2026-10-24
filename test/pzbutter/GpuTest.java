@@ -39,6 +39,21 @@ final class GpuTest {
         slotBudgetClamp();
         fenceRingOrderAndWrap();
         slotRotation();
+        persistentMapRotatesNames();
+        persistentWaitsForUnsignalledFrame();
+        persistentSameFrameFencesNow();
+        persistentNotCapableStaysStock();
+        detachGivesFreshName();
+        persistentOffOrOtherThreadPassThrough();
+        mapHolderIsStrict();
+        persistentGuardOffDetachesAtNextMap();
+        persistentPerBatchFences();
+        persistentContextChangeDetaches();
+        persistentCreateFailureStaysStock();
+        persistentMappedBufferStaysStock();
+        persistentWaitTimeoutDetaches();
+        persistentWaitErrorDetaches();
+        persistentInitReadsKeys();
     }
 
     static final String[] PLAN9_FLAGS = {"persistentVbo", "vboFastQuads", "smartTextureRelease", "bakeNoSync", "bakeNoSyncCheck", "bakeBudgetGpu", "gpuStats"};
@@ -383,5 +398,250 @@ final class GpuTest {
         int[] seen = new int[6];
         for (int i = 0; i < 6; i++) { seen[i] = SlotRing.next(b); b.cur = seen[i]; }
         assert java.util.Arrays.equals(seen, new int[] {0, 1, 2, 3, 0, 1});
+    }
+
+    // ---- Task 7: persistentVbo ----
+
+    /** GL for persistentVbo without a context: names from 100 up, fences 1, 2, 3, ..., a log of the calls. */
+    static final class FakeGl implements PersistentVbo.Gl {
+        boolean capable = true, awaitResult = true, awaitThrows, mapNull, storageError;
+        int nextName = 100, storageCalls, pendingError;
+        long fences, ctx = 1;
+        final java.util.List<String> log = new java.util.ArrayList<>();
+        final java.util.Set<Long> signalledSet = new java.util.HashSet<>();
+        final java.util.List<Long> awaited = new java.util.ArrayList<>();
+        final java.util.List<Long> deletedFences = new java.util.ArrayList<>();
+        public boolean capable() { return capable; }
+        public int genBuffer() { return nextName++; }
+        public void storage(int type, long size) { storageCalls++; if (storageError) pendingError = 1282; }
+        public java.nio.ByteBuffer mapPersistent(int type, long size) { return mapNull ? null : java.nio.ByteBuffer.allocateDirect((int) size); }
+        public void bind(int type, int name) { log.add("bind " + type + " " + name); }
+        public void unmapAndDelete(int type, int name) { log.add("unmapDelete " + type + " " + name); }
+        public void deleteBuffer(int name) { log.add("delete " + name); }
+        public long fence() { return ++fences; }
+        public boolean signalled(long f) { return signalledSet.contains(f); }
+        public boolean await(long f, long ns) { awaited.add(f); if (awaitThrows) throw new IllegalStateException("wait failed"); return awaitResult; }
+        public void deleteFence(long f) { deletedFences.add(f); }
+        public int error() { int e = pendingError; pendingError = 0; return e; }
+        public long context() { return ctx; }
+    }
+
+    static zombie.core.VBO.GLVertexBufferObject ringVbo() {
+        zombie.core.VBO.GLVertexBufferObject v = new zombie.core.VBO.GLVertexBufferObject(65536, 34962, 35040);
+        try { java.lang.reflect.Field f = v.getClass().getDeclaredField("id"); f.setAccessible(true); f.setInt(v, 7); } catch (Exception e) { throw new RuntimeException(e); }
+        return v;
+    }
+
+    static int idOf(Object v) throws Exception { return (int) field(v, "id"); }
+
+    /** persistentVbo on over a FakeGl, the calling thread as the render thread; ends with everything restored. */
+    interface Body { void run(FakeGl g) throws Exception; }
+
+    static void withPersistent(boolean frameSync, int slots, Body body) throws Exception {
+        PersistentVbo.resetForTest();
+        FakeGl g = new FakeGl();
+        PersistentVbo.gl = g;
+        PersistentVbo.guard.on = true; PersistentVbo.frameSync = frameSync; PersistentVbo.wantSlots = slots; PersistentVbo.ringBytes = 1 << 20;
+        Thread was = PresentLog.renderThread; PresentLog.renderThread = Thread.currentThread();
+        try { body.run(g); }
+        finally { PresentLog.renderThread = was; PersistentVbo.resetForTest(); }
+    }
+
+    static void persistentMapRotatesNames() throws Exception {
+        withPersistent(true, 4, g -> {
+            zombie.core.VBO.GLVertexBufferObject v = ringVbo();
+            java.nio.ByteBuffer[] got = new java.nio.ByteBuffer[5];
+            int[] ids = new int[5];
+            for (int i = 0; i < 5; i++) {
+                assert GpuPatches.onMapEnter(v);
+                got[i] = GpuPatches.onMapExit(null); ids[i] = idOf(v);
+                assert GpuPatches.onUnmapEnter(v) && GpuPatches.onUnmapExit(false);
+                GpuPatches.onSwapDone();                                   // one batch a frame
+            }
+            assert ids[0] == 100 && ids[1] == 101 && ids[3] == 103 && ids[4] == 100 && got[4] == got[0];
+            assert got[0].limit() == 65536 && got[0].order() == java.nio.ByteOrder.nativeOrder();
+            assert g.log.contains("bind 34962 100") && g.storageCalls == 4;
+            assert g.log.contains("delete 7") && PersistentVbo.saved == 5 && PersistentVbo.slotCount == 4;      // the game's own name is given back
+        });
+    }
+
+    static void persistentWaitsForUnsignalledFrame() throws Exception {
+        withPersistent(true, 1, g -> {
+            zombie.core.VBO.GLVertexBufferObject v = ringVbo();
+            GpuPatches.onMapEnter(v); GpuPatches.onMapExit(null);           // swap 0, slot 0
+            GpuPatches.onSwapDone();                                       // fence 1 for swap 0, not signalled
+            GpuPatches.onMapEnter(v); GpuPatches.onMapExit(null);           // slot 0 again: written at swap 0, not complete
+            assert g.awaited.contains(1L) && PersistentVbo.waits == 1;
+            g.signalledSet.add(2L); GpuPatches.onSwapDone();               // the poll stops at fence 1 (not signalled)
+            assert PersistentVbo.frames.completed == -1;
+        });
+    }
+
+    static void persistentSameFrameFencesNow() throws Exception {
+        withPersistent(true, 1, g -> {
+            zombie.core.VBO.GLVertexBufferObject v = ringVbo();
+            GpuPatches.onMapEnter(v); GpuPatches.onMapExit(null);
+            GpuPatches.onMapEnter(v); GpuPatches.onMapExit(null);           // the same storage twice within one frame
+            assert PersistentVbo.stalls == 1 && g.awaited.size() == 1 && g.deletedFences.equals(java.util.List.of(1L));
+        });
+    }
+
+    static void persistentNotCapableStaysStock() throws Exception {
+        withPersistent(true, 4, g -> {
+            g.capable = false;
+            zombie.core.VBO.GLVertexBufferObject v = ringVbo();
+            assert !GpuPatches.onMapEnter(v) && !PersistentVbo.guard.on && idOf(v) == 7 && g.storageCalls == 0;
+            assert !PersistentVbo.anyAttached;
+        });
+    }
+
+    static void detachGivesFreshName() throws Exception {
+        withPersistent(true, 2, g -> {
+            zombie.core.VBO.GLVertexBufferObject v = ringVbo();
+            GpuPatches.onMapEnter(v); GpuPatches.onMapExit(null);
+            PersistentVbo.guard.on = false; PersistentVbo.detachAll();
+            assert !GpuPatches.onMapEnter(v);                              // stock body runs on a fresh mutable name
+            assert idOf(v) == 102 && g.log.contains("unmapDelete 34962 100") && g.log.contains("unmapDelete 34962 101");
+            assert g.log.get(g.log.size() - 1).equals("bind 34962 102");   // the game's map() works on the bound buffer
+            assert !GpuPatches.onUnmapEnter(v) && !PersistentVbo.anyAttached;
+        });
+    }
+
+    static void persistentOffOrOtherThreadPassThrough() throws Exception {
+        PersistentVbo.resetForTest();
+        assert !GpuPatches.onMapEnter(null) && !GpuPatches.onUnmapEnter(null) && GpuPatches.onMapExit(null) == null;
+        Thread was = PresentLog.renderThread;
+        try { PersistentVbo.guard.on = true; PresentLog.renderThread = null; assert !GpuPatches.onMapEnter(ringVbo()); }
+        finally { PresentLog.renderThread = was; PersistentVbo.resetForTest(); }
+    }
+
+    static void mapHolderIsStrict() throws Exception {
+        me.zed_0xff.zombie_buddy.Patch p = GpuPatches.VboMap.class.getAnnotation(me.zed_0xff.zombie_buddy.Patch.class);
+        assert p.strictMatch() && p.methodName().equals("map");
+        for (java.lang.reflect.Method m : GpuPatches.VboMap.class.getDeclaredMethods())
+            for (java.lang.annotation.Annotation[] as : m.getParameterAnnotations())
+                for (java.lang.annotation.Annotation a : as) assert !(a instanceof me.zed_0xff.zombie_buddy.Patch.Argument);
+    }
+
+    /** The guard going off (5 failures elsewhere) detaches every buffer at its own next map(), through the shim alone. */
+    static void persistentGuardOffDetachesAtNextMap() throws Exception {
+        withPersistent(true, 2, g -> {
+            zombie.core.VBO.GLVertexBufferObject a = ringVbo(), b = ringVbo();
+            GpuPatches.onMapEnter(a); GpuPatches.onMapExit(null); GpuPatches.onMapEnter(b); GpuPatches.onMapExit(null);
+            assert idOf(a) == 100 && idOf(b) == 102;
+            PersistentVbo.guard.on = false;
+            assert GpuPatches.onUnmapEnter(a) && GpuPatches.onUnmapExit(false);       // an unmap before the next map() is still ours
+            assert !GpuPatches.onMapEnter(a) && idOf(a) == 104 && PersistentVbo.anyAttached;
+            assert !GpuPatches.onUnmapEnter(a) && !GpuPatches.onUnmapEnter(b);         // a is the game's again; b is marked, and the game's unmap of an unmapped buffer does nothing
+            assert !GpuPatches.onMapEnter(b) && idOf(b) == 105 && !PersistentVbo.anyAttached;
+            assert g.log.contains("unmapDelete 34962 102") && g.log.contains("unmapDelete 34962 103");
+            assert !GpuPatches.onMapEnter(ringVbo()) && g.storageCalls == 4;           // no new buffer goes persistent
+        });
+    }
+
+    /** A RingBuffer object without GL: sequence, vbo[] and ibo[] are all the per-batch fence reads. */
+    static Object ringBuffer(zombie.core.VBO.GLVertexBufferObject[] vbo, zombie.core.VBO.GLVertexBufferObject[] ibo) throws Exception {
+        Class<?> c = Class.forName("zombie.core.SpriteRenderer$RingBuffer");
+        java.lang.reflect.Constructor<?> k = c.getDeclaredConstructor(); k.setAccessible(true);
+        Object rb = k.newInstance();
+        setField(rb, "vbo", vbo); setField(rb, "ibo", ibo); setField(rb, "sequence", 0);
+        return rb;
+    }
+
+    /** One batch as the ring runs it: map both buffers, write, unmap both, render (the hook behind it). */
+    static void perBatch(Object v, Object ib, Object rb) {
+        GpuPatches.onMapEnter(v); GpuPatches.onMapExit(null); GpuPatches.onMapEnter(ib); GpuPatches.onMapExit(null);
+        GpuPatches.onUnmapEnter(v); GpuPatches.onUnmapEnter(ib);
+        GpuPatches.onRingRendered(rb);
+    }
+
+    static void persistentPerBatchFences() throws Exception {
+        withPersistent(false, 2, g -> {
+            zombie.core.VBO.GLVertexBufferObject v = ringVbo(), ib = ringVbo();
+            Object rb = ringBuffer(new zombie.core.VBO.GLVertexBufferObject[] {v}, new zombie.core.VBO.GLVertexBufferObject[] {ib});
+            for (int batch = 0; batch < 2; batch++) perBatch(v, ib, rb);   // slots 0 and 1, one fence behind each batch for each of the two buffers
+            assert g.fences == 4 && g.awaited.isEmpty();
+            perBatch(v, ib, rb);                                           // slot 0 again: its batch fence (1 for v) has not signalled
+            assert g.awaited.equals(java.util.List.of(1L, 2L)) && PersistentVbo.waits == 2 && g.deletedFences.equals(java.util.List.of(1L, 2L));
+            g.signalledSet.add(3L); g.signalledSet.add(4L);                // slot 1: both fences signalled, no wait, and they are given back
+            perBatch(v, ib, rb);
+            assert g.awaited.size() == 2 && PersistentVbo.waits == 2 && g.deletedFences.contains(3L) && g.deletedFences.contains(4L);
+            long before = g.fences;
+            GpuPatches.onSwapDone();                                       // frame fences are made in this mode too, for the buffers no batch fence covers
+            assert g.fences == before + 1;
+        });
+    }
+
+    static void persistentContextChangeDetaches() throws Exception {
+        withPersistent(true, 2, g -> {
+            zombie.core.VBO.GLVertexBufferObject v = ringVbo();
+            GpuPatches.onMapEnter(v); GpuPatches.onMapExit(null);
+            g.ctx = 2; GpuPatches.onSwapDone();
+            assert !PersistentVbo.guard.on && PersistentVbo.anyAttached;
+            assert !GpuPatches.onMapEnter(v) && idOf(v) == 102 && g.log.stream().noneMatch(l -> l.startsWith("unmapDelete"));   // the old names are not ours to delete in the new context
+        });
+    }
+
+    static void persistentCreateFailureStaysStock() throws Exception {
+        withPersistent(true, 2, g -> {
+            g.mapNull = true;
+            zombie.core.VBO.GLVertexBufferObject v = ringVbo();
+            assert !GpuPatches.onMapEnter(v) && !PersistentVbo.guard.on && idOf(v) == 7 && !PersistentVbo.anyAttached;
+            assert g.log.get(g.log.size() - 1).equals("bind 34962 7") && g.log.contains("delete 100");
+        });
+        withPersistent(true, 2, g -> {
+            g.storageError = true;                                          // a GL error from glBufferStorage
+            zombie.core.VBO.GLVertexBufferObject v = ringVbo();
+            assert !GpuPatches.onMapEnter(v) && !PersistentVbo.guard.on && idOf(v) == 7 && !PersistentVbo.anyAttached;
+            assert g.log.contains("unmapDelete 34962 100") && g.log.get(g.log.size() - 1).equals("bind 34962 7") && !g.log.contains("delete 7");
+        });
+    }
+
+    static void persistentMappedBufferStaysStock() throws Exception {
+        withPersistent(true, 2, g -> {
+            zombie.core.VBO.GLVertexBufferObject v = ringVbo();
+            setField(v, "mapped", true);                                    // a stock map() is still open on it
+            assert !GpuPatches.onMapEnter(v) && PersistentVbo.guard.on && g.storageCalls == 0 && idOf(v) == 7;
+            setField(v, "mapped", false);
+            assert GpuPatches.onMapEnter(v) && idOf(v) == 100;
+        });
+    }
+
+    /** A fence that never signals: after the give-up time the feature goes off and the buffer is the game's again. */
+    static void persistentWaitTimeoutDetaches() throws Exception {
+        withPersistent(true, 1, g -> {
+            PersistentVbo.giveUpNs = 20_000_000L;
+            zombie.core.VBO.GLVertexBufferObject v = ringVbo();
+            GpuPatches.onMapEnter(v); GpuPatches.onMapExit(null);
+            GpuPatches.onSwapDone();
+            g.awaitResult = false;
+            assert !GpuPatches.onMapEnter(v);                              // the wait gave up
+            assert !PersistentVbo.guard.on && idOf(v) == 101 && !PersistentVbo.anyAttached && g.log.contains("unmapDelete 34962 100");
+            assert GpuPatches.onMapExit(null) == null && !GpuPatches.onUnmapEnter(v);
+        });
+    }
+
+    /** The driver reports the wait failed: the shim detaches the buffer instead of letting the exception into the game. */
+    static void persistentWaitErrorDetaches() throws Exception {
+        withPersistent(true, 1, g -> {
+            zombie.core.VBO.GLVertexBufferObject v = ringVbo();
+            GpuPatches.onMapEnter(v); GpuPatches.onMapExit(null);
+            GpuPatches.onSwapDone();
+            g.awaitThrows = true;
+            assert !GpuPatches.onMapEnter(v) && idOf(v) == 101 && !PersistentVbo.anyAttached;
+            assert GpuPatches.onMapExit(null) == null && !GpuPatches.onUnmapEnter(v);
+        });
+    }
+
+    static void persistentInitReadsKeys() {
+        PersistentVbo.resetForTest();
+        try {
+            Settings.load(SelfTest.write("enabled=true\npersistentVbo=true\npersistentVboSlots=99\npersistentVboFrameSync=false\n"));
+            PersistentVbo.init();
+            assert PersistentVbo.guard.on && PersistentVbo.wantSlots == 8 && !PersistentVbo.frameSync;
+            Settings.load(SelfTest.write("enabled=true\n"));
+            PersistentVbo.init();
+            assert !PersistentVbo.guard.on && PersistentVbo.wantSlots == 4 && PersistentVbo.frameSync;
+        } finally { PersistentVbo.resetForTest(); Settings.load(SelfTest.write("enabled=true\n")); }
     }
 }
