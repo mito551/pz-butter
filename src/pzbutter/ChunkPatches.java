@@ -23,6 +23,7 @@ public final class ChunkPatches {
     static final Guard translucentGuard = new Guard("translucentTilesInChunkTexture");
     static final Guard zoomGuard = new Guard("zoomEaseMs");
     static final Guard holdGuard = new Guard("bakeScheduler");
+    static final Guard treeRateGuard = new Guard("treeBakeMaxChunksPerSec");
 
     /** FBORenderCell.isTreeRenderedEveryFrame entry: the answer when treesInChunkTexture is on; null runs stock. */
     public static Boolean onTreeEveryFrame(Object obj) {
@@ -89,6 +90,10 @@ public final class ChunkPatches {
 
     /** FBORenderCell.prepareChunksForUpdating entry: the bake-hold plan for player p, before the stock prepare step. */
     public static void onPlan(Object cell, int p) {
+        if (treeRateGuard.on && p == 0) {
+            try { ChunkTrees.release(0, System.nanoTime()); }
+            catch (Throwable t) { treeRateGuard.fail(t); }
+        }
         if (!holdGuard.on) return;
         try { BakeHold.plan(cell, p); }
         catch (Throwable t) { holdGuard.fail(t); }
@@ -96,6 +101,10 @@ public final class ChunkPatches {
 
     /** FBORenderChunkManager.beginRenderChunkLevel entry: true when the level is held (stock skipped, the old texture shows). */
     public static boolean onGateEnter(Object mgr, IsoChunk chunk, int level, float zoom) {
+        if (treeRateGuard.on) {
+            try { ChunkTrees.atGate(chunk, level, zoom); }
+            catch (Throwable t) { treeRateGuard.fail(t); }
+        }
         if (!holdGuard.on) return false;
         try { return BakeHold.gate(mgr, chunk, level, zoom); }
         catch (Throwable t) { holdGuard.fail(t); return false; }

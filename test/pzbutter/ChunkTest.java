@@ -56,6 +56,11 @@ final class ChunkTest {
         plan6aHoldKeysNeedMaster();
         holdFlowHeadless();
         lightClassesHeadless();
+        rateCountsLastSecond();
+        marksOnlyAboveRate();
+        releaseAfterQuietSecond();
+        treeRateKeyNeedsTreeBake();
+        treeMarksFollowArrivalRate();
     }
 
     static void bakeableOnlyFlagReason() {
@@ -717,6 +722,115 @@ final class ChunkTest {
             FrameClock.on = clock;
             zombie.iso.fboRenderChunk.FBORenderChunkManager.instance = mgrWas;
             ChunkPatches.holdGuard.on = false;
+        }
+    }
+
+    // ---- Task 8: trees stay per frame while chunks stream in ----
+
+    static void rateCountsLastSecond() {
+        ChunkTrees.Rate r = new ChunkTrees.Rate();
+        for (int i = 0; i < 12; i++) r.add(i * 50_000_000L);                         // 12 arrivals over 0.55 s
+        assert r.perSecond(600_000_000L) == 12;
+        assert r.perSecond(1_700_000_000L) == 0;                                     // all older than one second
+        // buckets are reused after a second: a late arrival does not see a stale count
+        r.add(2_000_000_000L);
+        assert r.perSecond(2_000_000_000L) == 1;
+        // the window slides: arrivals at 0.0 and 0.5 s, asked at 1.05 s, only the later one is left
+        ChunkTrees.Rate q = new ChunkTrees.Rate();
+        q.add(0L); q.add(500_000_000L);
+        assert q.perSecond(900_000_000L) == 2 && q.perSecond(1_050_000_000L) == 1;
+    }
+
+    static void marksOnlyAboveRate() {
+        assert ChunkTrees.markNew(9, 8) && !ChunkTrees.markNew(8, 8) && !ChunkTrees.markNew(99, 0);
+    }
+
+    static void releaseAfterQuietSecond() {
+        assert !ChunkTrees.releaseNow(3, 8, 0L, 900_000_000L) && ChunkTrees.releaseNow(3, 8, 0L, 1_000_000_000L);
+        assert !ChunkTrees.releaseNow(9, 8, 0L, 5_000_000_000L) && !ChunkTrees.releaseNow(3, 8, -1L, 5_000_000_000L);
+        // quietSinceNs: set when the rate falls to the limit, cleared when it rises above it
+        ChunkTrees.Rate r = new ChunkTrees.Rate();
+        assert r.quietSinceNs < 0;
+        for (int i = 0; i < 9; i++) r.add(i * 10_000_000L);
+        r.update(100_000_000L, 8);
+        assert r.quietSinceNs < 0;                                                   // 9 a second: not quiet
+        r.update(1_500_000_000L, 8);
+        assert r.quietSinceNs == 1_500_000_000L;                                     // all older than a second
+        r.update(1_700_000_000L, 8);
+        assert r.quietSinceNs == 1_500_000_000L;                                     // kept while it stays quiet
+        for (int i = 0; i < 9; i++) r.add(1_800_000_000L + i);
+        r.update(1_800_000_100L, 8);
+        assert r.quietSinceNs < 0;
+    }
+
+    static void treeRateKeyNeedsTreeBake() {
+        Settings.load(SelfTest.write("enabled=true\ntreeBakeMaxChunksPerSec=8\n"));
+        ChunkTrees.init();
+        assert !ChunkPatches.treeRateGuard.on && ChunkTrees.maxPerSec == 8;
+        Settings.load(SelfTest.write("enabled=true\ntreesInChunkTexture=true\ntreeBakeMaxChunksPerSec=8\n"));
+        ChunkTrees.init();
+        assert ChunkPatches.treeRateGuard.on;
+        Settings.load(SelfTest.write("enabled=true\ntreesInChunkTexture=true\n"));
+        ChunkTrees.init();
+        assert !ChunkPatches.treeRateGuard.on;                                       // 0 = off
+        Settings.load(SelfTest.write("enabled=true\n"));
+        ChunkTrees.init();
+    }
+
+    /** New textures arriving faster than the limit mark their chunk; a quiet second releases the marks with a tree redraw. */
+    static void treeMarksFollowArrivalRate() {
+        zombie.iso.fboRenderChunk.FBORenderChunkManager mgrWas = zombie.iso.fboRenderChunk.FBORenderChunkManager.instance;
+        zombie.iso.fboRenderChunk.FBORenderChunkManager.instance = new zombie.iso.fboRenderChunk.FBORenderChunkManager();
+        IsoCamera.frameState.playerIndex = 0;
+        try {
+            Settings.load(SelfTest.write("enabled=true\ntreesInChunkTexture=true\ntreeBakeMaxChunksPerSec=2\n"));
+            ChunkTrees.init();
+            IsoChunk[] cs = new IsoChunk[5];
+            for (int i = 0; i < cs.length; i++) {
+                cs[i] = holdChunk(i, 0, false);                                        // no initialised texture yet
+                cs[i].getRenderLevels(0).invalidateLevel(0, 1024);
+            }
+            for (int i = 0; i < cs.length; i++) ChunkTrees.atGate(cs[i], 0, 1f, 0, 10_000_000L * i);
+            assert !ChunkTrees.isMarked(cs[0]) && !ChunkTrees.isMarked(cs[1]) : "within the limit";
+            // the 3rd, 4th and 5th arrival in the same second are over 2 a second
+            assert ChunkTrees.isMarked(cs[2]) && ChunkTrees.isMarked(cs[3]) && ChunkTrees.isMarked(cs[4]);
+            // the second level of a pair and a pair with a texture are not arrivals
+            IsoChunk done = holdChunk(7, 0, true);
+            done.getRenderLevels(0).invalidateLevel(0, 1024);
+            ChunkTrees.atGate(done, 0, 1f, 0, 60_000_000L);
+            ChunkTrees.atGate(cs[0], 1, 1f, 0, 60_000_000L);
+            assert !ChunkTrees.isMarked(done) && !ChunkTrees.isMarked(cs[0]);
+            // release: nothing while the rate is above the limit, nothing before a quiet second, then every marked chunk is re-baked for its trees
+            for (IsoChunk c : cs) c.getRenderLevels(0).clearDirty(0, 1f);
+            ChunkTrees.release(0, 500_000_000L);
+            assert ChunkTrees.isMarked(cs[3]);
+            ChunkTrees.release(0, 1_300_000_000L);                                    // quiet begins
+            assert ChunkTrees.isMarked(cs[3]);
+            ChunkTrees.release(0, 2_400_000_000L);
+            assert !ChunkTrees.isMarked(cs[2]) && !ChunkTrees.isMarked(cs[3]) && !ChunkTrees.isMarked(cs[4]);
+            assert cs[3].getRenderLevels(0).isDirty(0, 4096L, 1f) && cs[4].getRenderLevels(0).isDirty(0, 4096L, 1f);
+            assert !cs[0].getRenderLevels(0).isDirty(0, 1f) : "an unmarked chunk is left alone";
+            // a marked chunk that left the screen is unmarked without a redraw
+            for (int i = 1; i <= 3; i++) {
+                IsoChunk f = holdChunk(20 + i, 0, false);
+                f.getRenderLevels(0).invalidateLevel(0, 1024);
+                ChunkTrees.atGate(f, 0, 1f, 0, 3_000_000_000L + i);
+            }
+            IsoChunk gone = holdChunk(30, 0, false);
+            gone.getRenderLevels(0).invalidateLevel(0, 1024);
+            ChunkTrees.atGate(gone, 0, 1f, 0, 3_000_000_100L);
+            assert ChunkTrees.isMarked(gone);
+            ChunkTrees.release(0, 3_100_000_000L);
+            gone.getRenderLevels(0).clearDirty(0, 1f);
+            gone.getRenderLevels(0).setOnScreen(0, false);
+            ChunkTrees.release(0, 4_100_000_000L);
+            assert ChunkTrees.isMarked(gone) : "not yet a quiet second";
+            ChunkTrees.release(0, 5_200_000_000L);
+            assert !ChunkTrees.isMarked(gone) && !gone.getRenderLevels(0).isDirty(0, 4096L, 1f);
+        } finally {
+            zombie.iso.fboRenderChunk.FBORenderChunkManager.instance = mgrWas;
+            Settings.load(SelfTest.write("enabled=true\n"));
+            ChunkTrees.init();
         }
     }
 }
