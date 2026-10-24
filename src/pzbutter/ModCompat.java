@@ -125,6 +125,7 @@ final class ModCompat {
         Map.entry("ZombiePatches.SceneCull", k("numberZombiesBlended", "zombieLodFixed3d", "zombieModelAddBudgetUs", "entityTiming")),
         Map.entry("ZombiePatches.SceneCulled", k("zombieLodFixed3d", "zombieModelAddBudgetUs")),
         Map.entry("ZombiePatches.SimLevel", k("zombieSimLodTiles", "zombieSimLodSteps")),
+        Map.entry("ZombiePatches.UpdateLos", k("playerLosFast", "entityTiming")),
         // log
         Map.entry("LogPatches.Writeln", k("logDedupe")),
         Map.entry("LogPatches.PrefixLine", k("logDedupe")),

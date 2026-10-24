@@ -13,6 +13,7 @@ public final class ZombiePatches {
     public static void init() {
         FacingFix.init();
         ZombieLod.init();
+        losGuard.on = Settings.flag("playerLosFast");
     }
 
     /** IsoGameCharacter.setForwardDirection(float, float) entry: true skips the body (the character keeps its facing). */
@@ -156,5 +157,36 @@ public final class ZombiePatches {
                                 @Patch.Return(readOnly = false) zombie.UpdateSchedulerSimulationLevel ret) {
             ret = ZombiePatches.onSimLevel(s, obj, ret);
         }
+    }
+
+    // ---- playerLosFast: the sight pass's seen-before checks ----
+
+    static final Guard losGuard = new Guard("playerLosFast");
+
+    /**
+     * IsoPlayer.updateLOS entry: swaps the player's {@code lastSpotted} Stack for a {@link SpottedStack} holding the same elements,
+     * once per player (the getter returns the new one; a Java mod holding the old object sees a list that no longer changes).
+     */
+    public static void onLosEnter(Object player) {
+        if (!losGuard.on) return;
+        try {
+            if (Thread.currentThread() != FrameClock.mainThread) return;
+            zombie.characters.IsoPlayer p = (zombie.characters.IsoPlayer) player;
+            java.util.Stack<zombie.iso.IsoMovingObject> s = p.getLastSpotted();
+            if (s != null && !(s instanceof SpottedStack)) p.setLastSpotted(new SpottedStack<>(s));
+        } catch (Throwable t) { losGuard.fail(t); }
+    }
+
+    /** IsoPlayer.updateLOS exit (also on a throw): nothing yet (the timing call joins it with entityTiming). */
+    public static void onLosExit() {}
+
+    /** IsoAnimal declares its own updateLOS, so only IsoPlayer's body is instrumented. */
+    @Patch(className = "zombie.characters.IsoPlayer", methodName = "updateLOS")
+    public static class UpdateLos {
+        @Patch.OnEnter
+        public static void enter(@Patch.This Object self) { ZombiePatches.onLosEnter(self); }
+
+        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
+        public static void exit() { ZombiePatches.onLosExit(); }
     }
 }

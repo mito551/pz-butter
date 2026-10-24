@@ -26,6 +26,14 @@ final class ZombieTest {
         simLodOffReturnsStock();
         simLodPassesThroughWhenItShould();
         simLodHolderTargetsStock();
+        spottedStackMatchesStack();
+        spottedAddKeepsSetFresh();
+        spottedCopiesAndIsAStack();
+        spottedViewWriteAfterRebuild();
+        spottedCloneHasItsOwnSet();
+        losShimOffTouchesNothing();
+        losShimSwapsOnce();
+        losHolderTargetsStock();
     }
 
     static final String[] PLAN8_FLAGS = {"zeroFacingFix", "playerLosFast", "zombieCullSortFast", "statsNoBox", "popmanFlagsFlyweight", "entityTiming"};
@@ -308,5 +316,117 @@ final class ZombieTest {
             if (x != null) exit = x.onThrowable() != Throwable.class;
         }
         assert exit;                                                                     // no onThrowable: the classifier's own exception passes
+    }
+
+    // ---- Task 6: player sight memo ----
+
+    static void spottedStackMatchesStack() {
+        java.util.Random r = new java.util.Random(88);
+        Object[] pool = new Object[40];
+        for (int i = 0; i < pool.length; i++) pool[i] = new Object();
+        for (int run = 0; run < 200; run++) {
+            java.util.Stack<Object> a = new java.util.Stack<>();
+            SpottedStack<Object> b = new SpottedStack<>();
+            for (int step = 0; step < 400; step++) {
+                Object o = pool[r.nextInt(pool.length)];
+                int n = a.size();
+                switch (r.nextInt(17)) {
+                    case 0 -> { assert a.add(o) == b.add(o); }
+                    case 1 -> { a.push(o); b.push(o); }
+                    case 2 -> { a.addElement(o); b.addElement(o); }
+                    case 3 -> { assert a.remove(o) == b.remove(o); }
+                    case 4 -> { if (n > 0) { int i = r.nextInt(n); assert a.remove(i) == b.remove(i); } }
+                    case 5 -> { if (n > 0) assert a.pop() == b.pop(); }
+                    case 6 -> { if (n > 0) { int i = r.nextInt(n); assert a.set(i, o) == b.set(i, o); } }
+                    case 7 -> { if (n > 0) { int i = r.nextInt(n); a.setElementAt(o, i); b.setElementAt(o, i); } }
+                    case 8 -> { int i = r.nextInt(n + 1); a.insertElementAt(o, i); b.insertElementAt(o, i); }
+                    case 9 -> { java.util.List<Object> l = java.util.List.of(o, pool[r.nextInt(pool.length)]); assert a.addAll(l) == b.addAll(l); }
+                    case 10 -> { java.util.Set<Object> s = java.util.Set.of(o); assert a.removeAll(s) == b.removeAll(s); }
+                    case 11 -> { assert a.removeIf(x -> x == o) == b.removeIf(x -> x == o); }
+                    case 12 -> { if (r.nextInt(20) == 0) { a.clear(); b.clear(); } }
+                    case 13 -> { java.util.Iterator<Object> ia = a.iterator(), ib = b.iterator(); while (ia.hasNext()) { Object x = ia.next(); ib.next(); if (x == o) { ia.remove(); ib.remove(); } } }
+                    case 14 -> { if (n > 0) { int i = r.nextInt(n); a.subList(i, n).clear(); b.subList(i, n).clear(); } }
+                    case 15 -> { if (n > 0) { java.util.ListIterator<Object> la = a.listIterator(), lb = b.listIterator(); la.next(); lb.next(); la.set(o); lb.set(o); } }
+                    default -> { if (r.nextInt(30) == 0) { a.removeAllElements(); b.removeAllElements(); } }
+                }
+                assert a.equals(b) : run + "/" + step;
+                for (Object p : pool) assert a.contains(p) == b.contains(p) && a.indexOf(p) == b.indexOf(p) && a.lastIndexOf(p) == b.lastIndexOf(p);
+            }
+        }
+    }
+
+    static void spottedAddKeepsSetFresh() {
+        SpottedStack<Object> b = new SpottedStack<>();
+        long r0 = SpottedStack.rebuilds;
+        for (int i = 0; i < 1000; i++) { Object o = new Object(); assert !b.contains(o); b.add(o); assert b.contains(o) && b.indexOf(o) == i; }
+        b.clear();
+        assert !b.contains(new Object()) && SpottedStack.rebuilds == r0;           // updateLOS's own operations never rebuild
+    }
+
+    static void spottedCopiesAndIsAStack() {
+        java.util.Stack<Object> s = new java.util.Stack<>();
+        Object x = new Object(), y = new Object();
+        s.add(x); s.add(y); s.add(x);
+        SpottedStack<Object> c = new SpottedStack<>(s);
+        assert c.equals(s) && c.contains(x) && c.contains(y) && c.size() == 3 && c instanceof java.util.Stack;
+        assert c.remove(x) && c.contains(x) && c.remove(x) && !c.contains(x);       // duplicates: present until the last copy goes
+    }
+
+    // mine: a view made before a rebuild writes after it; the set still follows (the modCount check, and the overridden set())
+    static void spottedViewWriteAfterRebuild() {
+        Object x = new Object(), y = new Object(), z = new Object();
+        SpottedStack<Object> b = new SpottedStack<>();
+        b.add(x); b.add(y);
+        java.util.Iterator<Object> it = b.iterator();
+        assert b.contains(x) && b.contains(y);                                      // rebuilds: the views predate it
+        it.next(); it.remove();
+        assert !b.contains(x) && b.contains(y) && b.size() == 1;
+        java.util.List<Object> sub = b.subList(0, 1);
+        assert b.contains(y);
+        sub.set(0, z);
+        assert !b.contains(y) && b.contains(z) && b.indexOf(z) == 0;
+        sub.clear();
+        assert !b.contains(z) && b.isEmpty();
+    }
+
+    // mine: a clone does not share the set
+    static void spottedCloneHasItsOwnSet() {
+        Object x = new Object(), y = new Object();
+        SpottedStack<Object> b = new SpottedStack<>();
+        b.add(x);
+        @SuppressWarnings("unchecked") SpottedStack<Object> c = (SpottedStack<Object>) b.clone();
+        c.add(y);
+        assert c.contains(x) && c.contains(y) && b.contains(x) && !b.contains(y) && b.size() == 1 && c.size() == 2;
+        b.clear();
+        assert c.contains(x) && !b.contains(x);
+    }
+
+    static void losShimOffTouchesNothing() {
+        ZombiePatches.losGuard.on = false;
+        ZombiePatches.onLosEnter(null); ZombiePatches.onLosExit();                   // no throw, no player read
+    }
+
+    // mine: with the key on, a non-game thread and a failing call leave the player alone and never throw; the guard counts the failure
+    static void losShimSwapsOnce() throws InterruptedException {
+        Thread saved = FrameClock.mainThread;
+        ZombiePatches.losGuard.on = true;
+        try {
+            FrameClock.mainThread = Thread.currentThread();
+            ZombiePatches.onLosEnter(null);                                           // a null player: caught, stock path
+            FrameClock.mainThread = null;
+            ZombiePatches.onLosEnter(new Object());                                   // not the game thread: the player is never read
+            assert ZombiePatches.losGuard.on;
+        } finally { FrameClock.mainThread = saved; ZombiePatches.losGuard.on = false; }
+    }
+
+    static void losHolderTargetsStock() throws Exception {
+        me.zed_0xff.zombie_buddy.Patch p = ZombiePatches.UpdateLos.class.getAnnotation(me.zed_0xff.zombie_buddy.Patch.class);
+        assert p.className().equals("zombie.characters.IsoPlayer") && p.methodName().equals("updateLOS");
+        boolean exit = false;
+        for (java.lang.reflect.Method m : ZombiePatches.UpdateLos.class.getDeclaredMethods()) {
+            me.zed_0xff.zombie_buddy.Patch.OnExit x = m.getAnnotation(me.zed_0xff.zombie_buddy.Patch.OnExit.class);
+            if (x != null) exit = x.onThrowable() == Throwable.class && x.suppress() == Throwable.class;
+        }
+        assert exit;
     }
 }

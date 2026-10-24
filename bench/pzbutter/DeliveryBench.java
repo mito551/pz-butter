@@ -65,6 +65,11 @@ import zombie.iso.IsoGridSquare;
  * simlod: the extra update tier (ZombieLod.lower, Plan 8), median of 7 runs after a warm-up. ns per lower() over 2,000 objects with
  *          random distances 0-120 tiles (tiles 20), steps 1 and 3; and "all near" (every distance under tiles, no lowering), steps 3.
  *          Prints a checksum of the returned ordinals, which must not change between versions.
+ * spotted: one simulated IsoPlayer.updateLOS frame (SpottedStack, Plan 8): 2,000 objects of which 1,500 are visible; per visible
+ *          object lastSpotted.contains (first-sight check) and spottedList.add, then per spotted object contains + add if absent.
+ *          lastSpotted is pre-filled (untimed) with 0 / 500 / 2,000 of the objects. ms per frame (median of 7 runs of 10 frames after a
+ *          warm-up) on a java.util.Stack and on a SpottedStack; prints the final size and a checksum of the contains answers, which
+ *          are equal for both (checked) and must not change between versions.
  */
 public final class DeliveryBench {
     static final com.sun.management.ThreadMXBean MX = (com.sun.management.ThreadMXBean) ManagementFactory.getThreadMXBean();
@@ -90,7 +95,8 @@ public final class DeliveryBench {
             case "dedupe" -> dedupe();
             case "scenecull" -> scenecull();
             case "simlod" -> simlod();
-            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | uislice | readset | soundgate | cutaway | splash | edge | plan | gate | luagate | replay | luafiles | dedupe | scenecull | simlod");
+            case "spotted" -> spotted();
+            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | uislice | readset | soundgate | cutaway | splash | edge | plan | gate | luagate | replay | luafiles | dedupe | scenecull | simlod | spotted");
         }
     }
 
@@ -1084,6 +1090,58 @@ public final class DeliveryBench {
                 if (r >= 3) ns[r - 3] = dt / (double) ((long) n * rounds);
             }
             System.out.printf("simlod %-26s: %6.2f ns/call (min %.2f, max %.2f), checksum %d%n", label[sc], median(ns), ns[0], ns[6], sum);
+        }
+    }
+
+    /** One updateLOS frame over lastSpotted; returns a checksum of the contains answers and the final size. */
+    static long losFrame(java.util.Stack<Object> last, Object[] objs, java.util.Stack<Object> spotted) {
+        long sum = 0;
+        spotted.clear();
+        for (int i = 0; i < objs.length; i++) {
+            if ((i & 3) == 3) continue;
+            Object o = objs[i];
+            boolean first = !last.contains(o);
+            sum = sum * 31 + (first ? 1 : 0);
+            spotted.add(o);
+        }
+        for (int i = 0; i < spotted.size(); i++) {
+            Object o = spotted.get(i);
+            boolean has = last.contains(o);
+            sum = sum * 31 + (has ? 1 : 0);
+            if (!has) last.add(o);
+        }
+        return sum * 31 + last.size();
+    }
+
+    static void spotted() {
+        final int n = 2_000, frames = 10;
+        Object[] objs = new Object[n];
+        for (int i = 0; i < n; i++) objs[i] = new Object();
+        int[] fill = {0, 500, 2_000};
+        for (int fi = 0; fi < 3; fi++) {
+            long[] check = new long[2];
+            for (int kind = 0; kind < 2; kind++) {
+                double[] ms = new double[7];
+                long sum = 0, first = 0;
+                java.util.Stack<Object> spottedList = new java.util.Stack<>();
+                for (int r = 0; r < 3 + 7; r++) {
+                    long total = 0;
+                    for (int f = 0; f < frames; f++) {
+                        java.util.Stack<Object> last = kind == 0 ? new java.util.Stack<>() : new SpottedStack<>();
+                        for (int i = 0; i < fill[fi]; i++) last.add(objs[(i * 7) % n]);
+                        long t0 = System.nanoTime();
+                        sum = losFrame(last, objs, spottedList);
+                        total += System.nanoTime() - t0;
+                    }
+                    if (r == 0) first = sum;
+                    else if (sum != first) throw new IllegalStateException("spotted: checksum changed between runs");
+                    if (r >= 3) ms[r - 3] = total / 1e6 / frames;
+                }
+                check[kind] = sum;
+                System.out.printf("spotted %-10s %-14s: %8.3f ms/frame (min %.3f, max %.3f), checksum %d%n",
+                    "prefill " + fill[fi], kind == 0 ? "Stack" : "SpottedStack", median(ms), ms[0], ms[6], sum);
+            }
+            if (check[0] != check[1]) throw new IllegalStateException("spotted: the two stacks disagree");
         }
     }
 }
