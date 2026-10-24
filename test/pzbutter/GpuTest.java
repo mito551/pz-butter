@@ -54,6 +54,11 @@ final class GpuTest {
         persistentWaitTimeoutDetaches();
         persistentWaitErrorDetaches();
         persistentInitReadsKeys();
+        namePoolHandsOutDriverNames();
+        shapeMemoNeverRemembersIncomplete();
+        uniformCacheDropsRelinkedProgram();
+        programRecordUnknownPassesThrough();
+        checkCounterCadence();
     }
 
     static final String[] PLAN9_FLAGS = {"persistentVbo", "vboFastQuads", "smartTextureRelease", "bakeNoSync", "bakeNoSyncCheck", "bakeBudgetGpu", "gpuStats"};
@@ -643,5 +648,60 @@ final class GpuTest {
             PersistentVbo.init();
             assert !PersistentVbo.guard.on && PersistentVbo.wantSlots == 4 && PersistentVbo.frameSync;
         } finally { PersistentVbo.resetForTest(); Settings.load(SelfTest.write("enabled=true\n")); }
+    }
+
+    // ---- Tasks 8-9: bakeNoSync cores and hooks ----
+
+    static void namePoolHandsOutDriverNames() {
+        NoSync.NamePool p = new NoSync.NamePool();
+        assert p.take() == -1 && p.low();
+        for (int i = 1; i <= 64; i++) p.add(i);
+        p.add(65); p.add(0); p.add(-3);                                           // full, or not a name: ignored
+        assert p.size() == 64 && !p.low() && p.take() == 64;
+        for (int i = 0; i < 48; i++) p.take();
+        assert p.low() && p.size() == 15;
+    }
+
+    static void shapeMemoNeverRemembersIncomplete() {
+        NoSync.ShapeMemo m = new NoSync.ShapeMemo();
+        long k = NoSync.ShapeMemo.key(1024, 512, true, 1024, 512, false), k2 = NoSync.ShapeMemo.key(1024, 512, false, 0, 0, true);
+        assert k != k2 && k >= 0 && !m.complete(k);
+        m.remember(k, 0x8CD6); assert !m.complete(k);                             // INCOMPLETE_ATTACHMENT is never remembered
+        m.remember(k, 0x8CD5); assert m.complete(k) && !m.complete(k2);
+        assert NoSync.ShapeMemo.key(70000, 1, false, 0, 0, false) == -1;
+        m.remember(-1, 0x8CD5); assert !m.complete(-1);
+        m.enter(k); m.enter(k2); assert m.current == k; m.exit(); m.exit(); m.exit(); assert m.current == -1 && m.depth == 0;
+        // the key is never negative at the field limits, and each field and boolean changes it
+        long big = NoSync.ShapeMemo.key(65535, 65535, true, 32767, 32767, true);
+        assert big >= 0 && big != NoSync.ShapeMemo.key(65535, 65535, true, 32767, 32767, false) && big != NoSync.ShapeMemo.key(65535, 65534, true, 32767, 32767, true);
+        assert NoSync.ShapeMemo.key(1, 1, true, 32768, 1, false) == -1 && NoSync.ShapeMemo.key(1, 1, true, 0, 0, false) == -1;
+        assert NoSync.ShapeMemo.key(1, 1, false, 7, 7, false) == NoSync.ShapeMemo.key(1, 1, false, 0, 0, false);
+        m.remember(k, 0x8CD5); m.forget(k); assert !m.complete(k);
+    }
+
+    static void uniformCacheDropsRelinkedProgram() {
+        NoSync.UniformCache c = new NoSync.UniformCache();
+        assert c.get(5, "WOffset") == NoSync.UniformCache.MISS;
+        c.put(5, "WOffset", 3); c.put(5, new StringBuilder("WViewport"), -1); c.put(6, "WOffset", 9);
+        assert c.get(5, "WOffset") == 3 && c.get(5, "WViewport") == -1 && c.get(6, new StringBuilder("WOffset")) == 9;
+        c.drop(5);
+        assert c.get(5, "WOffset") == NoSync.UniformCache.MISS && c.get(6, "WOffset") == 9 && c.get(6, null) == NoSync.UniformCache.MISS;
+    }
+
+    static void programRecordUnknownPassesThrough() {
+        NoSync.ProgramRecord r = new NoSync.ProgramRecord();
+        assert r.answer(0x8B8D) == NoSync.UniformCache.MISS;
+        r.used(0); assert r.answer(0x8B8D) == 0;
+        r.used(42); assert r.answer(0x8B8D) == 42 && r.answer(0x0BA2) == NoSync.UniformCache.MISS;   // other pnames: ask the driver
+        r.forget(); assert r.answer(0x8B8D) == NoSync.UniformCache.MISS;
+        r.used(7); r.used(-1); assert r.answer(0x8B8D) == NoSync.UniformCache.MISS;                  // not a program: the record is lost
+    }
+
+    static void checkCounterCadence() {
+        NoSync.CheckCounter c = new NoSync.CheckCounter();
+        int due = 0; for (int i = 0; i < 1024; i++) if (c.due()) due++;
+        assert due == 4;
+        int logged = 0; for (int i = 0; i < 9; i++) if (c.log()) logged++;
+        assert logged == 5 && c.mismatches == 9;
     }
 }
