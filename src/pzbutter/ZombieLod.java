@@ -15,11 +15,14 @@ final class ZombieLod {
     static final Guard blendGuard = new Guard("numberZombiesBlended");
     static final Guard capGuard = new Guard("zombieLodFixed3d");
     static final Guard budgetGuard = new Guard("zombieModelAddBudgetUs");
+    static final Guard simGuard = new Guard("zombieSimLodTiles");
 
     /** 0 = stock for each. */
     static int blended;
     static int cap;
     static long budgetNs;
+    /** zombieSimLodTiles (0 = off) and zombieSimLodSteps (1 to 3). */
+    static int simTiles, simSteps = 1;
 
     // The cull in progress.
     static boolean inCull;
@@ -42,6 +45,18 @@ final class ZombieLod {
         blendGuard.on = blended > 0;
         capGuard.on = cap > 0;
         budgetGuard.on = budgetNs > 0;
+        simTiles = Settings.enabled ? Settings.num("zombieSimLodTiles", 0, 0, 200) : 0;
+        simSteps = Settings.num("zombieSimLodSteps", 1, 1, 3);
+        simGuard.on = simTiles > 0;
+    }
+
+    /**
+     * One more update tier: for each of the first {@code steps} steps, a minimum distance past {@code tiles << i} lowers the level by
+     * one (the game's own thresholds are 30, 60 and 80). A NaN distance never lowers.
+     */
+    static zombie.UpdateSchedulerSimulationLevel lower(zombie.UpdateSchedulerSimulationLevel lvl, float minDist, int tiles, int steps) {
+        for (int i = 0; i < steps; i++) if (minDist > (float) (tiles << i)) lvl = lvl.less();
+        return lvl;
     }
 
     /** sceneCullZombies entry: the blend count, then (when the cap or the budget is on) the cull's counters. */
@@ -88,6 +103,9 @@ final class ZombieLod {
         blendGuard.on = capGuard.on = budgetGuard.on = false;
         blended = cap = 0;
         budgetNs = 0;
+        simGuard.on = false;
+        simTiles = 0;
+        simSteps = 1;
         inCull = false;
         cullThread = null;
         grants = adds = effCap = depth = 0;

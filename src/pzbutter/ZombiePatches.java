@@ -116,4 +116,45 @@ public final class ZombiePatches {
         @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
         public static void exit(@Patch.This Object self) { ZombiePatches.onCulledExit(self); }
     }
+
+    // ---- zombieSimLodTiles, zombieSimLodSteps: one more update tier ----
+
+    /**
+     * MovingObjectUpdateScheduler.getUpdateSchedulerSimulationLevelForObject exit: the level the game chose, lowered by the extra
+     * steps when the object is farther than the key's tiles from every local player, then raised back to the object's minimum.
+     * The scheduler off, a server, a player, an object already at the lowest level and a thread other than the game's get the game's.
+     */
+    public static zombie.UpdateSchedulerSimulationLevel onSimLevel(Object scheduler, Object obj, zombie.UpdateSchedulerSimulationLevel ret) {
+        if (!ZombieLod.simGuard.on || ret == null) return ret;
+        try {
+            if (Thread.currentThread() != FrameClock.mainThread) return ret;
+            if (ret == zombie.UpdateSchedulerSimulationLevel.SIXTEENTH) return ret;
+            if (!((zombie.MovingObjectUpdateScheduler) scheduler).isEnabled() || zombie.network.GameServer.server) return ret;
+            zombie.iso.IsoMovingObject o = (zombie.iso.IsoMovingObject) obj;
+            float minDist = 1e8f;
+            zombie.characters.IsoPlayer[] ps = zombie.characters.IsoPlayer.players;
+            for (int i = 0, n = zombie.characters.IsoPlayer.numPlayers; i < n; i++) {
+                zombie.characters.IsoPlayer p = ps[i];
+                if (p == null) continue;
+                if (p == o) return ret;
+                float d = o.DistTo(p);
+                if (d < minDist) minDist = d;
+            }
+            zombie.UpdateSchedulerSimulationLevel l = ZombieLod.lower(ret, minDist, ZombieLod.simTiles, ZombieLod.simSteps);
+            return l == ret ? ret : l.max(o.getMinimumSimulationLevel());
+        } catch (Throwable t) {
+            ZombieLod.simGuard.fail(t);
+            return ret;
+        }
+    }
+
+    /** The private classifier; no onThrowable, so its own exception passes unchanged. */
+    @Patch(className = "zombie.MovingObjectUpdateScheduler", methodName = "getUpdateSchedulerSimulationLevelForObject")
+    public static class SimLevel {
+        @Patch.OnExit
+        public static void exit(@Patch.This Object s, @Patch.Argument(0) Object obj,
+                                @Patch.Return(readOnly = false) zombie.UpdateSchedulerSimulationLevel ret) {
+            ret = ZombiePatches.onSimLevel(s, obj, ret);
+        }
+    }
 }

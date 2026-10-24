@@ -62,6 +62,9 @@ import zombie.iso.IsoGridSquare;
  *          manager (the first 600 calls): ns per decide(); (3) budget 500 us with fake add costs of 40 us, 50 first-time adds per
  *          cull (every 40th call): ns per decide() plus granted(). Prints a checksum of every decided boolean (the rewrite
  *          pattern), which must not change between versions.
+ * simlod: the extra update tier (ZombieLod.lower, Plan 8), median of 7 runs after a warm-up. ns per lower() over 2,000 objects with
+ *          random distances 0-120 tiles (tiles 20), steps 1 and 3; and "all near" (every distance under tiles, no lowering), steps 3.
+ *          Prints a checksum of the returned ordinals, which must not change between versions.
  */
 public final class DeliveryBench {
     static final com.sun.management.ThreadMXBean MX = (com.sun.management.ThreadMXBean) ManagementFactory.getThreadMXBean();
@@ -86,7 +89,8 @@ public final class DeliveryBench {
             case "luafiles" -> luafiles();
             case "dedupe" -> dedupe();
             case "scenecull" -> scenecull();
-            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | uislice | readset | soundgate | cutaway | splash | edge | plan | gate | luagate | replay | luafiles | dedupe | scenecull");
+            case "simlod" -> simlod();
+            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | uislice | readset | soundgate | cutaway | splash | edge | plan | gate | luagate | replay | luafiles | dedupe | scenecull | simlod");
         }
     }
 
@@ -1049,5 +1053,37 @@ public final class DeliveryBench {
                 label[sc], median(ns), ns[0], ns[6], sum, ZombieLod.capped, ZombieLod.deferred);
         }
         ZombieLod.resetForTest();
+    }
+
+    static long simlodRun(float[] dist, int steps, int rounds) {
+        zombie.UpdateSchedulerSimulationLevel[] lv = zombie.UpdateSchedulerSimulationLevel.values();
+        long sum = 0;
+        for (int r = 0; r < rounds; r++)
+            for (int i = 0; i < dist.length; i++)
+                sum = sum * 31 + ZombieLod.lower(lv[(i + r) % lv.length], dist[i], 20, steps).ordinal();
+        return sum;
+    }
+
+    static void simlod() {
+        final int n = 2_000, rounds = 5_000;
+        java.util.Random rnd = new java.util.Random(7);
+        float[] far = new float[n], near = new float[n];
+        for (int i = 0; i < n; i++) { far[i] = rnd.nextFloat() * 120f; near[i] = rnd.nextFloat() * 19f; }
+        String[] label = {"1 steps 1, 0-120 tiles", "2 steps 3, 0-120 tiles", "3 steps 3, all near"};
+        float[][] d = {far, far, near};
+        int[] steps = {1, 3, 3};
+        for (int sc = 0; sc < 3; sc++) {
+            double[] ns = new double[7];
+            long sum = 0, first = 0;
+            for (int r = 0; r < 3 + 7; r++) {
+                long t0 = System.nanoTime();
+                sum = simlodRun(d[sc], steps[sc], rounds);
+                long dt = System.nanoTime() - t0;
+                if (r == 0) first = sum;
+                else if (sum != first) throw new IllegalStateException("simlod: checksum changed between runs");
+                if (r >= 3) ns[r - 3] = dt / (double) ((long) n * rounds);
+            }
+            System.out.printf("simlod %-26s: %6.2f ns/call (min %.2f, max %.2f), checksum %d%n", label[sc], median(ns), ns[0], ns[6], sum);
+        }
     }
 }

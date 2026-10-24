@@ -22,6 +22,10 @@ final class ZombieTest {
         cullShimsOpenAndCloseOnGameThread();
         cullOtherThreadPassesThrough();
         cullCulledCallsPassAndBalance();
+        simLodSteps();
+        simLodOffReturnsStock();
+        simLodPassesThroughWhenItShould();
+        simLodHolderTargetsStock();
     }
 
     static final String[] PLAN8_FLAGS = {"zeroFacingFix", "playerLosFast", "zombieCullSortFast", "statsNoBox", "popmanFlagsFlyweight", "entityTiming"};
@@ -246,5 +250,63 @@ final class ZombieTest {
         }
         assert ZombieLod.grants == 0 && !ZombieLod.inflightRewrite && ZombieLod.inflightT0 == 0;
         ZombieLod.endCull(); ZombieLod.resetForTest();
+    }
+
+    // ---- Task 5: one more update tier ----
+
+    static void simLodSteps() {
+        zombie.UpdateSchedulerSimulationLevel FULL = zombie.UpdateSchedulerSimulationLevel.FULL, HALF = zombie.UpdateSchedulerSimulationLevel.HALF,
+            QUARTER = zombie.UpdateSchedulerSimulationLevel.QUARTER, SIXTEENTH = zombie.UpdateSchedulerSimulationLevel.SIXTEENTH;
+        assert ZombieLod.lower(FULL, 19.9f, 20, 1) == FULL && ZombieLod.lower(FULL, 20f, 20, 1) == FULL && ZombieLod.lower(FULL, 20.01f, 20, 1) == HALF;
+        assert ZombieLod.lower(FULL, 39f, 20, 2) == HALF && ZombieLod.lower(FULL, 41f, 20, 2) == QUARTER;
+        assert ZombieLod.lower(HALF, 100f, 20, 3) == SIXTEENTH && ZombieLod.lower(SIXTEENTH, 1000f, 20, 3) == SIXTEENTH;
+        assert ZombieLod.lower(FULL, Float.NaN, 20, 3) == FULL;
+    }
+
+    static void simLodOffReturnsStock() {
+        ZombieLod.resetForTest();
+        zombie.UpdateSchedulerSimulationLevel r = zombie.UpdateSchedulerSimulationLevel.HALF;
+        assert ZombiePatches.onSimLevel(null, null, r) == r;          // key off: nothing read
+        Settings.load(SelfTest.write("enabled=true\nzombieSimLodTiles=20\nzombieSimLodSteps=7\n"));
+        ZombieLod.init();
+        assert ZombieLod.simGuard.on && ZombieLod.simTiles == 20 && ZombieLod.simSteps == 3;
+        Settings.load(SelfTest.write("enabled=false\nzombieSimLodTiles=20\n"));
+        ZombieLod.init();
+        assert !ZombieLod.simGuard.on && ZombieLod.simTiles == 0;
+        ZombieLod.resetForTest();
+    }
+
+    // mine: with the key on the shim still hands back the game's level off the game thread, for a null level and for the lowest level,
+    // without touching the scheduler or the object (both null here)
+    static void simLodPassesThroughWhenItShould() throws InterruptedException {
+        Thread saved = FrameClock.mainThread;
+        ZombieLod.resetForTest();
+        ZombieLod.simGuard.on = true; ZombieLod.simTiles = 20; ZombieLod.simSteps = 3;
+        try {
+            zombie.UpdateSchedulerSimulationLevel half = zombie.UpdateSchedulerSimulationLevel.HALF;
+            FrameClock.mainThread = Thread.currentThread();
+            assert ZombiePatches.onSimLevel(null, null, null) == null;
+            assert ZombiePatches.onSimLevel(null, null, zombie.UpdateSchedulerSimulationLevel.SIXTEENTH) == zombie.UpdateSchedulerSimulationLevel.SIXTEENTH;
+            FrameClock.mainThread = null;
+            assert ZombiePatches.onSimLevel(null, null, half) == half;                    // not the game thread: a null scheduler is never read
+            FrameClock.mainThread = Thread.currentThread();
+            zombie.UpdateSchedulerSimulationLevel[] got = {null};
+            Thread t = new Thread(() -> got[0] = ZombiePatches.onSimLevel(null, null, half));
+            t.start(); t.join(5000);
+            assert !t.isAlive() && got[0] == half;
+            // a failure on the game thread (null scheduler) hands back the game's level and counts against the guard
+            assert ZombiePatches.onSimLevel(null, null, half) == half;
+        } finally { FrameClock.mainThread = saved; ZombieLod.resetForTest(); }
+    }
+
+    static void simLodHolderTargetsStock() throws Exception {
+        me.zed_0xff.zombie_buddy.Patch p = ZombiePatches.SimLevel.class.getAnnotation(me.zed_0xff.zombie_buddy.Patch.class);
+        assert p.className().equals("zombie.MovingObjectUpdateScheduler") && p.methodName().equals("getUpdateSchedulerSimulationLevelForObject");
+        boolean exit = false;
+        for (java.lang.reflect.Method m : ZombiePatches.SimLevel.class.getDeclaredMethods()) {
+            me.zed_0xff.zombie_buddy.Patch.OnExit x = m.getAnnotation(me.zed_0xff.zombie_buddy.Patch.OnExit.class);
+            if (x != null) exit = x.onThrowable() != Throwable.class;
+        }
+        assert exit;                                                                     // no onThrowable: the classifier's own exception passes
     }
 }
