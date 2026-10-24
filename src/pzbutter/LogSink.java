@@ -42,6 +42,13 @@ final class LogSink implements Closeable {
         return this;
     }
 
+    /** A space and up to 200 chars of s (ASCII; other chars become '?'). */
+    LogSink text(String s) {
+        b[n++] = ' ';
+        for (int i = 0, m = Math.min(s.length(), 200); i < m; i++) { char c = s.charAt(i); b[n++] = (byte) (c >= 32 && c < 127 ? c : '?'); }
+        return this;
+    }
+
     LogSink num(long v) { b[n++] = ' '; n = num(b, n, v); return this; }
 
     /** ns as milliseconds with 3 decimals, rounded half up on microseconds. */

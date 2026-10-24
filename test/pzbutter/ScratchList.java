@@ -1,0 +1,257 @@
+package pzbutter;
+
+import java.io.IOException;
+import java.lang.classfile.Attribute;
+import java.lang.classfile.ClassFile;
+import java.lang.classfile.ClassModel;
+import java.lang.classfile.CodeElement;
+import java.lang.classfile.FieldModel;
+import java.lang.classfile.MethodModel;
+import java.lang.classfile.Opcode;
+import java.lang.classfile.instruction.FieldInstruction;
+import java.lang.classfile.instruction.InvokeDynamicInstruction;
+import java.lang.classfile.instruction.InvokeInstruction;
+import java.lang.constant.DirectMethodHandleDesc;
+import java.lang.reflect.Modifier;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
+
+/**
+ * Offline tool (kept in the test tree, never shipped): walks the invokes reachable from root methods through the game's
+ * own packages and writes the worker list: a `class` line for every class that reads a mutable `static final` object,
+ * a `scratch` line per such field. Run: {@code java -cp build/test-classes:<game jars> pzbutter.ScratchList <jar> <revision> <owner.name:desc>...}.
+ */
+final class ScratchList {
+    private ScratchList() {}
+
+    private static final String[] WALK = {"zombie/", "se/krka/", "org/lwjgl/util/vector/", "org/joml/"};
+    // Lua, sound, physics and network owners are side effects, not scratch: the walk stops there
+    private static final String[] STOP = {"zombie/Lua/", "zombie/network/", "zombie/core/network/", "zombie/audio/", "zombie/core/physics/", "zombie/core/raknet/"};
+    private static final Set<String> IMMUTABLE = Set.of("java/lang/String", "java/lang/Class", "java/lang/Boolean", "java/lang/Byte",
+        "java/lang/Character", "java/lang/Short", "java/lang/Integer", "java/lang/Long", "java/lang/Float", "java/lang/Double",
+        "java/util/regex/Pattern", "java/util/Locale");
+
+    record Ref(String owner, String name, String desc) {}
+
+    private static final class Index {
+        final Map<String, ClassModel> classes = new HashMap<>();
+        final Map<String, List<String>> subs = new HashMap<>();
+
+        Index(Path jar) throws IOException {
+            try (ZipFile z = new ZipFile(jar.toFile())) {
+                for (var en = z.entries(); en.hasMoreElements(); ) {
+                    ZipEntry e = en.nextElement();
+                    if (!e.getName().endsWith(".class") || e.getName().startsWith("META-INF/")) continue;
+                    try {
+                        ClassModel m = ClassFile.of().parse(z.getInputStream(e).readAllBytes());
+                        classes.put(m.thisClass().asInternalName(), m);
+                    } catch (RuntimeException bad) { /* not a parsable class: skip */ }
+                }
+            }
+            for (ClassModel m : classes.values()) {
+                m.superclass().ifPresent(s -> subs.computeIfAbsent(s.asInternalName(), k -> new ArrayList<>()).add(m.thisClass().asInternalName()));
+                m.interfaces().forEach(i -> subs.computeIfAbsent(i.asInternalName(), k -> new ArrayList<>()).add(m.thisClass().asInternalName()));
+            }
+        }
+
+        MethodModel declared(String owner, String name, String desc) {
+            ClassModel m = classes.get(owner);
+            if (m == null) return null;
+            for (MethodModel mm : m.methods())
+                if (mm.methodName().equalsString(name) && mm.methodType().equalsString(desc)) return mm;
+            return null;
+        }
+
+        /** The method an invoke on owner finds going up the hierarchy (superclasses first, then interfaces). */
+        Ref lookup(String owner, String name, String desc) {
+            Set<String> seen = new HashSet<>();
+            Deque<String> todo = new ArrayDeque<>(List.of(owner));
+            while (!todo.isEmpty()) {
+                String c = todo.poll();
+                if (!seen.add(c)) continue;
+                ClassModel m = classes.get(c);
+                if (m == null) continue;
+                MethodModel mm = declared(c, name, desc);
+                if (mm != null && mm.code().isPresent()) return new Ref(c, name, desc);
+                m.superclass().ifPresent(s -> todo.add(s.asInternalName()));
+                m.interfaces().forEach(i -> todo.add(i.asInternalName()));
+            }
+            return null;
+        }
+
+        /** The declaring class of a field found going up from owner, or null. */
+        String fieldOwner(String owner, String name, String desc) {
+            Set<String> seen = new HashSet<>();
+            Deque<String> todo = new ArrayDeque<>(List.of(owner));
+            while (!todo.isEmpty()) {
+                String c = todo.poll();
+                if (!seen.add(c)) continue;
+                ClassModel m = classes.get(c);
+                if (m == null) continue;
+                for (FieldModel f : m.fields()) if (f.fieldName().equalsString(name) && f.fieldType().equalsString(desc)) return c;
+                m.superclass().ifPresent(s -> todo.add(s.asInternalName()));
+                m.interfaces().forEach(i -> todo.add(i.asInternalName()));
+            }
+            return null;
+        }
+
+        /** The lookup result plus every override in a subtype. */
+        List<Ref> targets(String owner, String name, String desc, boolean virtual) {
+            List<Ref> out = new ArrayList<>();
+            Ref r = lookup(owner, name, desc);
+            if (r != null) out.add(r);
+            if (virtual) {
+                Set<String> seen = new HashSet<>();
+                Deque<String> todo = new ArrayDeque<>(subs.getOrDefault(owner, List.of()));
+                while (!todo.isEmpty()) {
+                    String c = todo.poll();
+                    if (!seen.add(c)) continue;
+                    MethodModel mm = declared(c, name, desc);
+                    if (mm != null && mm.code().isPresent()) out.add(new Ref(c, name, desc));
+                    todo.addAll(subs.getOrDefault(c, List.of()));
+                }
+            }
+            return out;
+        }
+    }
+
+    private static boolean walked(String owner, String[] walk) {
+        for (String p : STOP) if (owner.startsWith(p)) return false;
+        for (String p : walk) if (owner.startsWith(p)) return true;
+        return false;
+    }
+
+    private record Field(String owner, String name, String desc) {
+        String key() { return owner + "." + name + ":" + desc; }
+    }
+
+    /** The list text, one line per element. Roots are `pkg.Owner.name:desc` (resolved up the hierarchy and into overrides). */
+    static List<String> run(Path jar, List<String> roots, String revision) throws IOException { return run(jar, roots, revision, WALK); }
+
+    private static String hOwner(DirectMethodHandleDesc h) {
+        String d = h.owner().descriptorString();
+        return d.substring(1, d.length() - 1);
+    }
+
+    /** As above, walking only owners with one of the given internal-name prefixes. */
+    static List<String> run(Path jar, List<String> roots, String revision, String[] walk) throws IOException {
+        Index ix = new Index(jar);
+        Deque<Ref> todo = new ArrayDeque<>();
+        Set<Ref> seen = new HashSet<>();
+        for (String root : roots) {
+            int colon = root.indexOf(':'), dot = root.lastIndexOf('.', colon);
+            List<Ref> t = ix.targets(root.substring(0, dot).replace('.', '/'), root.substring(dot + 1, colon), root.substring(colon + 1), true);
+            if (t.isEmpty()) throw new IllegalArgumentException("root not found: " + root);
+            todo.addAll(t);
+        }
+        Map<Field, Set<String>> readers = new HashMap<>();      // field -> reader methods ("owner.name")
+        Map<Field, Set<String>> writers = new HashMap<>();
+        while (!todo.isEmpty()) {
+            Ref r = todo.poll();
+            if (!seen.add(r)) continue;
+            MethodModel mm = ix.declared(r.owner(), r.name(), r.desc());
+            String who = r.owner().replace('/', '.') + "." + r.name();
+            for (CodeElement e : mm.code().orElseThrow()) {
+                if (e instanceof InvokeInstruction i) {
+                    String o = i.owner().asInternalName();
+                    if (walked(o, walk)) todo.addAll(ix.targets(o, i.name().stringValue(), i.type().stringValue(), i.opcode() != Opcode.INVOKESTATIC && i.opcode() != Opcode.INVOKESPECIAL));
+                } else if (e instanceof InvokeDynamicInstruction d) {
+                    for (var arg : d.bootstrapArgs())
+                        if (arg instanceof DirectMethodHandleDesc h && walked(hOwner(h), walk))
+                            todo.addAll(ix.targets(hOwner(h), h.methodName(), h.invocationType().descriptorString(), false));
+                } else if (e instanceof FieldInstruction f && (f.opcode() == Opcode.GETSTATIC || f.opcode() == Opcode.PUTSTATIC)) {
+                    String decl = ix.fieldOwner(f.owner().asInternalName(), f.name().stringValue(), f.type().stringValue());
+                    if (decl == null) continue;
+                    Field key = new Field(decl, f.name().stringValue(), f.type().stringValue());
+                    (f.opcode() == Opcode.GETSTATIC ? readers : writers).computeIfAbsent(key, k -> new TreeSet<>()).add(who);
+                }
+            }
+        }
+
+        TreeMap<String, Field> scratch = new TreeMap<>();
+        TreeSet<String> unsupported = new TreeSet<>(), written = new TreeSet<>(), classes = new TreeSet<>();
+        for (var en : readers.entrySet()) {
+            Field f = en.getKey();
+            FieldModel fm = ix.classes.get(f.owner()).fields().stream().filter(x -> x.fieldName().equalsString(f.name())).findFirst().orElseThrow();
+            int flags = fm.flags().flagsMask();
+            if (!Modifier.isStatic(flags) || !Modifier.isFinal(flags)) continue;
+            if (!f.desc().startsWith("L") && !f.desc().startsWith("[")) continue;
+            String type = f.desc().startsWith("L") ? f.desc().substring(1, f.desc().length() - 1) : null;
+            if (type != null && immutable(ix, type)) continue;
+            if (type != null && !hasPublicNoArg(ix, type)) { unsupported.add(f.owner().replace('/', '.') + "." + f.name() + " " + f.desc()); continue; }
+            scratch.put(f.key(), f);
+        }
+        for (var en : writers.entrySet()) {
+            Field f = en.getKey();
+            FieldModel fm = ix.classes.get(f.owner()).fields().stream().filter(x -> x.fieldName().equalsString(f.name())).findFirst().orElseThrow();
+            if (!Modifier.isFinal(fm.flags().flagsMask())) written.add(f.owner().replace('/', '.') + "." + f.name() + ":" + f.desc());
+        }
+
+        List<String> out = new ArrayList<>();
+        List<String> lines = new ArrayList<>();
+        int k = 0;
+        for (Field f : scratch.values()) {
+            Set<String> rs = readers.get(f);
+            rs.forEach(w -> classes.add(w.substring(0, w.lastIndexOf('.'))));
+            lines.add("scratch " + k++ + " " + f.owner() + " " + f.name() + " " + f.desc() + "   # "
+                + (f.desc().startsWith("[") ? f.desc() : f.desc().substring(1, f.desc().length() - 1).replace('/', '.'))
+                + " readers=" + rs.size() + " first=" + rs.iterator().next());
+        }
+        out.add("revision " + revision);
+        out.add("# generated by pzbutter.ScratchList; roots: " + String.join(" ", roots));
+        classes.forEach(c -> out.add("class " + c));
+        out.addAll(lines);
+        unsupported.forEach(u -> out.add("# unsupported " + u));
+        written.forEach(w -> out.add("# written " + w));
+        return out;
+    }
+
+    private static boolean immutable(Index ix, String type) {
+        if (IMMUTABLE.contains(type)) return true;
+        ClassModel m = ix.classes.get(type);
+        if (m == null) return false;
+        String sup = m.superclass().map(s -> s.asInternalName()).orElse("");
+        if (sup.equals("java/lang/Enum")) return true;
+        if (sup.equals("java/lang/Record")) {   // only final primitive fields
+            return m.fields().stream().filter(f -> !Modifier.isStatic(f.flags().flagsMask()))
+                .allMatch(f -> Modifier.isFinal(f.flags().flagsMask()) && f.fieldType().stringValue().length() == 1);
+        }
+        return false;
+    }
+
+    private static boolean hasPublicNoArg(Index ix, String type) {
+        ClassModel m = ix.classes.get(type);
+        if (m != null) {
+            int fl = m.flags().flagsMask();
+            if (!Modifier.isPublic(fl) || Modifier.isAbstract(fl) || Modifier.isInterface(fl)) return false;
+            MethodModel c = ix.declared(type, "<init>", "()V");
+            return c != null && Modifier.isPublic(c.flags().flagsMask());
+        }
+        try {
+            Class<?> c = Class.forName(type.replace('/', '.'), false, ScratchList.class.getClassLoader());
+            if (!Modifier.isPublic(c.getModifiers()) || Modifier.isAbstract(c.getModifiers())) return false;
+            c.getConstructor();
+            return true;
+        } catch (Throwable t) { return false; }
+    }
+
+    public static void main(String[] args) throws IOException {
+        if (args.length < 3) { System.err.println("usage: ScratchList <jar> <revision> <owner.name:desc>..."); System.exit(2); }
+        List<String> out = run(Path.of(args[0]), List.of(args).subList(2, args.length), args[1]);
+        System.out.print(String.join("\n", out) + "\n");
+    }
+}

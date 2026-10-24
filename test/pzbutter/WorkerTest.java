@@ -16,6 +16,13 @@ final class WorkerTest {
         preloadDecideLoadedClassOff();
         zbAccessMissingFieldNull();
         gameRevisionRead();
+        workerListParses();
+        transformAddsFieldAndMarker();
+        transformLeavesOtherClassesAlone();
+        transformMismatchLeavesClassUntouched();
+        transformerSkipsRedefinition();
+        transformRewritesScratchRead();
+        scratchListFindsMutableStatics();
     }
 
     static void workersResourceInJar() {
@@ -59,4 +66,61 @@ final class WorkerTest {
     }
 
     static void gameRevisionRead() { assert Preload.gameRevision().equals("4a0e9546ec"); }   // projectzomboid.jar on the test class path
+
+    static void workerListParses() {
+        WorkerList l = WorkerList.parse("revision r\nclass t.A\nscratch 0 t/A L Ljava/util/ArrayList;\nfield t.A pzbIdx I\n");
+        assert l.revision().equals("r") && l.classes().equals(List.of("t.A")) && l.listed("t/A");
+        assert l.scratch().get(0).equals(new WorkerList.Scratch(0, "t/A", "L", "Ljava/util/ArrayList;"));
+        assert l.fieldsOf("t.A").equals(List.of(new WorkerList.Field("t.A", "pzbIdx", "I")));
+        try { WorkerList.parse("revision r\nbogus\n"); assert false; } catch (IllegalArgumentException e) { assert e.getMessage().contains("2"); }
+    }
+
+    static void transformAddsFieldAndMarker() throws Exception {
+        Class<?> c = WorkerTestSynth.loadTransformed();
+        assert c.getField(WorkerTransform.MARKER).getInt(null) == WorkerTestSynth.list().textHash();
+        java.lang.invoke.VarHandle h = Game.field(c, "pzbIdx", int.class);
+        Object a = c.getConstructor().newInstance();
+        h.set(a, 7);
+        assert (int) h.get(a) == 7;
+    }
+
+    static void transformLeavesOtherClassesAlone() { assert WorkerTransform.transform(WorkerTestSynth.otherClass(), WorkerTestSynth.list()) == null; }
+
+    static void transformMismatchLeavesClassUntouched() {
+        assert WorkerTransform.transform(WorkerTestSynth.classWithField("pzbIdx"), WorkerTestSynth.list()) == null;
+        assert WorkerTransform.transform(WorkerTestSynth.listedClassWithoutReads(), WorkerTestSynth.listNoFields()) == null;
+    }
+
+    static void transformerSkipsRedefinition() throws Exception {
+        WorkerTransform t = new WorkerTransform(WorkerTestSynth.list(), null);
+        assert t.transform(null, null, "t/A", Object.class, null, WorkerTestSynth.classA()) == null;
+    }
+
+    static void transformRewritesScratchRead() throws Exception {
+        byte[] b = WorkerTransform.transform(WorkerTestSynth.classA(), WorkerTestSynth.list());
+        java.lang.classfile.ClassModel m = java.lang.classfile.ClassFile.of().parse(b);
+        boolean getstatic = false, call = false;
+        for (java.lang.classfile.MethodModel mm : m.methods()) {
+            if (!mm.methodName().equalsString("sum")) continue;
+            for (java.lang.classfile.CodeElement e : mm.code().orElseThrow()) {
+                if (e instanceof java.lang.classfile.instruction.FieldInstruction f && f.opcode() == java.lang.classfile.Opcode.GETSTATIC
+                    && f.name().equalsString("L")) getstatic = true;
+                if (e instanceof java.lang.classfile.instruction.InvokeInstruction i && i.owner().asInternalName().equals("pzbutter/Scratch")
+                    && i.name().equalsString("get")) call = true;
+            }
+        }
+        assert !getstatic && call;
+    }
+
+    static void scratchListFindsMutableStatics() throws Exception {
+        java.nio.file.Path jar = WorkerTestSynth.writeScratchJar(SelfTest.tmp("scratch/t.jar").toPath());
+        List<String> out = ScratchList.run(jar, List.of("t.A.m:()V"), "r", new String[] {"t/"});
+        assert out.get(0).equals("revision r");
+        assert out.contains("class t.A") && out.contains("class t.B");
+        assert out.stream().anyMatch(l -> l.startsWith("scratch ") && l.contains(" t/A L Ljava/util/ArrayList; "));
+        assert out.stream().anyMatch(l -> l.startsWith("scratch ") && l.contains(" t/B V Lt/V; "));
+        assert out.stream().noneMatch(l -> l.startsWith("scratch ") && l.contains(" t/A S "));
+        assert out.stream().anyMatch(l -> l.startsWith("# written") && l.contains("t.A.counter:I"));
+        WorkerList.parse(String.join("\n", out));   // the output is a valid list
+    }
 }
