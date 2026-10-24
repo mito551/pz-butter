@@ -1,6 +1,7 @@
 package pzbutter;
 
 import zombie.iso.IsoChunk;
+import zombie.iso.IsoGridSquare;
 import zombie.iso.IsoObject;
 import zombie.iso.fboRenderChunk.FBORenderChunk;
 import me.zed_0xff.zombie_buddy.Patch;
@@ -17,6 +18,7 @@ public final class ChunkPatches {
     static final Guard driveCutGuard = new Guard("driveTreeCutaway");
     static final Guard bloodFadeGuard = new Guard("bloodFadeFix");
     static final Guard mipGuard = new Guard("bakeMipLevels");
+    static final Guard edgeGuard = new Guard("edgeTestFast");
 
     /** FBORenderCell.isTreeRenderedEveryFrame entry: the answer when treesInChunkTexture is on; null runs stock. */
     public static Boolean onTreeEveryFrame(Object obj) {
@@ -39,6 +41,13 @@ public final class ChunkPatches {
         catch (Throwable t) { bloodFadeGuard.fail(t); }
     }
 
+    /** IsoGridSquare.isBlockedTo(IsoGridSquare, GetSquare) entry: the answer when edgeTestFast is on; null runs stock. */
+    public static Boolean onBlockedTo(IsoGridSquare self, IsoGridSquare o, IsoGridSquare.GetSquare gs) {
+        if (!edgeGuard.on) return null;
+        try { return EdgeTest.blockedTo(self, o, gs) ? Boolean.TRUE : Boolean.FALSE; }
+        catch (Throwable t) { edgeGuard.fail(t); return null; }
+    }
+
     /** FBORenderChunk.endRenderThread entry: sets the mip chain's last level before stock builds the mips. */
     public static void onEndRenderThread(Object self) {
         if (!mipGuard.on) return;
@@ -54,6 +63,22 @@ public final class ChunkPatches {
     public static class BloodBake {
         @Patch.OnEnter
         public static void enter(@Patch.Argument(0) IsoChunk chunk) { onBloodBake(chunk); }
+    }
+
+    /** Binds the 2-argument overload only: the one-argument overload has no argument 1, so the advice does not apply to it. */
+    @Patch(className = "zombie.iso.IsoGridSquare", methodName = "isBlockedTo")
+    public static class BlockedTo {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This IsoGridSquare self, @Patch.Argument(0) IsoGridSquare o,
+                                    @Patch.Argument(1) IsoGridSquare.GetSquare gs, @Patch.Local("v") Object v) {
+            v = onBlockedTo(self, o, gs);
+            return v != null;
+        }
+
+        @Patch.OnExit
+        public static void exit(@Patch.Return(readOnly = false) boolean ret, @Patch.Local("v") Object v) {
+            if (v != null) ret = (Boolean) v;
+        }
     }
 
     @Patch(className = "zombie.iso.fboRenderChunk.FBORenderChunk", methodName = "endRenderThread")

@@ -36,6 +36,7 @@ public class Main {
         Weather.init();
         ChunkTrees.init();
         BakeMisc.init();
+        EdgeTest.init();
         AudioLimiter.init();
         SoundPatches.onFmodInit();
         LuaPatches.uiLuaFast = Settings.flag("uiLuaFast");

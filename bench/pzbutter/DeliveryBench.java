@@ -2,6 +2,7 @@ package pzbutter;
 
 import java.lang.management.ManagementFactory;
 import java.util.Arrays;
+import zombie.iso.IsoGridSquare;
 
 /**
  * Benchmarks for the Plan 2 hot-path units. Usage: DeliveryBench parker | stamps | learner.
@@ -21,6 +22,10 @@ import java.util.Arrays;
  * splash:  ns per Weather.updateSplashes (SplittableRandom overload) per 64-square chunk level, after warm-up to the
  *          steady state, for light rain (n 2000), heavy rain (n 400) and heavy rain at 30 fps (n 100); prints the
  *          trigger rate per idle square, which must stay near 1/n.
+ * edge:    ns per isBlockedTo call, stock IsoGridSquare.isBlockedTo against EdgeTest.blockedTo, over a 3 x 3 patch with
+ *          each square paired with its eight neighbours (outside ones are null); scenarios open (no objects), door (a
+ *          blocked door on the middle square's north edge) and window (a blocked window on its west edge). Both must
+ *          count the same blocked pairs (checked).
  */
 public final class DeliveryBench {
     static final com.sun.management.ThreadMXBean MX = (com.sun.management.ThreadMXBean) ManagementFactory.getThreadMXBean();
@@ -37,7 +42,8 @@ public final class DeliveryBench {
             case "soundgate" -> soundgate();
             case "cutaway" -> cutaway();
             case "splash" -> splash();
-            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | uislice | readset | soundgate | cutaway | splash");
+            case "edge" -> edge();
+            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | uislice | readset | soundgate | cutaway | splash | edge");
         }
     }
 
@@ -386,6 +392,54 @@ public final class DeliveryBench {
             }
             Arrays.sort(ns);
             System.out.printf("splash n %4d: %6.3f ns/level (min %.3f, max %.3f), rate x n %.3f%n", n, ns[3], ns[0], ns[6], trig * (double) n / idle);
+        }
+    }
+
+    static final class BenchDoor extends zombie.iso.objects.IsoDoor {
+        boolean facingNorth, isBlk;
+        BenchDoor() { super((zombie.iso.IsoCell) null); }
+        @Override public boolean getNorth() { return facingNorth; }
+        @Override public boolean isBlocked() { return isBlk; }
+    }
+
+    static final class BenchWindow extends zombie.iso.objects.IsoWindow {
+        boolean facingNorth, isBlk;
+        BenchWindow() { super((zombie.iso.IsoCell) null); }
+        @Override public boolean getNorth() { return facingNorth; }
+        @Override public boolean isBlocked() { return isBlk; }
+    }
+
+    static void edge() {
+        for (String sc : new String[] {"open", "door", "window"}) {
+            IsoGridSquare[][] g = new IsoGridSquare[3][3];
+            for (int x = 0; x < 3; x++) for (int y = 0; y < 3; y++) g[x][y] = new IsoGridSquare(null, null, x, y, 0);
+            IsoGridSquare.GetSquare gs = (x, y, z) -> x >= 0 && y >= 0 && x < 3 && y < 3 && z == 0 ? g[x][y] : null;
+            if (sc.equals("door")) { BenchDoor d = new BenchDoor(); d.facingNorth = true; d.isBlk = true; g[1][1].getObjects().add(d); }
+            if (sc.equals("window")) { BenchWindow w = new BenchWindow(); w.facingNorth = false; w.isBlk = true; g[1][1].getObjects().add(w); }
+            java.util.List<IsoGridSquare> as = new java.util.ArrayList<>(), bs = new java.util.ArrayList<>();
+            for (int x = 0; x < 3; x++) for (int y = 0; y < 3; y++) for (int dx = -1; dx <= 1; dx++) for (int dy = -1; dy <= 1; dy++) {
+                if (dx == 0 && dy == 0) continue;
+                as.add(g[x][y]);
+                bs.add(gs.getGridSquare(x + dx, y + dy, 0));
+            }
+            IsoGridSquare[] a = as.toArray(new IsoGridSquare[0]), b = bs.toArray(new IsoGridSquare[0]);
+            int n = a.length, reps = 200_000;
+            double[] stockNs = new double[7], edgeNs = new double[7];
+            long stockHits = 0, edgeHits = 0;
+            for (int r = -2; r < 7; r++) {
+                long hits = 0, t0 = System.nanoTime();
+                for (int k = 0; k < reps; k++) for (int i = 0; i < n; i++) if (a[i].isBlockedTo(b[i], gs)) hits++;
+                long t1 = System.nanoTime();
+                long eh = 0;
+                for (int k = 0; k < reps; k++) for (int i = 0; i < n; i++) if (EdgeTest.blockedTo(a[i], b[i], gs)) eh++;
+                long t2 = System.nanoTime();
+                if (r >= 0) { stockNs[r] = (t1 - t0) / (double) ((long) reps * n); edgeNs[r] = (t2 - t1) / (double) ((long) reps * n); }
+                stockHits = hits; edgeHits = eh;
+            }
+            if (stockHits != edgeHits) throw new IllegalStateException("edge " + sc + ": stock " + stockHits + ", edgeTestFast " + edgeHits);
+            Arrays.sort(stockNs); Arrays.sort(edgeNs);
+            System.out.printf("edge %-6s stock   : %6.2f ns/call (min %.2f, max %.2f), blocked %d of %d%n", sc, stockNs[3], stockNs[0], stockNs[6], stockHits, (long) reps * n);
+            System.out.printf("edge %-6s edgeTest: %6.2f ns/call (min %.2f, max %.2f), blocked %d of %d%n", sc, edgeNs[3], edgeNs[0], edgeNs[6], edgeHits, (long) reps * n);
         }
     }
 }
