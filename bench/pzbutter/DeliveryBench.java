@@ -56,7 +56,9 @@ import zombie.iso.IsoGridSquare;
  *          printed count (calls for which drop() was false) and the summary lines of one roll after each scenario, both fixed
  *          (checked: printed 10,000 / 1 / 50 / 1, and the summaries must equal the exact repeat counts).
  * scenecull: the cull loop's 3D cap and model budget (ZombieLod, Plan 8), median of 7 runs after a warm-up, 500 culls of 2,000
- *          setSceneCulled calls a run (every 16th is stock's own culled call). (2) cap 300, 600 zombies already in the model
+ *          setSceneCulled calls a run (every 16th is stock's own culled call). (1) keys off: ns per ZombiePatches.onCulledEnter +
+ *          onCulledExit pair with a null self (50 M pairs a run); prints a checksum of the answers (the argument comes back
+ *          unchanged). (2) cap 300, 600 zombies already in the model
  *          manager (the first 600 calls): ns per decide(); (3) budget 500 us with fake add costs of 40 us, 50 first-time adds per
  *          cull (every 40th call): ns per decide() plus granted(). Prints a checksum of every decided boolean (the rewrite
  *          pattern), which must not change between versions.
@@ -1008,6 +1010,26 @@ public final class DeliveryBench {
 
     static void scenecull() {
         final int culls = 500, calls = 2_000;
+        {
+            final int pairs = 50_000_000;
+            double[] ns = new double[7];
+            long sum = 0;
+            for (int r = 0; r < 3 + 7; r++) {
+                ZombieLod.resetForTest();
+                long t0 = System.nanoTime();
+                long s = 0;
+                for (int i = 0; i < pairs; i++) {
+                    boolean arg = (i & 1) != 0;
+                    s += ZombiePatches.onCulledEnter(null, arg) ? 1 : 0;
+                    ZombiePatches.onCulledExit(null);
+                }
+                long dt = System.nanoTime() - t0;
+                if (s != pairs / 2) throw new IllegalStateException("scenecull: the argument changed with the keys off");
+                sum = s;
+                if (r >= 3) ns[r - 3] = dt / (double) pairs;
+            }
+            System.out.printf("scenecull %-26s: %6.2f ns/pair (min %.2f, max %.2f), checksum %d%n", "1 keys off, null self", median(ns), ns[0], ns[6], sum);
+        }
         String[] label = {"2 cap 300, 600 added", "3 budget 500 us, 50 adds"};
         for (int sc = 0; sc < 2; sc++) {
             double[] ns = new double[7];

@@ -122,6 +122,8 @@ final class ModCompat {
         Map.entry("LuaPatches.FileOutput", k("luaFileWriteThrottle")),
         // zombies and entities (Plan 8)
         Map.entry("ZombiePatches.ForwardDirection", k("zeroFacingFix")),
+        Map.entry("ZombiePatches.SceneCull", k("numberZombiesBlended", "zombieLodFixed3d", "zombieModelAddBudgetUs", "entityTiming")),
+        Map.entry("ZombiePatches.SceneCulled", k("zombieLodFixed3d", "zombieModelAddBudgetUs")),
         // log
         Map.entry("LogPatches.Writeln", k("logDedupe")),
         Map.entry("LogPatches.PrefixLine", k("logDedupe")),
