@@ -44,9 +44,14 @@ The mod creates `~/Zomboid/PZButter.properties` on first start and reads it once
 | `uiRetained` | A window that read nothing new since its last frame is drawn from its recorded draw list instead of running its Lua again. Off by default. Needs `uiVerify`. |
 | `uiRetainedChildren` | Every panel inside a window gets its own record, so a window that has to run its Lua again still reuses the panels in it that did not change, and a clean window calls its panels instead of redrawing them. Off by default. Works with `uiRetained` or `uiRetainCheck`. A window with a Java-drawn child (text box, map, button) still runs its own Lua each time; that child's own panels are reused. |
 | `uiVerify` | Before `uiRetained` reuses a window it checks everything the window read: Lua fields, Java answers, item icons, its place and size, and its children. On by default; `uiRetained` stays off without it. |
-| `uiRetainedMods` | With `false`, only the game's own windows are reused; windows from mods always run. |
+| `uiRetainedMods` | With `false`, only the game's own windows are reused; windows from mods always run. Used with `modProfile=custom`; the other profiles set it. |
 | `uiRetainExclude` | Windows that always run live, by Java class name or Lua `Type`, comma separated. Default `ObjectTooltip,ISToolTip,ISToolTipInv`. |
 | `uiRetainCheck` | Diagnostic: never reuses a window, but compares each draw list it would have reused with the live one and logs the first differences per window. |
+| `luaWorkerGate` | Lua that PZ Butter's frame workers reach waits its turn and runs as the game thread, so the game's single Lua stack is never used by two threads. Needed by the zombie and entity updates on workers (a later version); until then it changes nothing. Off by default. |
+| `luaFileWriteThrottle` | Changes when mod files reach the disk. A heartbeat, pulse, ping or temp-log file a mod opens again within 2 s, or any file it rewrites within 0.5 s, is kept in memory and written once the time is up (one disk write instead of up to 120 a second). The last content always reaches the disk, and a mod that reads the file back gets the latest content first. Off by default. |
+| `logDedupe` | Changes the log. A line printed again within 3 s is dropped; every 3 s one summary line says how often it repeated. Lines with values filled in by the game are never dropped. Off by default. |
+| `modProfile` | `custom` (default) uses `modCompat` and `uiRetainedMods` as written. `performance` sets `modCompat=report` and `uiRetainedMods=true`; `compatibility` sets `modCompat=auto` and `uiRetainedMods=false`, whatever those two lines say. |
+| `modCompat` | Other Java mods that patch a game method PZ Butter replaces, or that replace a method PZ Butter patches. `off` (default); `report` lists them in the console at start; `auto` also switches those PZ Butter features off. |
 | `soundTickHz` | `0` is stock. `60` refreshes ambience and zombie sound parameters at 60 Hz. |
 | `emitterIdleSkip` | A silent zombie skips its sound parameters and emitter ticks. |
 | `worldSoundCleanupFast` | World sounds are cleaned up with fewer chunk scans per frame. The same sounds are heard. |
