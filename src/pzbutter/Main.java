@@ -34,6 +34,7 @@ public class Main {
         GridGate.init();
         Cutaways.init();
         Weather.init();
+        ChunkTrees.init();
         AudioLimiter.init();
         SoundPatches.onFmodInit();
         LuaPatches.uiLuaFast = Settings.flag("uiLuaFast");

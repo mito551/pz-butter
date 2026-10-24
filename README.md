@@ -74,6 +74,31 @@ The mod creates `~/Zomboid/PZButter.properties` on first start and reads it once
 | `weatherMaskIdleSkip` | With no clouds, fog or precipitation active (and none fading out), the weather mask is not drawn. |
 | `puddleEarlyZ` | Hidden puddles are rejected before the costly shader. The look is the same. |
 | `fogEarlyZ` | Hidden fog is rejected before the costly shader. The look is the same. |
+| `treesInChunkTexture` | Trees that are not fading or cut away are drawn into the chunk textures instead of every frame (the game has this built in, switched off). Off by default; a large tree near a chunk edge may be clipped. |
+| `driveTreeCutaway` | `true` is the game's own rule: while driving, every tree near the car turns see-through. `false` uses Build 42.20's rule: only trees between you and the camera. |
+| `treeBakeMaxChunksPerSec` | `0` is off. With `treesInChunkTexture`, while more new chunk textures than this arrive a second (driving), their trees stay per frame; they are drawn in once arrivals slow down. |
+| `edgeTestFast` | The wall, window and door "is the way blocked" test is written out directly. The same answers with less work per zombie. |
+| `translucentTilesInChunkTexture` | Fences, railings, signs and wall decorations are drawn into the chunk textures instead of every frame. Windows, curtains, glass and lit fixtures stay per frame. |
+| `glassTilesPerFrame` | With `translucentTilesInChunkTexture`, glass tiles stay per frame, so characters behind them stay visible. On by default. |
+| `translucentLightsPerFrame` | With `translucentTilesInChunkTexture`, lit fixtures stay per frame. On by default. |
+| `bloodFadeFix` | Blood pushed out of a chunk's 1,000 splats disappears at the chunk's next redraw instead of fading over hundreds of redraws. |
+| `bakeMipLevels` | `0` is the game's way (every detail level). `3` builds three levels after each chunk redraw, enough for the widest zoom. |
+| `zoomEaseMs` | `0` is the game's fixed zoom step per frame. `300` makes a mouse-wheel zoom take 300 ms on a smooth curve at any frame rate. |
+| `zoomEase` | The zoom curve as a cubic Bézier `x1,y1,x2,y2`. Default `0.25,0.1,0.25,1.0` (CSS "ease"). Only with `zoomEaseMs`. |
+| `bakeScheduler` | Chunk texture redraws (cutaways, light, blood, redraws) are spread over frames under the budgets below; a waiting texture keeps its last picture. New chunks and object changes never wait. Off by default. |
+| `bakeFrameBudget` | With `bakeScheduler`: the most redraws that may wait their turn in one frame. Overdue ones always go. Default `8`. |
+| `bakeBudgetAdaptive` | With `bakeScheduler`: the budget halves after a frame over 90 % of the frame cap's time and grows by one under 60 %. |
+| `occlusionGrantedOnly` | With `bakeScheduler`: the hidden-behind-buildings check ignores textures that wait this frame. |
+| `rebakeBudget` | With `bakeScheduler`: cutaway, tree and redraw redraws a frame. `0`: only `bakeFrameBudget` limits them. Default `4`. |
+| `rebakeMaxFrames` | With `bakeScheduler`: the longest a cutaway, tree or redraw redraw waits, in frames. Default `3`. |
+| `lightingRebakeBudget` | With `bakeScheduler`: light-only redraws a frame. `0`: only `bakeFrameBudget` limits them. Default `8`. |
+| `lightingRebakeMaxFrames` | With `bakeScheduler`: the longest a light-only or blood redraw waits, in frames. Default `30`. |
+| `lightingRebakeMs` | With `bakeScheduler`: the shortest time between two light-only redraws of one texture. `0`: no limit. Default `250`. |
+| `lightingStrongDelta` | With `bakeScheduler`: a texture where a square's light moved this much (0-255) since it was drawn goes first, like a torch beam. Default `6`. |
+| `lightingStrongBudget` | With `bakeScheduler`: strong-light redraws a frame. `0`: only `bakeFrameBudget` limits them. Default `8`. |
+| `lightingStrongFrameMs` | With `bakeScheduler`: a frame step longer than this halves the next frame's strong-light redraws. Default `9`. |
+| `lightingGlobalDeltaPct` | With `bakeScheduler`: a light change across most of the screen above this % (a flash, a fast dusk) is spread like a slow one. `0`: off. Default `2`. |
+| `bloodRebakeCoalesceMs` | With `bakeScheduler`: a texture whose only change is new blood waits this long, so several splats share one redraw. `0`: at once. Default `250`. |
 
 Each line of `frames.out` has five fields:
 

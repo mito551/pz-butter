@@ -35,6 +35,7 @@ public final class SelfTest {
         UiRetainTest.run();
         SoundTest.run();
         WorldTest.run();
+        ChunkTest.run();
         delete(DIR);
         System.out.println("ok");
     }
