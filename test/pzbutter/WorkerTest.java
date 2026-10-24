@@ -27,6 +27,9 @@ final class WorkerTest {
         scratchListArrays();
         transformRewritesArrayRead();
         transformVerifiesOnGameClasses();
+        scratchGivesEachWorkerItsCopy();
+        scratchKeepsOriginalForOtherThreads();
+        scratchCopiesArrays();
     }
 
     static void workersResourceInJar() {
@@ -180,5 +183,76 @@ final class WorkerTest {
         assert out.stream().anyMatch(l -> l.startsWith("# review t.D.G "));
         assert out.stream().anyMatch(l -> l.startsWith("scratch ") && l.contains(" t/D H [I "));
         assert out.stream().noneMatch(l -> l.startsWith("# readonly t.D.H"));
+    }
+
+    private static ClassLoader loaderFor(byte[] b) {
+        return new ClassLoader(WorkerTest.class.getClassLoader()) {
+            @Override protected Class<?> findClass(String n) throws ClassNotFoundException {
+                if (!n.equals("t.A") && !n.equals("t.Arr")) throw new ClassNotFoundException(n);
+                return defineClass(n, b, 0, b.length);
+            }
+        };
+    }
+
+    /** Runs sum(k) 20,000 times on 8 threads (workers or plain); returns the number of wrong sums and exceptions. */
+    private static int raceSum(Class<?> c, boolean workers) throws Exception {
+        java.lang.reflect.Method sum = c.getMethod("sum", int.class);
+        java.util.concurrent.atomic.AtomicInteger bad = new java.util.concurrent.atomic.AtomicInteger();
+        Thread[] t = new Thread[8];
+        for (int i = 0; i < 8; i++) {
+            int k = 50 + i;
+            Runnable r = () -> { for (int j = 0; j < 20_000; j++) try { if ((int) sum.invoke(null, k) != k * (k - 1) / 2) bad.incrementAndGet(); } catch (Exception e) { bad.incrementAndGet(); } };
+            t[i] = workers ? LuaGate.worker(r, "w" + i) : new Thread(r);
+            t[i].start();
+        }
+        for (Thread x : t) x.join(60_000);
+        return bad.get();
+    }
+
+    static void scratchGivesEachWorkerItsCopy() throws Exception {
+        Scratch.init(WorkerTestSynth.list());
+        Class<?> c = WorkerTestSynth.loadTransformed();
+        Scratch.loader = c.getClassLoader();
+        try {
+            assert raceSum(c, true) == 0;
+            assert Scratch.copies() == 8;
+            Class<?> plain = loaderFor(WorkerTestSynth.classA()).loadClass("t.A");   // the control: untransformed shares L and must fail
+            assert raceSum(plain, false) > 0;
+        } finally { Scratch.loader = ClassLoader.getSystemClassLoader(); }
+    }
+
+    static void scratchKeepsOriginalForOtherThreads() throws Exception {
+        Scratch.init(WorkerTestSynth.list());
+        Class<?> c = WorkerTestSynth.loadTransformed();
+        Scratch.loader = c.getClassLoader();
+        try {
+            Object original = c.getField("L").get(null);
+            assert Scratch.get(0) == original;
+            Object[] seen = new Object[3];
+            Thread other = new Thread(() -> seen[0] = Scratch.get(0)); other.start(); other.join(5000);
+            assert seen[0] == original;
+            int before = Scratch.copies();
+            Thread w = LuaGate.worker(() -> { seen[1] = Scratch.get(0); seen[2] = Scratch.get(0); }, "w");
+            w.start(); w.join(5000);
+            assert seen[1] != null && seen[1] != original && seen[1] == seen[2] && seen[1] instanceof java.util.ArrayList;
+            assert Scratch.copies() == before + 1;
+            ((java.util.ArrayList<Object>) original).add(1);                    // a copy starts as a copy of the original's content
+            Object[] later = new Object[1];
+            Thread w2 = LuaGate.worker(() -> later[0] = Scratch.get(0), "w2"); w2.start(); w2.join(5000);
+            assert ((java.util.ArrayList<?>) later[0]).size() == 1 && later[0] != original;
+        } finally { Scratch.loader = ClassLoader.getSystemClassLoader(); }
+    }
+
+    static void scratchCopiesArrays() throws Exception {
+        Scratch.init(WorkerList.parse(WorkerTestSynth.ARR_LIST));
+        Class<?> c = loaderFor(WorkerTestSynth.classArr()).loadClass("t.Arr");
+        Scratch.loader = c.getClassLoader();
+        try {
+            int[] original = (int[]) c.getField("X").get(null);
+            original[1] = 5;
+            int[][] seen = new int[1][];
+            Thread w = LuaGate.worker(() -> seen[0] = (int[]) Scratch.get(0), "w"); w.start(); w.join(5000);
+            assert seen[0] != null && seen[0] != original && seen[0].length == 3 && seen[0][1] == 5;
+        } finally { Scratch.loader = ClassLoader.getSystemClassLoader(); }
     }
 }

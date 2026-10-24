@@ -33,6 +33,8 @@ final class LuaGate {
         KahluaThread[] swapped = new KahluaThread[4];
         Thread[] saved = new Thread[4];
         int swappedCount;
+        /** Scratch copies of the listed static fields, by k (see {@link Scratch}); touched only by this thread. */
+        Object[] scratch;
         boolean warned;
 
         Worker(Runnable r, String name) { super(r, name); setDaemon(true); }

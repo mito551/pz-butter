@@ -93,6 +93,8 @@ import zombie.iso.IsoGridSquare;
  *          (16 programs in turn), every 5th followed by onGetInteger(GL_CURRENT_PROGRAM) + exit, every 5th (offset 2) by onGetInteger of another
  *          pname + exit (200 + 200 queries a frame): ns per shim call (1,000 onUseProgram + 400 enters + 400 exits = 1,800 calls a frame).
  *          Prints a checksum of the answers, fixed between versions and equal for every run.
+ * scratch: ns per read of a listed scratch field (ArrayList.size() on it) in a class rewritten by WorkerTransform: plain getstatic baseline (untransformed),
+ *          Scratch.get on a non-worker thread, and on a worker with a warm copy; median of 7 runs of 50 M reads after 3 warm-ups. Prints a checksum.
  */
 public final class DeliveryBench {
     static final com.sun.management.ThreadMXBean MX = (com.sun.management.ThreadMXBean) ManagementFactory.getThreadMXBean();
@@ -124,6 +126,7 @@ public final class DeliveryBench {
             case "vbosize" -> vbosize();
             case "vboslots" -> vboslots();
             case "glrecord" -> glrecord();
+            case "scratch" -> scratch();
             default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | uislice | readset | soundgate | cutaway | splash | edge | plan | gate | luagate | replay | luafiles | dedupe | scenecull | simlod | spotted | cullsort | statsget | vbosize | vboslots | glrecord");
         }
     }
@@ -1495,6 +1498,76 @@ public final class DeliveryBench {
         if (!GpuPatches.onMapEnter(v)) throw new IllegalStateException("vboslots: map refused");
         if (GpuPatches.onMapExit(null) == null) throw new IllegalStateException("vboslots: no buffer");
         if (!GpuPatches.onUnmapEnter(v) || !GpuPatches.onUnmapExit(false)) throw new IllegalStateException("vboslots: unmap refused");
+    }
+
+    /** t.A: static final ArrayList L (3 elements) and static long run(int n): the sum of n reads of L.size(). */
+    static byte[] scratchClass() {
+        var self = java.lang.constant.ClassDesc.of("t.A");
+        var al = java.lang.constant.ClassDesc.of("java.util.ArrayList");
+        var v = java.lang.constant.MethodTypeDesc.of(java.lang.constant.ConstantDescs.CD_void);
+        var sz = java.lang.constant.MethodTypeDesc.of(java.lang.constant.ConstantDescs.CD_int);
+        var add = java.lang.constant.MethodTypeDesc.of(java.lang.constant.ConstantDescs.CD_boolean, java.lang.constant.ConstantDescs.CD_Object);
+        int pub = java.lang.classfile.ClassFile.ACC_PUBLIC, st = java.lang.classfile.ClassFile.ACC_STATIC;
+        return java.lang.classfile.ClassFile.of().build(self, cb -> {
+            cb.withFlags(pub);
+            cb.withField("L", al, pub | st | java.lang.classfile.ClassFile.ACC_FINAL);
+            cb.withMethodBody("<clinit>", v, st, b -> {
+                b.new_(al).dup().invokespecial(al, "<init>", v).putstatic(self, "L", al);
+                for (int i = 0; i < 3; i++) b.getstatic(self, "L", al).aconst_null().invokevirtual(al, "add", add).pop();
+                b.return_();
+            });
+            cb.withMethodBody("run", java.lang.constant.MethodTypeDesc.of(java.lang.constant.ConstantDescs.CD_long, java.lang.constant.ConstantDescs.CD_int), pub | st, b -> {
+                var top = b.newLabel(); var end = b.newLabel();
+                b.lconst_0().lstore(1).iconst_0().istore(3);
+                b.labelBinding(top).iload(3).iload(0).if_icmpge(end);
+                b.lload(1).getstatic(self, "L", al).invokevirtual(al, "size", sz).i2l().ladd().lstore(1);
+                b.iinc(3, 1).goto_(top).labelBinding(end).lload(1).lreturn();
+            });
+        });
+    }
+
+    static java.lang.invoke.MethodHandle scratchRun(byte[] b) throws Exception {
+        ClassLoader l = new ClassLoader(DeliveryBench.class.getClassLoader()) {
+            @Override protected Class<?> findClass(String n) throws ClassNotFoundException {
+                if (!n.equals("t.A")) throw new ClassNotFoundException(n);
+                return defineClass(n, b, 0, b.length);
+            }
+        };
+        Class<?> c = l.loadClass("t.A");
+        Scratch.loader = l;
+        return java.lang.invoke.MethodHandles.lookup().findStatic(c, "run", java.lang.invoke.MethodType.methodType(long.class, int.class));
+    }
+
+    static void scratch() throws Exception {
+        WorkerList list = WorkerList.parse("revision r\nclass t.A\nscratch 0 t/A L Ljava/util/ArrayList;\n");
+        Scratch.init(list);
+        java.lang.invoke.MethodHandle plain = scratchRun(scratchClass());
+        Scratch.init(list);
+        java.lang.invoke.MethodHandle rewritten = scratchRun(WorkerTransform.transform(scratchClass(), list));
+        int n = 50_000_000;
+        String[] names = {"getstatic baseline", "Scratch.get, non-worker", "Scratch.get, worker, warm copy"};
+        long chk = 0;
+        for (int sc = 0; sc < 3; sc++) {
+            java.lang.invoke.MethodHandle h = sc == 0 ? plain : rewritten;
+            double[] ns = new double[7];
+            long[] out = {0};
+            Runnable body = () -> {
+                try {
+                    for (int rr = -3; rr < 7; rr++) {
+                        long t0 = System.nanoTime();
+                        out[0] += (long) h.invokeExact(n);
+                        if (rr >= 0) ns[rr] = (System.nanoTime() - t0) / (double) n;
+                    }
+                } catch (Throwable t) { throw new RuntimeException(t); }
+            };
+            Thread t = sc == 2 ? LuaGate.worker(body, "bench-worker") : new Thread(body);
+            t.start();
+            t.join();
+            Arrays.sort(ns);
+            chk += out[0];
+            System.out.printf("scratch %-32s %.2f ns/read%n", names[sc], ns[3]);
+        }
+        System.out.println("scratch checksum " + chk + " copies " + Scratch.copies());
     }
 
     static void benchSet(Object o, String f, Object v) throws Exception { java.lang.reflect.Field x = o.getClass().getDeclaredField(f); x.setAccessible(true); x.set(o, v); }

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Microbenchmarks. Usage: ./bench.sh [repo dir whose src/ is measured] [parker|stamps|learner|widths|rawget|uislice|readset]
 # With no unit: the frame clock's per-frame cost (FrameBench).
-# Units: parker | stamps | learner | widths | rawget | soundgate | cutaway | splash | edge | plan | gate | luagate | replay | luafiles | dedupe | scenecull | simlod | spotted | cullsort | statsget | vbosize | vboslots | glrecord (DeliveryBench).
+# Units: parker | stamps | learner | widths | rawget | soundgate | cutaway | splash | edge | plan | gate | luagate | replay | luafiles | dedupe | scenecull | simlod | spotted | cullsort | statsget | vbosize | vboslots | glrecord | scratch (DeliveryBench).
 set -euo pipefail
 JDK="${JDK:-/usr/lib/jvm/java-25-openjdk}"
 PZ_GAME="${PZ_GAME:-/home/mitori/Sonic/SteamLibrary/steamapps/common/ProjectZomboid/projectzomboid}"
