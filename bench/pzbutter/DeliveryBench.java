@@ -40,6 +40,11 @@ import zombie.iso.IsoGridSquare;
  *          (5) 2 workers x 5,000 gated calls, one per item, while the holder does its own Lua work (500 calls) between
  *          yieldPoint() calls: total ms. Checked on every run: the Lua counter equals the number of calls and the owner fields
  *          are restored; a failed check aborts.
+ * replay:  the event replay buffer (LuaReplay). 8 persistent threads x 250 captures with interleaved loop orders (a 2,000-zombie
+ *          frame; thread k captures orders k, k+8, ...) released together: ns per capture (the sum of the threads' own loop
+ *          times over the captures), then ns per replayed call on one thread; median of 7 runs after a warm-up. A second
+ *          scenario is a quiet frame of 50 events (5 threads x 10). Prints a checksum of the fired order sequence, which must
+ *          equal the sorted sequence's (checked) and not change between versions.
  */
 public final class DeliveryBench {
     static final com.sun.management.ThreadMXBean MX = (com.sun.management.ThreadMXBean) ManagementFactory.getThreadMXBean();
@@ -60,7 +65,8 @@ public final class DeliveryBench {
             case "plan" -> plan();
             case "gate" -> gate();
             case "luagate" -> luagate();
-            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | uislice | readset | soundgate | cutaway | splash | edge | plan | gate | luagate");
+            case "replay" -> replay();
+            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | uislice | readset | soundgate | cutaway | splash | edge | plan | gate | luagate | replay");
         }
     }
 
@@ -722,5 +728,64 @@ public final class DeliveryBench {
         }
         LuaGate.awaitYielding(() -> finished.get() == n);
         for (Thread t : w) t.join();
+    }
+
+    // ---- replay ----
+
+    static void replay() throws Exception {
+        replayScenario("1 2000 events, 8 threads", 8, 250);
+        replayScenario("2 50 events, 5 threads", 5, 10);
+    }
+
+    static void replayScenario(String label, int threads, int per) throws Exception {
+        final int total = threads * per;
+        Object[][][] calls = new Object[threads][per][];
+        for (int k = 0; k < threads; k++)
+            for (int i = 0; i < per; i++) calls[k][i] = new Object[] {"OnZombieUpdate", i * threads + k};
+        long expect = 0;
+        for (int i = 0; i < total; i++) expect = expect * 31 + i;
+        java.util.concurrent.CyclicBarrier start = new java.util.concurrent.CyclicBarrier(threads + 1), end = new java.util.concurrent.CyclicBarrier(threads + 1);
+        long[] threadNs = new long[threads];
+        Throwable[] err = new Throwable[1];
+        Thread[] w = new Thread[threads];
+        final int runs = 3 + 7;                      // 3 warm-up, 7 measured
+        for (int k = 0; k < threads; k++) {
+            int kk = k;
+            w[k] = new Thread(() -> {
+                try {
+                    for (int r = 0; r < runs; r++) {
+                        start.await(20, java.util.concurrent.TimeUnit.SECONDS);
+                        Object[][] mine = calls[kk];
+                        long t0 = System.nanoTime();
+                        for (int i = 0; i < per; i++) LuaReplay.capture(i * threads + kk, mine[i]);
+                        threadNs[kk] = System.nanoTime() - t0;
+                        end.await(20, java.util.concurrent.TimeUnit.SECONDS);
+                    }
+                } catch (Throwable t) { err[0] = t; }
+            }, "bench-rp" + k);
+            w[k].setDaemon(true);
+            w[k].start();
+        }
+        double[] cap = new double[7], rep = new double[7];
+        long[] sum = new long[1];
+        int[] fired = new int[1];
+        for (int r = 0; r < runs; r++) {
+            LuaReplay.clear();
+            start.await(20, java.util.concurrent.TimeUnit.SECONDS);
+            end.await(20, java.util.concurrent.TimeUnit.SECONDS);
+            long cns = 0;
+            for (long v : threadNs) cns += v;
+            sum[0] = 0; fired[0] = 0;
+            long t0 = System.nanoTime();
+            int n = LuaReplay.replay(c -> { sum[0] = sum[0] * 31 + (Integer) c[1]; fired[0]++; });
+            long rns = System.nanoTime() - t0;
+            if (n != total || fired[0] != total || sum[0] != expect || LuaReplay.pending() != 0)
+                throw new IllegalStateException("replay check failed: " + n + " of " + total + ", checksum " + sum[0] + " expected " + expect);
+            if (r >= 3) { cap[r - 3] = cns / (double) total; rep[r - 3] = rns / (double) total; }
+        }
+        for (Thread t : w) t.join(20_000);
+        if (err[0] != null) throw new IllegalStateException("replay worker failed", err[0]);
+        System.out.printf("replay %-24s: %7.1f ns per capture (min %.1f, max %.1f), %7.1f ns per replayed call (min %.1f, max %.1f), checksum %d%n",
+            label, median(cap), cap[0], cap[6], median(rep), rep[0], rep[6], sum[0]);
     }
 }

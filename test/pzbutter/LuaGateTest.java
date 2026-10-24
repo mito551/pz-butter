@@ -35,6 +35,11 @@ final class LuaGateTest {
         gateHoldersBalanced();
         gateShimOffReadsNothing();
         gateShimRoutesWorker();
+        replayInLoopOrder();
+        sameOrderKeepsCaptureOrder();
+        throwingFireContinues();
+        replayKeepsOneThreadsTiesAcrossGrowth();
+        replayEmptiesAndPrunesEndedThreads();
     }
 
     static void plan7KeysDefaults() {
@@ -320,5 +325,62 @@ final class LuaGateTest {
         runWorkers(1, () -> { took[0] = LuaPatches.gateEnter(l.kt); if (took[0]) LuaPatches.gateExit(); });
         assert took[0] && LuaGate.gatedCalls == 1 && fakeGame != null;
         LuaGate.resetForTest();
+    }
+
+    // ---- Task 4: the replay buffer ----
+
+    static void replayInLoopOrder() throws Exception {
+        LuaReplay.clear();
+        Thread[] t = new Thread[4];
+        for (int k = 0; k < 4; k++) {
+            int kk = k;
+            t[k] = new Thread(() -> { for (int i = 396 + kk; i >= 0; i -= 4) LuaReplay.capture(i, new Object[] {"OnZombieUpdate", i}); });
+            t[k].start();
+        }
+        for (Thread x : t) x.join(5000);
+        java.util.List<Integer> got = new java.util.ArrayList<>();
+        assert LuaReplay.replay(c -> got.add((Integer) c[1])) == 400;
+        for (int i = 0; i < 400; i++) assert got.get(i) == i : i;
+        assert LuaReplay.pending() == 0 && LuaReplay.replay(c -> { }) == 0;
+    }
+
+    static void sameOrderKeepsCaptureOrder() {
+        LuaReplay.clear();
+        LuaReplay.capture(5, new Object[] {"a"}); LuaReplay.capture(5, new Object[] {"b"}); LuaReplay.capture(2, new Object[] {"z"}); LuaReplay.capture(5, new Object[] {"c"});
+        StringBuilder s = new StringBuilder();
+        LuaReplay.replay(c -> s.append(c[0]));
+        assert s.toString().equals("zabc");
+    }
+
+    static void throwingFireContinues() {
+        LuaReplay.clear(); long f = LuaReplay.failures;
+        LuaReplay.capture(1, new Object[] {"x"}); LuaReplay.capture(2, new Object[] {"y"});
+        int[] n = {0};
+        assert LuaReplay.replay(c -> { n[0]++; if (c[0].equals("x")) throw new RuntimeException(); }) == 2 && n[0] == 2 && LuaReplay.failures == f + 1;
+    }
+
+    static void replayKeepsOneThreadsTiesAcrossGrowth() {
+        // 300 captures on one thread (the arrays grow past 64 and 128), orders repeating in runs, negative and large orders included
+        LuaReplay.clear();
+        for (int i = 0; i < 300; i++) LuaReplay.capture(i / 3 - 50, new Object[] {"e", i});
+        LuaReplay.capture(Integer.MAX_VALUE, new Object[] {"e", -1});
+        int[] n = {0};
+        LuaReplay.replay(c -> {
+            int seq = (Integer) c[1];
+            if (seq >= 0) assert seq == n[0]++ : seq;                              // the captured sequence is already in order
+            else assert n[0] == 300;                                                // MAX_VALUE last
+        });
+        assert n[0] == 300;
+    }
+
+    static void replayEmptiesAndPrunesEndedThreads() throws Exception {
+        LuaReplay.clear();
+        Thread t = new Thread(() -> LuaReplay.capture(1, new Object[] {"x"}));
+        t.start(); t.join(5000);
+        assert LuaReplay.pending() == 1 && LuaReplay.replay(c -> { }) == 1 && LuaReplay.pending() == 0;
+        LuaReplay.clear();
+        LuaReplay.capture(3, new Object[] {"y"});
+        LuaReplay.clear();
+        assert LuaReplay.pending() == 0 && LuaReplay.replay(c -> { assert false; }) == 0;
     }
 }
