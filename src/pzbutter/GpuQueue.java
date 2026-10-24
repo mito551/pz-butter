@@ -21,7 +21,7 @@ final class GpuQueue {
 
     static void init() {
         maxFrames = Settings.num("gpuMaxFrames", 2, 0, 8);
-        guard.on = Settings.enabled && maxFrames > 0;   // number keys don't check the master switch themselves
+        guard.on = Settings.enabled && maxFrames > 0 && !Settings.forcedOff.contains("gpuMaxFrames");   // number keys don't check the master switch themselves; forced off (modCompat=auto) answers the default 2, which is on
     }
 
     /** The swap whose fence swap k waits for, or -1. */

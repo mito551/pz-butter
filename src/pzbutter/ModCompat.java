@@ -18,15 +18,21 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.function.Consumer;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
 /**
  * modCompat (SPEC 3.10): other Java mods that patch a game method PZ Butter's holders patch, where at least one side
  * replaces stock. ZombieBuddy already knows every approved jar when our main runs (Loader.g_jarLoadStatus); their @Patch
- * annotations are read straight from the class files, nothing is loaded. Every failure ends in one log line and no change.
+ * annotations are read straight from the class files, nothing is loaded. report lists the overlaps; auto also answers
+ * stock for the PZ Butter keys of the holders involved (Settings.forcedOff). Runs once, from Main, before any feature
+ * init reads its key. Every failure ends in one log line and no change.
  */
 final class ModCompat {
     private ModCompat() {}
@@ -43,6 +49,139 @@ final class ModCompat {
     private static final String RETURN = "Lme/zed_0xff/zombie_buddy/Patch$Return;";
     private static final String ARGUMENT = "Lme/zed_0xff/zombie_buddy/Patch$Argument;";
     private static final byte[] PATCH_ASCII = "me/zed_0xff/zombie_buddy/Patch".getBytes(StandardCharsets.US_ASCII);
+
+    // ---- the keys each holder's advice reaches (the feature switches only: never enabled or frameLog) ----
+
+    private static String[] k(String... keys) { return keys; }
+
+    private static final String[] INPUT = k("inputLatch", "keyboardFresh", "frameStartGate");
+    private static final String[] CAPS = k("vrrCap", "reflexSleep", "vsyncAdaptive");
+    private static final String[] UI_READS = k("uiCensus", "uiRetained", "uiRetainCheck");
+    private static final String[] UI_RETAIN = k("uiRetained", "uiRetainCheck");
+
+    /**
+     * Outer.Holder to the settings keys whose code path that holder's advice reaches. Forcing these off makes the
+     * holder's advice a pass-through (a key that is stock-true, such as driveTreeCutaway, is answered true; see
+     * Settings.STOCK_ON). A new holder without an entry fails keysTableCoversEveryHolder.
+     */
+    static final Map<String, String[]> KEYS = Map.ofEntries(
+        // frame loop: everything driven by the frame counter, the main thread mark or the frame ticks
+        Map.entry("Patches.Frame", k("luaWorkerGate", "luaFileWriteThrottle", "logDedupe", "luaBudget", "luaTiming", "frameStartGate",
+            "presentPacing", "reflexSleep", "bakeScheduler", "lightSwitchCheckFrames", "gridStackInterval", "roofHideDebounceFrames",
+            "soundTickHz", "mapStreetMemo", "mapStreetCache", "textWidthCache", "uiTiming", "uiCensus", "uiRetained", "uiRetainCheck")),
+        // frame delivery
+        Map.entry("DeliveryPatches.Step", k("limiterSleep", "reflexSleep")),
+        Map.entry("DeliveryPatches.InvokeWake", k("limiterSleep", "reflexSleep")),
+        Map.entry("DeliveryPatches.QueryWake", k("limiterSleep", "reflexSleep")),
+        Map.entry("DeliveryPatches.QueueWake", k("limiterSleep", "reflexSleep")),
+        Map.entry("DeliveryPatches.Push", k("frameStartGate", "presentPacing", "cursorLatch")),
+        Map.entry("DeliveryPatches.Acquire", k("renderIdleWait", "frameStartGate", "presentPacing", "cursorLatch")),
+        Map.entry("DeliveryPatches.KeyboardUpdate", INPUT),
+        Map.entry("DeliveryPatches.KeyboardSwap", k("inputLatch")),
+        Map.entry("DeliveryPatches.MouseSwap", k("inputLatch")),
+        Map.entry("DeliveryPatches.RenderFlush", k("inputLatch")),
+        Map.entry("DeliveryPatches.KeyboardPolled", INPUT),
+        Map.entry("DeliveryPatches.CursorRecord", k("cursorLatch")),
+        Map.entry("DeliveryPatches.RightDelay", k("aimHoldMs")),
+        Map.entry("DeliveryPatches.PostRender", k("cursorLatch")),
+        Map.entry("DeliveryPatches.SpriteNotify", k("renderIdleWait")),
+        Map.entry("DeliveryPatches.RenderNotify", k("renderIdleWait")),
+        Map.entry("DeliveryPatches.ContextWake", k("renderIdleWait")),
+        Map.entry("DeliveryPatches.WorldEnter", k("reflexBoost")),
+        Map.entry("DeliveryPatches.WorldExit", k("reflexBoost")),
+        Map.entry("DeliveryPatches.OptionsWrite", CAPS),
+        Map.entry("DeliveryPatches.LockFps", CAPS),
+        Map.entry("DeliveryPatches.Uncapped", CAPS),
+        Map.entry("DeliveryPatches.Vsync", k("vsyncAdaptive")),
+        Map.entry("DeliveryPatches.DisplayModeSet", k("borderlessFullscreen")),
+        Map.entry("DeliveryPatches.IsFullscreen", k("borderlessFullscreen")),
+        Map.entry("DeliveryPatches.Swap", k("gpuMaxFrames", "presentPacing", "vblankLock", "frameStartGate", "reflexSleep", "vrrCap",
+            "vsyncAdaptive", "vrr", "borderlessFullscreen")),
+        // Lua
+        Map.entry("LuaPatches.Rawget", k("luaRawgetFast", "uiCensus", "uiRetained", "uiRetainCheck")),
+        Map.entry("LuaPatches.Rawset", UI_RETAIN),
+        Map.entry("LuaPatches.Iterate", UI_READS),
+        Map.entry("LuaPatches.LoadStream", k("luaInternConstants")),
+        Map.entry("LuaPatches.LoadString", k("luaInternConstants")),
+        Map.entry("LuaPatches.LuaLoad", k("uiLuaFast")),
+        Map.entry("LuaPatches.Trigger", k("luaBudget", "luaTiming")),
+        Map.entry("LuaPatches.Call", k("luaBudget", "luaSkipEmpty", "luaTiming", "luaWorkerGate")),
+        Map.entry("LuaPatches.Pcall", k("luaSkipEmpty", "luaWorkerGate")),
+        Map.entry("LuaPatches.PcallBoolean", k("luaWorkerGate")),
+        Map.entry("LuaPatches.PcallReturn", k("luaWorkerGate")),
+        Map.entry("LuaPatches.ProtectedBoolean", k("luaWorkerGate")),
+        Map.entry("LuaPatches.ProtectedCall", k("luaWorkerGate")),
+        Map.entry("LuaPatches.TriggerEvent", k("luaWorkerGate")),
+        Map.entry("LuaPatches.TriggerHook", k("luaWorkerGate")),
+        Map.entry("LuaPatches.FileWriter", k("luaFileWriteThrottle")),
+        Map.entry("LuaPatches.FileReader", k("luaFileWriteThrottle")),
+        Map.entry("LuaPatches.FileInput", k("luaFileWriteThrottle")),
+        Map.entry("LuaPatches.FileOutput", k("luaFileWriteThrottle")),
+        // log
+        Map.entry("LogPatches.Writeln", k("logDedupe")),
+        Map.entry("LogPatches.PrefixLine", k("logDedupe")),
+        // UI
+        Map.entry("UiPatches.MeasureX", k("textWidthCache")),
+        Map.entry("UiPatches.FontsInit", k("textWidthCache", "uiRetained", "uiRetainCheck", "mapStreetMemo", "mapStreetCache")),
+        Map.entry("UiPatches.Update", k("uiTickStagger")),
+        Map.entry("UiPatches.JavaCall", UI_READS),
+        Map.entry("UiPatches.JavaAnswer", UI_READS),
+        Map.entry("UiPatches.OsCall", UI_READS),
+        Map.entry("UiPatches.RandomCall", UI_READS),
+        Map.entry("UiPatches.ItemIcon", UI_READS),
+        Map.entry("UiPatches.UiRender", k("uiTiming", "uiRetained", "uiRetainCheck")),
+        Map.entry("UiPatches.ElementRender", k("uiTiming", "uiCensus", "uiRetained", "uiRetainCheck")),
+        Map.entry("UiPatches.LuaError", UI_RETAIN),
+        Map.entry("UiPatches.Resize", UI_RETAIN),
+        Map.entry("UiPatches.TexDestroy", UI_RETAIN),
+        Map.entry("UiPatches.TexReload", UI_RETAIN),
+        Map.entry("UiPatches.OptionFbo", UI_RETAIN),
+        // world map
+        Map.entry("MapPatches.Length", k("mapStreetMemo")),
+        Map.entry("MapPatches.Name", k("mapStreetMemo")),
+        Map.entry("MapPatches.StreetsRender", k("mapStreetMemo")),
+        Map.entry("MapPatches.Compare", k("mapStreetMemo")),
+        Map.entry("MapPatches.StreetInit", k("mapStreetCache")),
+        Map.entry("MapPatches.Visited", k("mapVisitedFast")),
+        // sound
+        Map.entry("SoundPatches.ParameterUpdate", k("soundTickHz")),
+        Map.entry("SoundPatches.ObjectEmittersUpdate", k("soundTickHz")),
+        Map.entry("SoundPatches.AmbientWallsUpdate", k("soundTickHz")),
+        Map.entry("SoundPatches.EmitterIdle", k("soundTickHz", "emitterIdleSkip")),
+        Map.entry("SoundPatches.WorldUpdate", k("worldSoundCleanupFast")),
+        Map.entry("SoundPatches.BiggestSoundZomb", k("hearingHoist")),
+        Map.entry("SoundPatches.FishNoise", k("worldSoundFast")),
+        Map.entry("SoundPatches.ZoneValue", k("soundZoneCache")),
+        Map.entry("SoundPatches.ZoneAdded", k("soundZoneCache")),
+        Map.entry("SoundPatches.ZoneRemoved", k("soundZoneCache")),
+        Map.entry("SoundPatches.Electricity", k("electricityLevelRange")),
+        Map.entry("SoundPatches.FliesUpdate", k("fliesToggleFix")),
+        Map.entry("SoundPatches.FliesSet", k("fliesToggleFix")),
+        Map.entry("SoundPatches.AddSound", k("fmodNullHandleFix")),
+        Map.entry("SoundPatches.EventInstance", k("fmodNullHandleFix")),
+        Map.entry("SoundPatches.LimiterInit", k("audioLimiter")),
+        // world: lighting, cutaways, weather
+        Map.entry("WorldPatches.DirtyChunks", k("occlusionSkipLightingOnly", "occlusionGrantedOnly", "bakeScheduler")),
+        Map.entry("WorldPatches.BuildingsInFront", k("gridStackInterval", "roofHideDebounceFrames")),
+        Map.entry("WorldPatches.LightInfoStamp", k("lightInfoOncePerFrame")),
+        Map.entry("WorldPatches.SwitchPower", k("lightSwitchCheckFrames")),
+        Map.entry("WorldPatches.CutawayVisit", k("cutawayInvalidateChanged", "cutawayVisitPrefilter", "cutawayRadius")),
+        Map.entry("WorldPatches.OccluderReplay", k("cutawayFast")),
+        Map.entry("WorldPatches.ChunkPrepared", k("cutawayFast", "bakeScheduler")),
+        Map.entry("WorldPatches.IngameEnter", k("lightingFps")),
+        Map.entry("WorldPatches.RainSplashes", k("rainSplashesFast")),
+        Map.entry("WorldPatches.WeatherMask", k("weatherMaskIdleSkip")),
+        // chunk textures
+        Map.entry("ChunkPatches.BloodBake", k("bloodFadeFix")),
+        Map.entry("ChunkPatches.BlockedTo", k("edgeTestFast")),
+        Map.entry("ChunkPatches.BakeMips", k("bakeMipLevels")),
+        Map.entry("ChunkPatches.TreeEveryFrame", k("treesInChunkTexture")),
+        Map.entry("ChunkPatches.TranslucentTree", k("driveTreeCutaway")),
+        Map.entry("ChunkPatches.ObjectLayer", k("translucentTilesInChunkTexture")),
+        Map.entry("ChunkPatches.Plan", k("bakeScheduler", "treeBakeMaxChunksPerSec")),
+        Map.entry("ChunkPatches.BakeGate", k("bakeScheduler", "treeBakeMaxChunksPerSec")),
+        Map.entry("ChunkPatches.ZoomScroll", k("zoomEaseMs")),
+        Map.entry("ChunkPatches.ZoomUpdate", k("zoomEaseMs")));
 
     // ---- reading @Patch annotations without loading the class ----
 
@@ -162,6 +301,28 @@ final class ModCompat {
         return out;
     }
 
+    /**
+     * off: nothing. report: one log line per overlap. auto: the same, plus the keys of every holder involved, returned for
+     * Settings.forcedOff and listed in a last line. report returns an empty set.
+     */
+    static Set<String> apply(String mode, List<Target> ours, List<Target> theirs, Consumer<String> log) {
+        if (!mode.equals("report") && !mode.equals("auto")) return Set.of();
+        Set<String> lines = new LinkedHashSet<>();
+        Set<String> keys = new TreeSet<>();
+        for (String[] c : conflicts(ours, theirs)) {
+            String[] held = KEYS.get(c[0]);
+            if (held == null) held = new String[0];
+            String who = c[3].equals("ours") ? "PZ Butter replaces" : c[3].equals("theirs") ? "the other mod replaces" : "both replace";
+            lines.add("[PZButter] modCompat: " + c[2] + " patches " + c[1] + " (" + who + " the game method); PZ Butter " + c[0] + ": "
+                + (held.length == 0 ? "no key" : String.join(", ", held)));
+            keys.addAll(List.of(held));
+        }
+        lines.forEach(log);
+        if (!mode.equals("auto")) return Set.of();
+        if (!keys.isEmpty()) log.accept("[PZButter] modCompat: switched off " + String.join(", ", keys) + " (modCompat=auto)");
+        return keys;
+    }
+
     // ---- ZombieBuddy's jar list ----
 
     /** off without the master switch; else modCompat as report or auto, anything else off (the profile may set it). */
@@ -225,5 +386,26 @@ final class ModCompat {
                 try (ZipFile z = new ZipFile(p.toFile())) { return z.getEntry("pzbutter/ModCompat.class") != null; }
         } catch (Throwable t) { /* unreadable: scanned (and reported) later */ }
         return false;
+    }
+
+    /** Main, before any feature init: scan, report, and for auto answer stock for the keys of the holders involved. */
+    static void init() {
+        String m = mode();
+        if (m.equals("off")) return;
+        try {
+            List<Path> jars = jarList();
+            if (jars == null) return;
+            List<Target> theirs = new ArrayList<>();
+            for (Path p : jars) {
+                try { theirs.addAll(scanJar(p)); }
+                catch (Throwable t) { System.out.println("[PZButter] modCompat: cannot scan " + p.getFileName() + ": " + t); }
+            }
+            Set<String> off = apply(m, ours(), theirs, System.out::println);
+            Settings.forcedOff.addAll(off);
+            System.out.println("[PZButter] modCompat=" + m + ": " + jars.size() + " other Java mod" + (jars.size() == 1 ? "" : "s") + " scanned"
+                + (off.isEmpty() ? "" : ", " + off.size() + " key" + (off.size() == 1 ? "" : "s") + " switched off"));
+        } catch (Throwable t) {
+            System.out.println("[PZButter] modCompat failed: " + t);
+        }
     }
 }

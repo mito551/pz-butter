@@ -81,6 +81,14 @@ final class LuaGateTest {
         forcedOffStockTrueKeys();
         otherJarsNeverThrows();
         jarsFromKeepsLoadedAndDropsOwn();
+        keysTableCoversEveryHolder();
+        forcedKeysAnswerStock();
+        oursReadsEveryHolder();
+        autoForcesOnlyConflictingKeys();
+        applyOffAndUnknownHolder();
+        autoFeedsSettings();
+        modCompatInitOffDoesNothing();
+        gpuQueueForcedOff();
     }
 
     static void plan7KeysDefaults() {
@@ -935,5 +943,123 @@ final class LuaGateTest {
             assert ModCompat.jarsFrom(java.util.Map.of(), own).isEmpty();
         } catch (Exception | Error e) { throw e; }
         catch (Throwable t) { throw new AssertionError(t); }
+    }
+
+    // ---- Task 10: holder keys table, report and auto ----
+
+    static void keysTableCoversEveryHolder() throws Exception {
+        String template = Settings.render(new java.util.Properties());
+        java.util.Set<String> holders = new java.util.HashSet<>();
+        for (Class<?> outer : ModCompat.OUTERS)
+            for (Class<?> c : outer.getDeclaredClasses())
+                if (c.isAnnotationPresent(me.zed_0xff.zombie_buddy.Patch.class)) holders.add(outer.getSimpleName() + "." + c.getSimpleName());
+        assert holders.equals(ModCompat.KEYS.keySet()) : "missing or stale: " + holders + " vs " + ModCompat.KEYS.keySet();
+        for (java.util.Map.Entry<String, String[]> e : ModCompat.KEYS.entrySet()) {
+            assert e.getValue().length > 0 : e.getKey();
+            for (String k : e.getValue()) assert !k.equals("enabled") && !k.equals("frameLog") && template.contains("\n" + k + "=") : e.getKey() + " " + k;
+        }
+        // every PZ Butter Plan 7 holder names its own key
+        assert java.util.Arrays.asList(ModCompat.KEYS.get("LuaPatches.FileWriter")).equals(java.util.List.of("luaFileWriteThrottle"));
+        assert java.util.Arrays.asList(ModCompat.KEYS.get("LogPatches.Writeln")).equals(java.util.List.of("logDedupe"));
+        assert java.util.Arrays.asList(ModCompat.KEYS.get("LuaPatches.TriggerHook")).equals(java.util.List.of("luaWorkerGate"));
+    }
+
+    /** Only keys that are real switches may be forced off: stock-false ones, or the stock-true ones Settings answers true for. */
+    static void forcedKeysAnswerStock() {
+        Settings.load(SelfTest.write("enabled=true\n"));
+        java.util.Set<String> all = new java.util.TreeSet<>();
+        for (String[] ks : ModCompat.KEYS.values()) all.addAll(java.util.Arrays.asList(ks));
+        Settings.forcedOff.addAll(all);
+        for (String k : all)
+            assert !Settings.flag(k) == !Settings.STOCK_ON.contains(k) : k;
+        Settings.load(SelfTest.write("enabled=true\n"));
+    }
+
+    static void oursReadsEveryHolder() {
+        java.util.List<ModCompat.Target> ours = ModCompat.ours();
+        assert ours.size() == ModCompat.KEYS.size() : ours.size() + " vs " + ModCompat.KEYS.size();
+        assert ours.contains(new ModCompat.Target("se.krka.kahlua.integration.LuaCaller", "protectedCallVoid", true, "LuaPatches.Call"));
+        assert ours.contains(new ModCompat.Target("zombie.Lua.Event", "trigger", false, "LuaPatches.Trigger"));
+        assert ours.contains(new ModCompat.Target("zombie.GameWindow", "frameStep", false, "Patches.Frame"));
+        for (ModCompat.Target t : ours) assert ModCompat.KEYS.containsKey(t.where()) : t;
+    }
+
+    static void autoForcesOnlyConflictingKeys() {
+        java.util.List<String> log = new java.util.ArrayList<>();
+        java.util.List<ModCompat.Target> ours = ModCompat.ours();
+        java.util.List<ModCompat.Target> theirs = java.util.List.of(new ModCompat.Target("se.krka.kahlua.integration.LuaCaller", "protectedCallVoid", true, "other.jar"));
+        java.util.Set<String> off = ModCompat.apply("auto", ours, theirs, log::add);
+        // protectedCallVoid is hooked by LuaPatches.Call only; the other LuaCaller holders stay
+        assert off.equals(new java.util.HashSet<>(java.util.Arrays.asList(ModCompat.KEYS.get("LuaPatches.Call")))) : off;
+        assert log.get(0).startsWith("[PZButter] modCompat: other.jar patches se.krka.kahlua.integration.LuaCaller.protectedCallVoid") && log.get(log.size() - 1).contains("switched off");
+        assert log.get(0).contains("LuaPatches.Call: luaBudget, luaSkipEmpty, luaTiming, luaWorkerGate") && log.get(0).contains("both replace the game method");
+        log.clear();
+        assert ModCompat.apply("report", ours, theirs, log::add).isEmpty() && log.size() == 1;
+        // an observing mod on a method where we only observe: no conflict at all
+        log.clear();
+        assert ModCompat.apply("auto", ours, java.util.List.of(new ModCompat.Target("zombie.Lua.Event", "trigger", false, "obs.jar")), log::add).isEmpty() && log.isEmpty();
+        // a replacing mod on the frame loop switches off what the frame holder drives, nothing else
+        log.clear();
+        java.util.Set<String> frame = ModCompat.apply("auto", ours, java.util.List.of(new ModCompat.Target("zombie.GameWindow", "frameStep", true, "frame.jar")), log::add);
+        assert frame.equals(new java.util.HashSet<>(java.util.Arrays.asList(ModCompat.KEYS.get("Patches.Frame")))) && !frame.contains("limiterSleep");
+    }
+
+    static void applyOffAndUnknownHolder() {
+        java.util.List<String> log = new java.util.ArrayList<>();
+        java.util.List<ModCompat.Target> theirs = java.util.List.of(new ModCompat.Target("a.B", "m", true, "x.jar"));
+        assert ModCompat.apply("off", ModCompat.ours(), theirs, log::add).isEmpty() && log.isEmpty();
+        assert ModCompat.apply("bogus", ModCompat.ours(), theirs, log::add).isEmpty() && log.isEmpty();
+        // a holder with no table entry is reported, nothing is switched off, no throw
+        java.util.List<ModCompat.Target> ghost = java.util.List.of(new ModCompat.Target("a.B", "m", true, "Ghost.Holder"));
+        assert ModCompat.apply("auto", ghost, theirs, log::add).isEmpty() && log.size() == 1 && log.get(0).contains("Ghost.Holder: no key");
+        // the same pair twice reports once
+        log.clear();
+        ModCompat.apply("report", ghost, java.util.List.of(theirs.get(0), theirs.get(0)), log::add);
+        assert log.size() == 1;
+    }
+
+    /** The forced set reaches the settings: a forced key answers stock to the feature's own init. */
+    static void autoFeedsSettings() {
+        Settings.load(SelfTest.write("enabled=true\nluaTiming=true\nluaSkipEmpty=true\nlimiterSleep=true\n"));
+        assert Settings.flag("luaTiming") && Settings.flag("luaSkipEmpty");
+        Settings.forcedOff.addAll(ModCompat.apply("auto", ModCompat.ours(),
+            java.util.List.of(new ModCompat.Target("se.krka.kahlua.integration.LuaCaller", "protectedCallVoid", true, "other.jar")), s -> { }));
+        assert !Settings.flag("luaTiming") && !Settings.flag("luaSkipEmpty") && !Settings.flag("luaBudget") && !Settings.flag("luaWorkerGate");
+        assert Settings.flag("limiterSleep") && Settings.enabled;                   // unrelated keys and the master switch stay
+        LuaTiming.init();
+        assert !LuaTiming.guard.on;
+        Settings.load(SelfTest.write("enabled=true\n"));
+        LuaTiming.init();
+    }
+
+    /** off (the shipped default) does nothing and prints nothing; a failing scan never throws. */
+    static void modCompatInitOffDoesNothing() {
+        java.io.PrintStream out = System.out;
+        java.io.ByteArrayOutputStream cap = new java.io.ByteArrayOutputStream();
+        try {
+            System.setOut(new java.io.PrintStream(cap, true));
+            Settings.load(SelfTest.write("enabled=true\n"));
+            ModCompat.init();
+            assert cap.size() == 0 && Settings.forcedOff.isEmpty();
+            Settings.load(SelfTest.write("enabled=true\nmodCompat=auto\n"));
+            ModCompat.init();                                                       // headless: ZB's list is empty, nothing to scan, nothing forced
+            assert Settings.forcedOff.isEmpty();
+            assert cap.toString().contains("modCompat=auto: 0 other Java mods scanned") : cap;
+        } finally { System.setOut(out); Settings.load(SelfTest.write("enabled=true\n")); }
+    }
+
+    /** gpuMaxFrames is a number whose default is on: forced off must still switch it off. */
+    static void gpuQueueForcedOff() {
+        Settings.load(SelfTest.write("enabled=true\n"));
+        GpuQueue.init();
+        assert GpuQueue.guard.on;
+        Settings.forcedOff.add("gpuMaxFrames");
+        GpuQueue.init();
+        assert !GpuQueue.guard.on;
+        Settings.load(SelfTest.write("enabled=true\n"));
+        GpuQueue.init();
+        assert GpuQueue.guard.on;
+        Settings.load(SelfTest.write("enabled=false\n"));
+        GpuQueue.init();
     }
 }

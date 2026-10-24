@@ -3,6 +3,7 @@ package pzbutter;
 public class Main {
     public static void main(String[] args) {
         Settings.load();
+        ModCompat.init();   // before any feature init reads its key: modCompat=auto answers stock for the keys it switches off
         FrameClock.init();
         PresentLog.init();
         LimiterSleep.init();
