@@ -7,8 +7,8 @@ import java.util.function.IntConsumer;
  * {@link LuaGate#worker}) and the calling thread. Contract:
  * <ul>
  * <li>{@link #run}: {@code task.accept(i)} exactly once for each i in [0, n), on the workers and the calling thread; returns
- * when every index has ended; then rethrows the first Throwable a task threw (an Error as is, anything else wrapped in a
- * RuntimeException), the others counted in {@link #suppressed}.</li>
+ * when every index has ended; then rethrows the first Throwable a task threw (RuntimeExceptions and Errors pass through as
+ * is, other Throwables are wrapped in a RuntimeException), the others counted in {@link #suppressed}.</li>
  * <li>The caller waits only through {@code LuaGate.awaitYielding(() -> done)} (a worker that reaches Lua gets the token);
  * the worker that ends the last index calls {@code LuaGate.wakeOwner()}.</li>
  * <li>{@code n < 2}, no pool, or a call while a batch runs (nested, or from another thread) runs inline on the calling thread.</li>
@@ -16,7 +16,6 @@ import java.util.function.IntConsumer;
  * start failure leaves no pool and calls {@code guard.fail}.</li>
  * <li>{@link #width}: 1 without a pool. {@link #stopForTest}: stops and joins the threads, no pool afterwards.</li>
  * </ul>
- * Interface stub: implement start, run, width and stopForTest (init and frameTick are fixed).
  */
 final class FrameBatch {
     private FrameBatch() {}

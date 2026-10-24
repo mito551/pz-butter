@@ -44,8 +44,22 @@ final class Preload {
 
     static boolean active() { return state == State.ACTIVE; }
 
+    /** True when the current ZB mod set includes PZ Butter (mod id PZButter), or when it is unknown (null). */
+    static boolean inModList(java.util.Set<String> currentModSet) {
+        return currentModSet == null || currentModSet.contains("PZButter");
+    }
+
     /** Status line text for Main.main. */
     static String status() {
+        if (!ran) {
+            try {
+                if (!Settings.enabled) return "off (enabled=false)";
+                int n = Settings.num("frameThreads", 0, 0, 32);
+                if (n <= 1) return "off (frameThreads=" + n + ")";
+                if (!Settings.flag("luaWorkerGate")) return "off (luaWorkerGate=false)";
+            } catch (Throwable ignored) {}
+            return "needs a restart";
+        }
         return switch (state) {
             case ACTIVE -> "active (" + classCount + " classes, " + scratchCount + " scratch fields)";
             case NEEDS_RESTART -> "needs a restart";
@@ -87,9 +101,12 @@ final class Preload {
             var loader = ClassLoader.getSystemClassLoader();
             for (String c : list.classes()) Class.forName(c, false, loader);
             for (String c : list.classes()) {
-                if (!hasMarker(c, loader)) {
-                    inst.removeTransformer(t);
-                    reason = c + " not transformed"; state = State.OFF;
+                Throwable miss = null;
+                try { Class.forName(c, false, loader).getDeclaredField(WorkerTransform.MARKER); }
+                catch (Throwable e) { miss = e; }
+                if (miss != null) {
+                    try { inst.removeTransformer(t); } catch (Throwable ignored) {}
+                    reason = String.valueOf(miss); state = State.OFF;
                     return;
                 }
             }

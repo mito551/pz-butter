@@ -39,7 +39,7 @@ final class WorkerTransform implements ClassFileTransformer {
             if (redefining != null || className == null || !list.listed(className)) return null;
             return transform(bytes, list, loader);
         } catch (Throwable t) {
-            try { if (log != null) synchronized (log) { log.begin(System.currentTimeMillis()).text("workerTransform " + className + " " + t).end(System.currentTimeMillis()); } }
+            try { if (log != null) synchronized (log) { log.begin(System.currentTimeMillis()).text("workerTransform " + className + " " + t).end(System.currentTimeMillis()); log.flushBuf(); } }
             catch (Throwable ignored) {}
             return null;
         }
@@ -68,6 +68,14 @@ final class WorkerTransform implements ClassFileTransformer {
         if (!reads && added.isEmpty()) return null;
 
         ClassLoader l = loader != null ? loader : ClassLoader.getSystemClassLoader();
+        for (MethodModel mm : m.methods()) {
+            if (mm.methodName().equalsString("<clinit>")) continue;
+            for (CodeModel code : mm.code().stream().toList())
+                for (CodeElement e : code)
+                    if (e instanceof FieldInstruction f && scratchK(f, list) >= 0 && !typeAccessible(f.type().stringValue(), l))
+                        return null;
+        }
+
         ClassFile cf = ClassFile.of(ClassFile.ClassHierarchyResolverOption.of(
             ClassHierarchyResolver.ofResourceParsing(l).orElse(ClassHierarchyResolver.defaultResolver())));
         ClassTransform bodies = ClassTransform.transformingMethodBodies(mm -> !mm.methodName().equalsString("<clinit>"), (b, e) -> {
@@ -87,5 +95,17 @@ final class WorkerTransform implements ClassFileTransformer {
     private static int scratchK(FieldInstruction f, WorkerList list) {
         if (f.opcode() != Opcode.GETSTATIC) return -1;
         return list.scratchIndex(f.owner().asInternalName(), f.name().stringValue(), f.type().stringValue());
+    }
+
+    private static boolean typeAccessible(String desc, ClassLoader l) {
+        if (desc.startsWith("[")) return typeAccessible(desc.substring(1), l);
+        if (desc.length() == 1) return true;
+        String name = desc.substring(1, desc.length() - 1).replace('/', '.');
+        try {
+            Class<?> c = Class.forName(name, false, l);
+            return java.lang.reflect.Modifier.isPublic(c.getModifiers());
+        } catch (Throwable t) {
+            return false;
+        }
     }
 }

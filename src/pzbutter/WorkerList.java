@@ -71,6 +71,7 @@ final class WorkerList {
         List<String> classes = new ArrayList<>();
         List<Scratch> scratch = new ArrayList<>();
         List<Field> fields = new ArrayList<>();
+        Set<String> fieldKeys = new HashSet<>();
         int no = 0;
         for (String raw : text.lines().toList()) {
             no++;
@@ -82,8 +83,11 @@ final class WorkerList {
             else if (p.length == 2 && p[0].equals("class")) classes.add(p[1]);
             else if (p.length == 5 && p[0].equals("scratch") && isInt(p[1]) && scratchOk(scratch, Integer.parseInt(p[1]), p[3], p[4]))
                 scratch.add(new Scratch(Integer.parseInt(p[1]), p[2], p[3], p[4]));
-            else if (p.length == 4 && p[0].equals("field")) fields.add(new Field(p[1], p[2], p[3]));
-            else throw new IllegalArgumentException("line " + no + ": " + raw);
+            else if (p.length == 4 && p[0].equals("field")) {
+                String key = p[1] + "\u0000" + p[2];
+                if (!fieldKeys.add(key)) throw new IllegalArgumentException("line " + no + ": " + raw);
+                fields.add(new Field(p[1], p[2], p[3]));
+            } else throw new IllegalArgumentException("line " + no + ": " + raw);
         }
         if (rev == null) throw new IllegalArgumentException("no revision line");
         return new WorkerList(rev, classes, scratch, fields, text.hashCode());

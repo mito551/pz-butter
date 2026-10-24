@@ -2,6 +2,11 @@ package pzbutter;
 
 public class Main {
     public static void main(String[] args) {
+        java.util.Set<String> mods = ZbAccess.modSet();
+        if (mods != null && !Preload.inModList(mods)) {
+            System.out.println("[PZButter] not in the active mod list; nothing is switched on");
+            return;
+        }
         Settings.load();
         ModCompat.init();   // before any feature init reads its key: modCompat=auto answers stock for the keys it switches off
         FrameClock.init();

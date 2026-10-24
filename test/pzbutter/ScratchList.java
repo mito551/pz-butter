@@ -52,6 +52,25 @@ final class ScratchList {
     private static final Set<String> READ_ONLY_ARRAYS = Set.of("equals", "hashCode", "toString", "binarySearch", "stream", "asList",
         "copyOf", "copyOfRange", "mismatch", "compare", "deepEquals", "deepHashCode", "deepToString");
 
+    // Cross-call state, not per-call scratch: never rewritten, even though they read as mutable statics.
+    //   LightingJNI.updateCounter: compared across update/buildingsChanged calls.
+    //   LotHeader.LOT_PACK_MAGIC: readers (POTLotPack.load/save) are not rewritten.
+    //   MethodArguments.minPoolSize: pool accounting.
+    // Cross-call state, not per-call scratch: never rewritten, even though they read as mutable statics.
+    //   LightingJNI.updateCounter: compared across update/buildingsChanged calls.
+    //   LotHeader.LOT_PACK_MAGIC/LOTPACK_MAGIC: readers (POTLotPack.load/save) are not rewritten.
+    //   MethodArguments.minPoolSize: pool accounting.
+    //   IsoGridSquare.SURFACE_OFFSETS: persistent surface-offset table grown per square.
+    //   IsoRoofFixer.interiorAirSpaces: persistent interior-air-space cache.
+    private static boolean excluded(Field f) {
+        if (f.name().equals("updateCounter") && f.owner().endsWith("/LightingJNI")) return true;
+        if ((f.name().equals("LOT_PACK_MAGIC") || f.name().equals("LOTPACK_MAGIC")) && f.owner().endsWith("/LotHeader")) return true;
+        if (f.name().equals("minPoolSize")) return true;
+        if (f.name().equals("SURFACE_OFFSETS") && f.owner().endsWith("/IsoGridSquare")) return true;
+        if (f.name().equals("interiorAirSpaces") && f.owner().endsWith("/IsoRoofFixer")) return true;
+        return false;
+    }
+
     record Ref(String owner, String name, String desc) {}
 
     private static final class Index {
@@ -213,12 +232,17 @@ final class ScratchList {
             if (!f.desc().startsWith("L") && !f.desc().startsWith("[")) continue;
             String type = f.desc().startsWith("L") ? f.desc().substring(1, f.desc().length() - 1) : null;
             if (type != null && immutable(ix, type)) continue;
+            if (excluded(f)) continue;
             String name = f.owner().replace('/', '.') + "." + f.name();
             Set<String> rs = readers.get(f);
             String info = (type == null ? f.desc() : type.replace('/', '.')) + " " + rs.size() + " " + rs.iterator().next();
             if (type != null && (type.equals("java/lang/ThreadLocal") || type.startsWith("java/util/concurrent/"))) { shared.add(name + " " + info.substring(0, info.indexOf(' '))); continue; }
             if (f.name().contains("$SwitchMap$") || type == null && primitiveArray(f.desc()) && !stored(f.desc(), rs, stores)) {
                 readonly.add(name + " " + f.desc());
+                continue;
+            }
+            if (type == null && primitiveArray(f.desc()) && !allStored(f.desc(), rs, stores)) {
+                review.add(name + " " + info);
                 continue;
             }
             if (type == null && !primitiveArray(f.desc())) { review.add(name + " " + info); continue; }   // object and multi-dimensional arrays: clone() is shallow
@@ -235,6 +259,21 @@ final class ScratchList {
         List<String> out = new ArrayList<>();
         List<String> lines = new ArrayList<>();
         int k = 0;
+        // (a) every class in the jar that reads a scratch field is listed, not only those reached by the walk.
+        Set<Field> scratchFields = new HashSet<>(scratch.values());
+        for (ClassModel cm : ix.classes.values()) {
+            boolean readsScratch = false;
+            for (MethodModel mm : cm.methods()) {
+                if (mm.code().isEmpty()) continue;
+                for (CodeElement e : mm.code().get())
+                    if (e instanceof FieldInstruction fi && fi.opcode() == Opcode.GETSTATIC) {
+                        String decl = ix.fieldOwner(fi.owner().asInternalName(), fi.name().stringValue(), fi.type().stringValue());
+                        if (decl != null && scratchFields.contains(new Field(decl, fi.name().stringValue(), fi.type().stringValue()))) readsScratch = true;
+                    }
+                if (readsScratch) break;
+            }
+            if (readsScratch) classes.add(cm.thisClass().asInternalName().replace('/', '.'));
+        }
         for (Field f : scratch.values()) {
             Set<String> rs = readers.get(f);
             rs.forEach(w -> classes.add(w.substring(0, w.lastIndexOf('.'))));
@@ -272,6 +311,23 @@ final class ScratchList {
             if (st.contains(op) || st.contains(Opcode.INVOKESTATIC)) return true;   // INVOKESTATIC: marker for an array copy or fill
         }
         return false;
+    }
+
+    /** True only when every reader method outside <clinit> stores into the array (mutating Arrays/System.arraycopy). */
+    private static boolean allStored(String desc, Set<String> readers, Map<String, Set<Opcode>> stores) {
+        String el = desc.substring(1);
+        Opcode op = switch (el) {
+            case "I" -> Opcode.IASTORE; case "F" -> Opcode.FASTORE; case "B", "Z" -> Opcode.BASTORE; case "C" -> Opcode.CASTORE;
+            case "S" -> Opcode.SASTORE; case "J" -> Opcode.LASTORE; default -> Opcode.DASTORE;
+        };
+        boolean any = false;
+        for (String r : readers) {
+            if (r.endsWith(".<clinit>")) continue;
+            any = true;
+            Set<Opcode> st = stores.getOrDefault(r, Set.of());
+            if (!(st.contains(op) || st.contains(Opcode.INVOKESTATIC))) return false;
+        }
+        return any;
     }
 
     private static boolean valueType(String t) {

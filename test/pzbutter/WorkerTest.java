@@ -24,14 +24,17 @@ final class WorkerTest {
         transformRewritesScratchRead();
         scratchListFindsMutableStatics();
         workerListRepeatedK();
+        workerListRejectsDuplicateField();
         scratchListArrays();
         transformRewritesArrayRead();
         transformVerifiesOnGameClasses();
+        scratchListResolvesOnGameJar();
         scratchGivesEachWorkerItsCopy();
         scratchKeepsOriginalForOtherThreads();
         scratchCopiesArrays();
         scratchProbeReportsUncopyable();
         scratchUnresolvableOwner();
+        untickedModDecision();
         batchRunsEachIndexOnce();
         batchUsesWorkersAndCaller();
         batchRethrowsAfterAllFinish();
@@ -348,5 +351,29 @@ final class WorkerTest {
         FrameBatch.run(400, i -> LuaGateTest.gated(l, () -> l.caller.pcallvoid(l.kt, inc, (Object) null)));
         assert ((Double) l.env.rawget("n")) == 400.0;
         FrameBatch.stopForTest(); LuaGate.resetForTest();
+    }
+
+    static void workerListRejectsDuplicateField() {
+        try { WorkerList.parse("revision r\nfield t.A x I\nfield t.A x I\n"); assert false; }
+        catch (IllegalArgumentException e) { assert e.getMessage().contains("3"); }
+        try { WorkerList.parse("revision r\nfield t.A x I\nfield t.A x J\n"); assert false; }
+        catch (IllegalArgumentException e) { assert e.getMessage().contains("3"); }
+    }
+
+    static void scratchListResolvesOnGameJar() throws Exception {
+        WorkerList l = WorkerList.load("4a0e9546ec");
+        java.lang.invoke.MethodHandles.Lookup lookup = java.lang.invoke.MethodHandles.lookup();
+        for (WorkerList.Scratch s : l.scratch()) {
+            Class<?> owner = Class.forName(s.owner().replace('/', '.'), false, ClassLoader.getSystemClassLoader());
+            Class<?> type = java.lang.invoke.MethodType.fromMethodDescriptorString("()" + s.desc(), ClassLoader.getSystemClassLoader()).returnType();
+            java.lang.invoke.MethodHandles.privateLookupIn(owner, lookup).findStaticVarHandle(owner, s.field(), type);
+        }
+    }
+
+    static void untickedModDecision() {
+        assert !Preload.inModList(java.util.Set.of());
+        assert !Preload.inModList(java.util.Set.of("Other"));
+        assert Preload.inModList(null);
+        assert Preload.inModList(java.util.Set.of("PZButter"));
     }
 }
