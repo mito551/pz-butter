@@ -600,14 +600,13 @@ final class WorkerTest {
         for (int round = 0; round < 20; round++) {
             LuaGate.resetForTest(); LuaGate.guard.on = true; LuaGate.claim();
             FrameBatch.start(4);
+            assert Latch.liveBuffers() == 3 : Latch.liveBuffers();
             FrameBatch.run(4, i -> Latch.record(i, (a, b, ii, f) -> { }, i, null, 0, 0.0f));
             Latch.applyAll();
             FrameBatch.stopForTest();
             LuaGate.resetForTest();
         }
-        int count = 0;
-        for (Latch.Buf b : Latch.bySlot) if (b != null) count++;
-        assert count == 0 : count;
+        assert Latch.liveBuffers() == 0 : Latch.liveBuffers();
         LuaGate.resetForTest(); LuaGate.guard.on = true; LuaGate.claim();
         assert Latch.applyAll() == 0;
         LuaGate.resetForTest();

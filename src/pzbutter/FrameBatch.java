@@ -199,6 +199,6 @@ final class FrameBatch {
         stopping = false;
         wake.drainPermits();
         cur = null;
-        for (Thread t : p) if (t instanceof LuaGate.Worker w) { Latch.clearSlot(w.slot); w.latch = null; }
+        for (Thread t : p) if (t instanceof LuaGate.Worker w) { Latch.onWorkerStop(w); }
     }
 }

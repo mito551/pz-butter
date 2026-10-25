@@ -39,14 +39,14 @@ final class LuaGate {
         int swappedCount;
         /** Scratch copies of the listed static fields, by k (see {@link Scratch}); touched only by this thread. */
         Object[] scratch;
-        /** Latch buffer (see {@link Latch}); touched only by this thread during a batch and by the game thread in applyAll. */
-        Latch.Buf latch;
+        /** Latch's per-worker state (owned by Latch; opaque here). */
+        Object latch;
         /** Fixed slot of this worker (FrameBatch pool slot, or the next slot for a worker created outside a batch). Set before start(). */
         int slot;
         boolean warned;
 
         Worker(Runnable r, String name) { this(r, name, NEXT_SLOT.getAndIncrement()); }
-        Worker(Runnable r, String name, int slot) { super(r, name); setDaemon(true); this.slot = slot; this.latch = new Latch.Buf(); this.latch.slot = slot; Latch.register(slot, this.latch); }
+        Worker(Runnable r, String name, int slot) { super(r, name); setDaemon(true); this.slot = slot; Latch.onWorkerStart(this); }
 
         /** However the body ends, a hold it still has is given back: the game thread must never wait for a dead owner. */
         @Override public void run() {

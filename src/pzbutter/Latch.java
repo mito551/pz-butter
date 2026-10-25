@@ -2,7 +2,19 @@ package pzbutter;
 
 import java.util.Arrays;
 
-/** Ordered latch records: workers record, the game thread applies in order. */
+/**
+ * Ordered latch records: workers record, the game thread applies in order.
+ *
+ * Contract:
+ * - records are applied in ascending order, ties broken by worker slot, stable within one worker;
+ * - a record outside a batch, or on a non-worker thread, applies immediately with stock exception behaviour;
+ * - inside a batch, applyAll applies every record, counts failures in failed, and rethrows the first one after all are applied;
+ * - object references are nulled once applied;
+ * - a warm buffer allocates nothing per record;
+ * - an unsorted worker buffer gets a stable sort and is counted in unsorted.
+ *
+ * Public test-facing API: Apply, record, begin, applyAll, failed, unsorted, resetForTest, liveBuffers, onWorkerStart, onWorkerStop.
+ */
 final class Latch {
     private Latch() {}
 
@@ -12,8 +24,8 @@ final class Latch {
         void apply(Object a, Object b, int i, float f);
     }
 
-    /** Parallel-array buffer belonging to one worker; grows in place, never shrinks. */
-    static final class Buf {
+    /** Parallel-array buffer belonging to one worker; grows in place, never shrinks. Workers write their buffers. */
+    private static final class Buf {
         int[] order = new int[8];
         Apply[] op = new Apply[8];
         Object[] a = new Object[8];
@@ -26,10 +38,10 @@ int slot;
     }
 
     /** Buffers indexed by worker slot. A worker's buffer lives at its slot from creation. */
-    static Buf[] bySlot = new Buf[16];
+    private static Buf[] bySlot = new Buf[16];
 
     /** Called when a worker is created: stores its buffer at its slot. */
-    static void register(int slot, Buf buf) {
+    private static void register(int slot, Buf buf) {
         if (slot < 0) return;
         if (slot >= bySlot.length) {
             int c = bySlot.length;
@@ -40,8 +52,29 @@ int slot;
     }
 
     /** Clears the buffer registered for a slot (used on pool stop). */
-    static void clearSlot(int slot) {
+    private static void clearSlot(int slot) {
         if (slot >= 0 && slot < bySlot.length) bySlot[slot] = null;
+    }
+
+    /** Called when a worker thread is created: allocate its buffer and register by slot. */
+    static void onWorkerStart(LuaGate.Worker w) {
+        Buf buf = new Buf();
+        buf.slot = w.slot;
+        w.latch = buf;
+        register(w.slot, buf);
+    }
+
+    /** Called when a worker thread stops: unregister its buffer and drop the reference. */
+    static void onWorkerStop(LuaGate.Worker w) {
+        clearSlot(w.slot);
+        w.latch = null;
+    }
+
+    /** Returns the number of registered (live) buffers. */
+    static int liveBuffers() {
+        int c = 0;
+        for (Buf b : bySlot) if (b != null) c++;
+        return c;
     }
 
     /** Test reset: clears the whole registry. */
@@ -61,6 +94,7 @@ int slot;
         active = batchId;
     }
 
+    /** applyAll runs on the game thread after FrameBatch.run returned; FrameBatch's join provides the happens-before. */
     public static int applyAll() {
         // Collect only buffers that actually hold records.
         java.util.ArrayList<Buf> nonEmpty = new java.util.ArrayList<>();
@@ -177,7 +211,7 @@ int slot;
             op.apply(a, b, i, f);
             return;
         }
-        Buf buf = w.latch;
+        Buf buf = (Buf) w.latch;
         if (buf == null) {
             op.apply(a, b, i, f);
             return;
