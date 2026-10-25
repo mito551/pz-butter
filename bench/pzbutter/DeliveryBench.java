@@ -130,7 +130,8 @@ public final class DeliveryBench {
             case "glrecord" -> glrecord();
             case "scratch" -> scratch();
             case "batch" -> batch();
-            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | uislice | readset | soundgate | cutaway | splash | edge | plan | gate | luagate | replay | luafiles | dedupe | scenecull | simlod | spotted | cullsort | statsget | vbosize | vboslots | glrecord");
+            case "calm" -> calm();
+            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | uislice | readset | soundgate | cutaway | splash | edge | plan | gate | luagate | replay | luafiles | dedupe | scenecull | simlod | spotted | cullsort | statsget | vbosize | vboslots | glrecord | scratch | batch | calm");
         }
     }
 
@@ -1609,6 +1610,32 @@ public final class DeliveryBench {
         }
         LuaGate.resetForTest();
         System.out.println("batch checksum " + chk);
+    }
+
+    static void calm() {
+        final int n = 50_000_000;
+        Object x = new Object();
+        Calm.Facts nf = Calm.of(x);
+        double[] a = new double[7], b = new double[7];
+        for (int r = -3; r < 7; r++) {
+            long t0 = System.nanoTime();
+            boolean s = false;
+            for (int i = 0; i < n; i++) s ^= Calm.test(Calm.of(x));
+            long dt = System.nanoTime() - t0;
+            if (r >= 0) a[r] = dt / (double) n;
+            if (s) throw new IllegalStateException("calm: unexpected true");
+        }
+        for (int r = -3; r < 7; r++) {
+            long t0 = System.nanoTime();
+            boolean s = false;
+            for (int i = 0; i < n; i++) s ^= Calm.test(nf);
+            long dt = System.nanoTime() - t0;
+            if (r >= 0) b[r] = dt / (double) n;
+            if (s) throw new IllegalStateException("calm: unexpected true");
+        }
+        java.util.Arrays.sort(a); java.util.Arrays.sort(b);
+        System.out.printf("calm of+test: %6.2f ns/call (min %.2f, max %.2f)%n", a[3], a[0], a[6]);
+        System.out.printf("calm test only: %6.2f ns/call (min %.2f, max %.2f)%n", b[3], b[0], b[6]);
     }
 
     static void benchSet(Object o, String f, Object v) throws Exception { java.lang.reflect.Field x = o.getClass().getDeclaredField(f); x.setAccessible(true); x.set(o, v); }

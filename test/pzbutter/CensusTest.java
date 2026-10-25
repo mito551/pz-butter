@@ -18,6 +18,7 @@ final class CensusTest {
         censusTransformVerifiesOnGameClasses();
         censusListSubclassNamedReviewRead();
         calmPredicate();
+        calmOfNonZombie();
         censusCalmIsDecidedAtEntry();
         censusNestingBalanced();
         censusIgnoresOtherThreads();
@@ -33,6 +34,11 @@ final class CensusTest {
         assert !Calm.test(new Calm.Facts(true, false, false, true, true, false, false, false, false, false, false, false, false, false, false, 20f));
         assert !Calm.test(new Calm.Facts(true, false, false, true, false, false, false, false, false, false, false, false, false, false, false, 12f));
         assert !Calm.test(new Calm.Facts(false, false, false, true, false, false, false, false, false, false, false, false, false, false, false, 20f));
+    }
+
+    static void calmOfNonZombie() {
+        Calm.Facts f = Calm.of(new Object());
+        assert !f.zombie() : f;
     }
 
     static void censusCalmIsDecidedAtEntry() {

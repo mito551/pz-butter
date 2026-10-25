@@ -6,6 +6,7 @@ import zombie.ai.states.WalkTowardState;
 import zombie.ai.states.PathFindState;
 import zombie.ai.states.ZombieSittingState;
 import zombie.characters.IsoPlayer;
+import zombie.core.skinnedmodel.IGrappleable;
 
 /** Calm: whether a zombie's update is safe to count as calm. */
 final class Calm {
@@ -26,6 +27,7 @@ final class Calm {
     }
 
     static Facts of(Object movingObject) {
+        try {
         if (!(movingObject instanceof IsoZombie z)) {
             return new Facts(false, false, false, false, false, false, false, false, false, false,
                     false, false, false, false, false, Float.MAX_VALUE);
@@ -42,13 +44,13 @@ final class Calm {
         try { onFire = z.isOnFire(); } catch (Throwable t) { onFire = false; }
         try { ragdoll = z.isRagdoll(); } catch (Throwable t) { ragdoll = false; }
         try { thumping = z.getThumpTarget() != null; } catch (Throwable t) { thumping = false; }
-        // grappling via getGrappleable
+        // grappling via getGrappleable, direct calls
         boolean gr = false, grl = false;
         try {
-            Object g = z.getGrappleable();
+            IGrappleable g = z.getGrappleable();
             if (g != null) {
-                try { gr = ((Boolean) g.getClass().getMethod("isGrappling").invoke(g)); } catch (Throwable t) { gr = false; }
-                try { grl = ((Boolean) g.getClass().getMethod("isBeingGrappled").invoke(g)); } catch (Throwable t) { grl = false; }
+                gr = g.isGrappling();
+                grl = g.isBeingGrappled();
             }
         } catch (Throwable t) { gr = false; grl = false; }
         grappling = gr; grappled = grl;
@@ -71,5 +73,9 @@ final class Calm {
         } catch (Throwable t) { nearest = Float.MAX_VALUE; }
         return new Facts(true, dead, fakeDead, stateOk, hasTarget, inVehicle, onFire, ragdoll, thumping,
                 grappling, grappled, onFloor, knockedDown, crawling, attacking, nearest);
+        } catch (Throwable t) {
+            return new Facts(false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, false, Float.MAX_VALUE);
+        }
     }
 }
