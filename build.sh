@@ -20,6 +20,15 @@ printf 'ZB-Preload: true\n' > "$B/MANIFEST.MF"
 cp -r "$HERE/mod" "$B/mod"
 mkdir -p "$B/mod/PZButter/42/media/java/client"
 cp "$B/PZButter.jar" "$B/mod/PZButter/42/media/java/client/"
+# ZombieBuddy signature (.zbs beside the jar): ZB preloads only signed jars of trusted authors. Key and SteamID stay outside the repo.
+ZBS_KEY="${PZB_ZBS_KEY:-$HOME/.config/pz-butter/zbs-ed25519.key}"
+ZBS_ID="${PZB_ZBS_STEAMID:-$(cat "$HOME/.config/pz-butter/zbs-steamid" 2>/dev/null)}"
+if [[ -f "$ZBS_KEY" && -n "$ZBS_ID" ]]; then
+    "$JDK/bin/java" -cp "$PZ_GAME/ZombieBuddy.jar" "$HERE/tools/ZbsSign.java" sign "$ZBS_KEY" "$ZBS_ID" \
+        "$B/mod/PZButter/42/media/java/client/PZButter.jar" | tail -1
+else
+    echo "unsigned (no $ZBS_KEY or SteamID): ZombieBuddy will not preload this build"
+fi
 echo "built $B/PZButter.jar"
 
 [[ -n "${PZ_JRE:-}" ]] && "$HERE/harness/preload-check.sh"
