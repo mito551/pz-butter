@@ -13,6 +13,8 @@ mapfile -t SRC < <(find "$HERE/src" -name '*.java')
 "$JDK/bin/javac" --release 25 -cp "$CP" -d "$B/test-classes" "${SRC[@]}" $(find "$HERE/test" -name '*.java')
 cp "$HERE"/src/pzbutter/workers-*.txt "$B/classes/pzbutter/"
 cp "$HERE"/src/pzbutter/workers-*.txt "$B/test-classes/pzbutter/"
+cp "$HERE"/src/pzbutter/census-*.txt "$B/classes/pzbutter/"
+cp "$HERE"/src/pzbutter/census-*.txt "$B/test-classes/pzbutter/"
 "$JDK/bin/java" -ea -cp "$B/test-classes:$CP" pzbutter.SelfTest
 
 printf 'ZB-Preload: true\n' > "$B/MANIFEST.MF"

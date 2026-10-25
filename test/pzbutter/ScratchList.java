@@ -364,6 +364,53 @@ final class ScratchList {
         } catch (Throwable t) { return false; }
     }
 
+    /** Reached method set (`owner.name:desc`), for census and other tools. Built from the existing walk and override resolution. */
+    static Set<String> reach(Path jar, List<String> roots) throws IOException {
+        Index ix = new Index(jar);
+        Deque<Ref> todo = new ArrayDeque<>();
+        Set<Ref> seen = new HashSet<>();
+        Set<String> rootPrefixes = new TreeSet<>();
+        for (String root : roots) {
+            int colon = root.indexOf(':'), dot = root.lastIndexOf('.', colon);
+            String owner = root.substring(0, dot).replace('.', '/');
+            int slash = owner.indexOf('/');
+            rootPrefixes.add(slash < 0 ? owner : owner.substring(0, slash + 1));
+            List<Ref> t = ix.targets(owner, root.substring(dot + 1, colon), root.substring(colon + 1), true, new String[] {""});
+            if (t.isEmpty()) throw new IllegalArgumentException("root not found: " + root);
+            todo.addAll(t);
+        }
+        List<String> walkList = new ArrayList<>(List.of(WALK));
+        walkList.addAll(rootPrefixes);
+        String[] walkAll = walkList.toArray(new String[0]);
+        while (!todo.isEmpty()) {
+            Ref r = todo.poll();
+            if (!seen.add(r)) continue;
+            MethodModel mm = ix.declared(r.owner(), r.name(), r.desc());
+            if (mm == null || mm.code().isEmpty()) continue;
+            String who = r.owner().replace('/', '.') + "." + r.name();
+            for (CodeElement e : mm.code().get()) {
+                if (e instanceof InvokeInstruction i) {
+                    String o = i.owner().asInternalName();
+                    if ((o.equals("java/lang/System") && i.name().equalsString("arraycopy"))
+                        || (o.equals("java/util/Arrays") && !READ_ONLY_ARRAYS.contains(i.name().stringValue())))
+                        { /* marker, no expansion */ }
+                    String pref = null;
+                    int sl = o.indexOf('/');
+                    pref = sl < 0 ? o : o.substring(0, sl + 1);
+                    boolean w = walked(o, WALK) || rootPrefixes.contains(pref);
+                    if (w) todo.addAll(ix.targets(o, i.name().stringValue(), i.type().stringValue(), i.opcode() != Opcode.INVOKESTATIC && i.opcode() != Opcode.INVOKESPECIAL, walkAll));
+                } else if (e instanceof InvokeDynamicInstruction d) {
+                    for (var arg : d.bootstrapArgs())
+                        if (arg instanceof DirectMethodHandleDesc h && walked(hOwner(h), WALK))
+                            todo.addAll(ix.targets(hOwner(h), h.methodName(), h.invocationType().descriptorString(), false, WALK));
+                }
+            }
+        }
+        Set<String> out = new TreeSet<>();
+        for (Ref r : seen) out.add(r.owner().replace('/', '.') + "." + r.name() + ":" + r.desc());
+        return out;
+    }
+
     public static void main(String[] args) throws IOException {
         if (args.length < 3) { System.err.println("usage: ScratchList <jar> <revision> <owner.name:desc>..."); System.exit(2); }
         List<String> out = run(Path.of(args[0]), List.of(args).subList(2, args.length), args[1]);
