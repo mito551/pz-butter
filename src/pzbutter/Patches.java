@@ -12,6 +12,6 @@ public final class Patches {
         public static void enter() { LuaPatches.onFrameYield(); DeliveryPatches.onFrameGate(); FrameClock.enter(); DeliveryPatches.onFrameStarted(); Budget.frameStart(); }
 
         @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
-        public static void exit() { FrameClock.exit(); DeliveryPatches.onFrameEnd(); Budget.frameEnd(); LuaPatches.onFrameEndFiles(); LogPatches.onFrameEnd(); ZombiePatches.onFrameEnd(); }
+        public static void exit() { FrameClock.exit(); DeliveryPatches.onFrameEnd(); Budget.frameEnd(); LuaPatches.onFrameEndFiles(); LogPatches.onFrameEnd(); ZombiePatches.onFrameEnd(); if (Census.guard.on) Census.frameEnd(System.nanoTime()); }
     }
 }

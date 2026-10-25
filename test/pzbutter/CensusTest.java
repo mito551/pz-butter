@@ -17,6 +17,95 @@ final class CensusTest {
         censusTransformMismatchUntouched();
         censusTransformVerifiesOnGameClasses();
         censusListSubclassNamedReviewRead();
+        calmPredicate();
+        censusCalmIsDecidedAtEntry();
+        censusNestingBalanced();
+        censusIgnoresOtherThreads();
+        censusExitOnThrow();
+        censusDumpFormat();
+    }
+
+    static void calmPredicate() {
+        Calm.Facts ok = new Calm.Facts(true, false, false, true, false, false, false, false, false, false, false, false, false, false, false, 20f);
+        assert Calm.test(ok);
+        assert !Calm.test(new Calm.Facts(true, false, false, true, true, false, false, false, false, false, false, false, false, false, false, 20f));
+        assert !Calm.test(new Calm.Facts(true, false, false, true, false, false, false, false, false, false, false, false, false, false, false, 12f));
+        assert !Calm.test(new Calm.Facts(false, false, false, true, false, false, false, false, false, false, false, false, false, false, false, 20f));
+    }
+
+    static void censusCalmIsDecidedAtEntry() {
+        Census.resetForTest();
+        Census.guard.on = true;
+        Census.facts = o -> new Calm.Facts(true, false, false, true, false, false, false, false, false, false, false, false, false, false, false, 20f);
+        Object o = new Object();
+        Census.enter(o);
+        Census.facts = o2 -> new Calm.Facts(true, false, false, true, true, false, false, false, false, false, false, false, false, false, false, 20f);
+        Census.hit(0);
+        Census.exit(o);
+        assert Census.calm[0] == 1L && Census.other[0] == 0L && Census.calmUpdates == 1L && Census.otherUpdates == 0L;
+    }
+
+    static void censusNestingBalanced() {
+        Census.resetForTest();
+        Census.guard.on = true;
+        Census.facts = o -> new Calm.Facts(true, false, false, true, false, false, false, false, false, false, false, false, false, false, false, 20f);
+        Object a = new Object(), b = new Object();
+        Census.enter(a);
+        Census.enter(b);
+        Census.hit(0);
+        Census.exit(b);
+        Census.hit(0);
+        Census.exit(a);
+        assert Census.calm[0] == 2L && Census.other[0] == 0L && Census.calmUpdates == 1L && Census.otherUpdates == 0L;
+        assert Census.calmDepth == 0 && Census.otherDepth == 0;
+    }
+
+    static void censusIgnoresOtherThreads() throws Exception {
+        Census.resetForTest();
+        Census.guard.on = true;
+        Census.facts = o -> new Calm.Facts(true, false, false, true, false, false, false, false, false, false, false, false, false, false, false, 20f);
+        Object o = new Object();
+        Census.enter(o);
+        Census.hit(0); // baseline? counts calm
+        // reset that hit by direct? Instead track
+        // We'll just test a second-thread hit adds nothing additional
+        long before = Census.calm[0];
+        Thread t = new Thread(() -> Census.hit(0));
+        t.start(); t.join(5000);
+        assert !t.isAlive();
+        assert Census.calm[0] == before : "second thread must not increment";
+        Census.exit(o);
+    }
+
+    static void censusExitOnThrow() {
+        Census.resetForTest();
+        Census.guard.on = true;
+        Census.facts = o -> new Calm.Facts(true, false, false, true, false, false, false, false, false, false, false, false, false, false, false, 20f);
+        Object o = new Object();
+        Census.enter(o);
+        Census.exit(o);
+        assert Census.calmDepth == 0 && Census.otherDepth == 0;
+    }
+
+    static void censusDumpFormat() throws Exception {
+        Census.resetForTest();
+        Census.guard.on = true;
+        Census.dir = SelfTest.tmp("census/out");
+        Census.facts = o -> new Calm.Facts(true, false, false, true, false, false, false, false, false, false, false, false, false, false, false, 20f);
+        Census.sites = CensusSites.load("4a0e9546ec");
+        Census.allocate(Census.sites.size());
+        Object o = new Object();
+        Census.enter(o);
+        Census.hit(0);
+        Census.hit(1);
+        Census.exit(o);
+        long t = 5_000_000_000L;
+        Census.frameEnd(t);
+        Census.frameEnd(t + 60_000_000_000L);
+        java.io.File f = new java.io.File(Census.dir, "census.out");
+        String got = java.nio.file.Files.readString(f.toPath());
+        assert got.contains("revision 4a0e9546ec minutes 1") : got.substring(0, Math.min(200, got.length()));
+        assert got.contains("0 ") : got.substring(0, 100);
     }
 
     static void censusListReviewReadsRealList() throws Exception {

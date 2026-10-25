@@ -42,7 +42,7 @@ final class ModCompat {
 
     /** The classes whose nested classes are PZ Butter's holders. */
     static final Class<?>[] OUTERS = {Patches.class, DeliveryPatches.class, LuaPatches.class, UiPatches.class, MapPatches.class,
-        SoundPatches.class, WorldPatches.class, ChunkPatches.class, LogPatches.class, ZombiePatches.class, GpuPatches.class};
+        SoundPatches.class, WorldPatches.class, ChunkPatches.class, LogPatches.class, ZombiePatches.class, GpuPatches.class, CensusPatches.class};
 
     private static final String PATCH = "Lme/zed_0xff/zombie_buddy/Patch;";
     private static final String ON_ENTER = "Lme/zed_0xff/zombie_buddy/Patch$OnEnter;";
@@ -131,6 +131,10 @@ final class ModCompat {
         Map.entry("ZombiePatches.SchedStart", k("entityTiming")),
         Map.entry("ZombiePatches.SchedUpdate", k("entityTiming")),
         Map.entry("ZombiePatches.SchedPost", k("entityTiming")),
+        // census (Plan 8b)
+        Map.entry("CensusPatches.PreUpdate", k("devCensus")),
+        Map.entry("CensusPatches.FrameStep", k("devCensus")),
+        Map.entry("CensusPatches.Update", k("devCensus")),
         // sprite buffers and GPU (Plan 9)
         Map.entry("GpuPatches.SmartCalculate", k("smartTextureRelease", "gpuStats")),
         Map.entry("GpuPatches.VboFormat", k("vboBatchKb")),

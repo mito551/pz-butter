@@ -49,6 +49,8 @@ final class CensusTransform implements ClassFileTransformer {
     }
 
     static int missed() { return missedCount; }
+    static void missOne() { missedCount++; }
+    static void resetMissed() { missedCount = 0; }
 
     static byte[] transform(byte[] classFile, CensusSites sites) {
         ClassFile cf0 = ClassFile.of();

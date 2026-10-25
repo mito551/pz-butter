@@ -855,7 +855,7 @@ final class ZombieTest {
         int exit = src.indexOf("public static void exit()");
         assert exit > 0 && src.indexOf("ZombiePatches.onFrameEnd();", exit) > 0;
         String line = src.substring(exit, src.indexOf('\n', exit));
-        assert line.trim().endsWith("ZombiePatches.onFrameEnd(); }") : line;
+        assert line.trim().endsWith("if (Census.guard.on) Census.frameEnd(System.nanoTime()); }") : line;
     }
 
     // ---- the once-a-minute zombies line ----
