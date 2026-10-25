@@ -14,7 +14,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.zip.ZipEntry;
-import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
 
 final class CensusTestSynth {
@@ -77,10 +76,10 @@ final class CensusTestSynth {
     }
 
     static byte[] gameBytes(String c) throws IOException {
-        try (ZipFile z = new ZipFile("/home/mitori/Sonic/SteamLibrary/steamapps/common/ProjectZomboid/projectzomboid/projectzomboid.jar")) {
-            ZipEntry e = z.getEntry(c + ".class");
-            if (e == null) throw new IOException("missing " + c);
-            return z.getInputStream(e).readAllBytes();
+        var is = ClassLoader.getSystemResourceAsStream(c + ".class");
+        if (is == null) throw new IOException("missing " + c);
+        try (is) {
+            return is.readAllBytes();
         }
     }
 
