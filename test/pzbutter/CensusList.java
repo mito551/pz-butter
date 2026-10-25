@@ -78,7 +78,7 @@ final class CensusList {
                 if (el instanceof InvokeInstruction i) {
                     String o = i.owner().asInternalName();
                     String family = familyOfInvoke(o, i.name().stringValue());
-                    String target = o + "." + i.name().stringValue() + ":" + i.type().stringValue();
+                    String target = i.opcode().name().toLowerCase(java.util.Locale.ROOT) + ":" + o + "." + i.name().stringValue() + ":" + i.type().stringValue();
                     if (family != null) { sites.add(new Site(owner, name + desc, offset, family, target, false)); siteClasses.add(owner.replace('/', '.')); }
                 } else if (el instanceof FieldInstruction f) {
                     String fo = f.owner().asInternalName();
@@ -100,31 +100,28 @@ final class CensusList {
                         }
                     }
                     String fieldKey = declFo + "." + fname;
+                    String literalTarget = op.name().toLowerCase(java.util.Locale.ROOT) + ":" + fo + "." + fname + ":" + ftype;
                     if (op == Opcode.GETSTATIC) {
                         String family = null;
                         if (fo.equals("zombie/GameWindow") && fname.equals("gameThread")) family = "THREAD";
                         else if (reviewFields.contains(fieldKey)) family = "REVIEW_READ";
                         if (family != null) {
-                            sites.add(new Site(owner, name + desc, offset, family, fieldKey + ":" + ftype, false));
+                            sites.add(new Site(owner, name + desc, offset, family, literalTarget, false));
                             siteClasses.add(owner.replace('/', '.'));
                         }
                     } else if (op == Opcode.PUTSTATIC) {
-                        if (!name.equals("<clinit>") || true) {
-                            if (!mm.methodName().equalsString("<clinit>")) {
-                                sites.add(new Site(owner, name + desc, offset, "PUTSTATIC", fieldKey + ":" + ftype, false));
-                                siteClasses.add(owner.replace('/', '.'));
-                            }
+                        if (!mm.methodName().equalsString("<clinit>")) {
+                            sites.add(new Site(owner, name + desc, offset, "PUTSTATIC", literalTarget, false));
+                            siteClasses.add(owner.replace('/', '.'));
                         }
                     } else if (false /* PUTFIELD dropped */) {
                         boolean approx = true;
                         if (idx >= 2 && elems.get(idx - 1) instanceof Instruction) {
-                            // best effort: object pushed just before the value push
                             CodeElement prev2 = idx >= 2 ? elems.get(idx - 2) : null;
                             if (prev2 instanceof Instruction p2 && p2.opcode() == Opcode.ALOAD_0) approx = false;
                         }
                         sites.add(new Site(owner, name + desc, offset, "PUTFIELD_OTHER", fieldKey + ":" + ftype, approx));
                         siteClasses.add(owner.replace('/', '.'));
-                        // only add if approx? spec says any putfield whose object not aload_0; keep all approximated? We add all as PUTFIELD_OTHER, approx flag irrelevant to family. Actually family PUTFIELD_OTHER should be only those not aload_0.
                     }
                 } else if (el instanceof MonitorInstruction mi && mi.opcode() == Opcode.MONITORENTER) {
                     sites.add(new Site(owner, name + desc, offset, "LOCK", "monitor", false));
@@ -144,7 +141,6 @@ final class CensusList {
         }
         sites = filtered;
 
-        // reorder ids dense by current list order
         List<String> out = new ArrayList<>();
         out.add("revision " + revision);
         TreeSet<String> finalClasses = new TreeSet<>();
@@ -155,10 +151,7 @@ final class CensusList {
         if (dropLuaData) out.add("# dropped LUA_DATA " + luaDataCount);
         int id = 0;
         for (Site s : sites) {
-            String line = "site " + id + " " + s.family() + " " + s.owner().replace('/', '?').replace('?', '/') // noop-ish keep slash
-                + " " + s.method() + " " + s.offset() + " " + s.target();
-            // owner internal with slashes already
-            line = "site " + id + " " + s.family() + " " + s.owner() + " " + s.method() + " " + s.offset() + " " + s.target();
+            String line = "site " + id + " " + s.family() + " " + s.owner() + " " + s.method() + " " + s.offset() + " " + s.target();
             if (s.family().equals("PUTFIELD_OTHER") && s.approx()) line += " # approx";
             out.add(line);
             id++;
@@ -167,15 +160,12 @@ final class CensusList {
     }
 
     private static String familyOfInvoke(String owner, String name) {
-        // simple name
         String simple = owner.substring(owner.lastIndexOf('/') + 1);
-        // LUA: narrowly (Ruling 2b)
         if (owner.equals("zombie/Lua/LuaEventManager") || owner.equals("zombie/Lua/LuaHookManager")) return "LUA";
         if (owner.equals("zombie/Lua/LuaManager") && (name.startsWith("caller") || name.startsWith("RunLua") || name.startsWith("call"))) return "LUA";
         if (owner.equals("se/krka/kahlua/integration/LuaCaller")) return "LUA";
         if (owner.equals("se/krka/kahlua/vm/KahluaThread") && (name.startsWith("call") || name.startsWith("pcall"))) return "LUA";
         if (owner.startsWith("zombie/Lua/") || owner.startsWith("se/krka/")) return "LUA_DATA";
-        // SHARED (Ruling 2a): right after NET
         String o = owner;
         boolean shared = o.equals("zombie/iso/IsoGridSquare") || o.equals("zombie/iso/IsoCell") || o.equals("zombie/iso/IsoChunk")
             || o.equals("zombie/iso/IsoChunkMap") || o.equals("zombie/iso/IsoMetaGrid") || o.equals("zombie/iso/IsoWorld")
@@ -184,7 +174,6 @@ final class CensusList {
             || o.startsWith("zombie/characters/AttachedItems/") || o.startsWith("zombie/popman/")
             || o.equals("zombie/VirtualZombieManager");
         if (owner.startsWith("zombie/network/")) {
-            // NET handled below before shared; ensure order NET before SHARED
         }
         if (owner.startsWith("fmod/") || owner.startsWith("zombie/audio/") || simple.contains("SoundManager") || simple.contains("SoundEmitter") || owner.equals("zombie/WorldSoundManager")) return "SOUND";
         if (owner.startsWith("zombie/core/physics/") || simple.contains("Bullet") || simple.contains("Ragdoll")) return "PHYSICS";
@@ -199,7 +188,6 @@ final class CensusList {
 
     public static void main(String[] args) throws IOException {
         if (args.length < 3) { System.err.println("usage: CensusList <jar> <revision> <root>..."); System.exit(2); }
-        // read review fields
         String revision = args[1];
         Set<String> review = new TreeSet<>();
         Path rf = Path.of("src/pzbutter/workers-" + revision + ".txt");

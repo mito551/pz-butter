@@ -1,5 +1,7 @@
 package pzbutter;
 
+import java.io.IOException;
+import java.lang.classfile.ClassFile;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
@@ -11,6 +13,10 @@ final class CensusTest {
         censusListFamilies();
         censusListNoDuplicateSites();
         censusListReviewReadsRealList();
+        censusTransformInsertsHits();
+        censusTransformMismatchUntouched();
+        censusTransformVerifiesOnGameClasses();
+        censusListSubclassNamedReviewRead();
     }
 
     static void censusListReviewReadsRealList() throws Exception {
@@ -40,5 +46,92 @@ final class CensusTest {
         Path jar = CensusTestSynth.jar(SelfTest.tmp("census/t2.jar").toPath());
         List<String> out = CensusList.run(jar, List.of("t.Z.update:()V", "t.Z.preupdate:()V"), "r", Set.of());
         assert out.stream().filter(l -> l.startsWith("site ") && l.contains(" t/H helper")).count() == 1;
+    }
+
+    static void censusTransformInsertsHits() throws Exception {
+        byte[] b = CensusTestSynth.classZ();
+        CensusSites s = CensusSites.parse(CensusTestSynth.SITES);
+        byte[] out = CensusTransform.transform(b, s);
+        assert out != null && ClassFile.of().verify(out).isEmpty();
+        assert CensusTestSynth.callsBefore(out, "update", "java/util/Random", "pzbutter/Census", "hit");
+    }
+
+    static void censusTransformMismatchUntouched() {
+        assert CensusTransform.transform(CensusTestSynth.classZ(), CensusSites.parse(CensusTestSynth.SITES_WRONG_OFFSET)) == null;
+    }
+
+    static void censusTransformVerifiesOnGameClasses() throws Exception {
+        CensusSites s = CensusSites.load("4a0e9546ec");
+        for (String c : CensusTestSynth.listedClasses(s)) {
+            byte[] out = CensusTransform.transform(CensusTestSynth.gameBytes(c), s);
+            assert out != null : c + ": untouched";
+            assert CensusTestSynth.verifyResolved(out).isEmpty() : c + ": " + CensusTestSynth.verifyResolved(out).get(0);
+        }
+    }
+
+    static void censusListSubclassNamedReviewRead() throws Exception {
+        Path p = SelfTest.tmp("census/sub.jar").toPath();
+        java.lang.constant.ClassDesc base = java.lang.constant.ClassDesc.of("t.Base");
+        java.lang.constant.ClassDesc sub = java.lang.constant.ClassDesc.of("t.Sub");
+        java.lang.constant.ClassDesc z = java.lang.constant.ClassDesc.of("t.Z");
+        java.lang.constant.ClassDesc obj = java.lang.constant.ConstantDescs.CD_Object;
+        java.lang.constant.MethodTypeDesc voidM = java.lang.constant.MethodTypeDesc.of(java.lang.constant.ConstantDescs.CD_void);
+
+        byte[] cb = ClassFile.of().build(base, b -> {
+            b.withFlags(ClassFile.ACC_PUBLIC);
+            b.withField("F", obj, ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC);
+        });
+        byte[] cs = ClassFile.of().build(sub, b -> {
+            b.withFlags(ClassFile.ACC_PUBLIC);
+            b.withSuperclass(base);
+        });
+        byte[] cz = ClassFile.of().build(z, b -> {
+            b.withFlags(ClassFile.ACC_PUBLIC);
+            b.withMethodBody("update", voidM, ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC, code -> {
+                code.getstatic(sub, "F", obj).pop();
+                code.return_();
+            });
+        });
+
+        java.nio.file.Files.createDirectories(p.getParent());
+        try (java.util.zip.ZipOutputStream zout = new java.util.zip.ZipOutputStream(java.nio.file.Files.newOutputStream(p))) {
+            for (var e : java.util.Map.of("t/Base.class", cb, "t/Sub.class", cs, "t/Z.class", cz).entrySet()) {
+                zout.putNextEntry(new java.util.zip.ZipEntry(e.getKey()));
+                zout.write(e.getValue());
+                zout.closeEntry();
+            }
+        }
+
+        List<String> out = CensusList.run(p, List.of("t.Z.update:()V"), "r", Set.of("t/Base.F"));
+        String siteLine = out.stream().filter(l -> l.startsWith("site ") && l.contains("REVIEW_READ")).findFirst().orElse(null);
+        assert siteLine != null : "no REVIEW_READ site";
+        assert siteLine.contains("getstatic:t/Sub.F:") : siteLine;
+
+        // parse and transform class bytes
+        CensusSites sites = CensusSites.parse(String.join("\n", out));
+        byte[] zbytes = cz;
+        byte[] transformed = CensusTransform.transform(zbytes, sites);
+        assert transformed != null;
+        // verify hit inserted immediately before getstatic t/Sub.F
+        ClassFile cf = ClassFile.of();
+        var m = cf.parse(transformed);
+        for (var mm : m.methods()) {
+            if (!mm.methodName().stringValue().equals("update")) continue;
+            List<?> elems = mm.code().get().elementList();
+            for (int i = 0; i + 1 < elems.size(); i++) {
+                Object a = elems.get(i);
+                Object bb = elems.get(i + 1);
+                if (a instanceof java.lang.classfile.Instruction ia && bb instanceof java.lang.classfile.instruction.FieldInstruction fi) {
+                    if (ia instanceof java.lang.classfile.instruction.InvokeInstruction ii
+                            && ii.owner().asInternalName().equals("pzbutter/Census")
+                            && ii.name().stringValue().equals("hit")
+                            && fi.owner().asInternalName().equals("t/Sub")
+                            && fi.name().stringValue().equals("F")) {
+                        return;
+                    }
+                }
+            }
+        }
+        throw new AssertionError("hit not inserted before getstatic t/Sub.F");
     }
 }
