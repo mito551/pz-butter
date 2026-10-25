@@ -23,6 +23,7 @@ final class CensusTest {
         censusIgnoresOtherThreads();
         censusExitOnThrow();
         censusDumpFormat();
+        censusStatusLine();
     }
 
     static void calmPredicate() {
@@ -85,6 +86,13 @@ final class CensusTest {
         Census.enter(o);
         Census.exit(o);
         assert Census.calmDepth == 0 && Census.otherDepth == 0;
+    }
+
+    static void censusStatusLine() throws Exception {
+        java.io.File f = SelfTest.tmp("census/status.properties");
+        try (java.io.FileWriter w = new java.io.FileWriter(f)) { w.write("enabled=true\ndevCensus=false\n"); }
+        Settings.load(f);
+        assert Census.status().equals("off (devCensus=false)") : Census.status();
     }
 
     static void censusDumpFormat() throws Exception {

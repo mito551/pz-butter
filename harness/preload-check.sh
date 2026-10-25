@@ -38,4 +38,18 @@ run 0 OFF "frameThreads=0" none -Dpzprobe.fail=1   # forced throw after addTrans
 grep -qx "fail.state=OFF" <<<"$OUT" || fail "forced throw: state is not OFF"
 grep -qx "fail.reason=premain: java.lang.ClassNotFoundException: no.such.Missing" <<<"$OUT" || fail "forced throw: wrong reason"
 grep -qx "fail.marker=false" <<<"$OUT" || fail "forced throw: a listed class loaded afterwards carries the marker (transformer left registered)"
+
+# devCensus run: install the census even with no worker pool (frameThreads=0).
+printf 'enabled=true\nluaWorkerGate=true\ndevCensus=true\nframeThreads=0\n' > "$T/home/Zomboid/PZButter.properties"
+OUT="$("$PZ_GAME/jre64/bin/java" "$@" -Duser.home="$T/home" \
+    -javaagent:"$PZ_GAME/ZombieBuddy.jar=policy=allow-all,allow_unsigned_mods=true,config_dir=$T/zb" \
+    -cp "$T/cls:$PZ_GAME/projectzomboid.jar" pzbutter.PreloadProbe 2>&1)" || fail "run devCensus: probe exited non-zero"
+censusLine="$(sed -n 's/^census=//p' <<<"$OUT")"
+[[ "$censusLine" == "on ("* ]] || fail "run devCensus: census status is not on: $censusLine"
+classes="$(sed -E 's/^on \([0-9]+ sites, ([0-9]+) classes, [0-9]+ missed\)$/\1/' <<<"$censusLine")"
+missed="$(sed -E 's/^on \([0-9]+ sites, [0-9]+ classes, ([0-9]+) missed\)$/\1/' <<<"$censusLine")"
+[[ "$classes" =~ ^[0-9]+$ && "$missed" =~ ^[0-9]+$ ]] || fail "run devCensus: cannot parse classes/missed from: $censusLine"
+[[ $((missed * 100)) -lt $((classes * 5)) ]] || fail "run devCensus: missed $missed >= 5% of $classes classes"
+echo "run devCensus: on (missed=$missed / classes=$classes)"
+
 echo "preload ok"

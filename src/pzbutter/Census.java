@@ -11,7 +11,7 @@ public final class Census {
     static final long MINUTE_NS = 60_000_000_000L;
 
     static volatile Thread gameThread;
-    static CensusSites sites;
+    static volatile CensusSites sites;
     static volatile long[] calm;
     static volatile long[] other;
     static int calmDepth;
@@ -25,11 +25,17 @@ public final class Census {
     static File dir = new File(System.getProperty("user.home"), "Zomboid/pzbutter");
     static Function<Object, Calm.Facts> facts = Calm::of;
 
+    /** Set when Census.install throws (including a premain-time failure); cleared on reset. */
+    static volatile String installFailure;
+    static volatile boolean installed;
+
     static {
         resetForTest();
     }
 
     public static void install(java.lang.instrument.Instrumentation inst) {
+        installed = false;
+        installFailure = null;
         try {
             if (inst == null) return;
             String rev = Preload.gameRevision();
@@ -43,7 +49,10 @@ public final class Census {
                 if (s.listed(c.getName().replace('.', '/'))) CensusTransform.missOne();
             }
             guard.on = true;
+            installed = true;
         } catch (Throwable t) {
+            installed = false;
+            installFailure = String.valueOf(t);
             guard.fail(t);
         }
     }
@@ -120,6 +129,8 @@ public final class Census {
 
     static void resetForTest() {
         guard.on = false;
+        installed = false;
+        installFailure = null;
         gameThread = null;
         calmDepth = 0;
         otherDepth = 0;
@@ -143,5 +154,20 @@ public final class Census {
         if (n < 0) n = 0;
         calm = new long[n];
         other = new long[n];
+    }
+
+    public static String status() {
+        if (!Settings.flag("devCensus")) return "off (devCensus=false)";
+        if (installFailure != null) return "off (premain: " + installFailure + ")";
+        String rev = Preload.gameRevision();
+        CensusSites s = sites;
+        if (s == null) {
+            try { s = (rev == null || rev.isEmpty()) ? null : CensusSites.load(rev); } catch (Throwable ignored) {}
+        }
+        if (s == null) return "off (no census list for revision " + rev + ")";
+        if (!s.revision().equals(rev)) return "off (revision " + rev + " != list " + s.revision() + ")";
+        if (ZbAccess.instrumentation() == null) return "off (no ZombieBuddy Instrumentation)";
+        CensusSites cur = (sites != null) ? sites : s;
+        return "on (" + cur.size() + " sites, " + cur.classCount() + " classes, " + CensusTransform.missed() + " missed)";
     }
 }

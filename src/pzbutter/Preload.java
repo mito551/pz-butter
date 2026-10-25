@@ -78,6 +78,12 @@ final class Preload {
             var inst = ZbAccess.instrumentation();
             var loaded = new HashSet<String>();
             if (inst != null) for (Class<?> c : inst.getAllLoadedClasses()) loaded.add(c.getName());   // before anything else loads
+            if (Settings.flag("devCensus")) {
+                try { Census.install(inst); }
+                catch (Throwable t) {
+                    try { Census.installFailure = String.valueOf(t); } catch (Throwable ignored) {}
+                }
+            }
             var list = WorkerList.load(gameRevision());
             var d = decide(gameRevision(), list, Settings.num("frameThreads", 0, 0, 32), Settings.flag("luaWorkerGate"),
                     Settings.enabled, ManagementFactory.getRuntimeMXBean().getInputArguments(), inst != null, loaded);

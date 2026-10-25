@@ -26,6 +26,7 @@ final class CensusSites {
 
     String revision() { return revision; }
     int size() { return sites.size(); }
+    int classCount() { return classes.size(); }
     boolean listed(String internalName) { return classes.contains(internalName); }
 
     List<Site> sitesOf(String owner) { return sites.stream().filter(s -> s.owner().equals(owner)).toList(); }

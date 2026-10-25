@@ -17,6 +17,7 @@ public final class PreloadProbe {
         }
         System.out.println("markers=" + have + "/" + list.classes().size());
         System.out.println("status=" + Preload.status());
+        System.out.println("census=" + Census.status());
     }
 
     /** Test only: installs over a list whose first class does not exist, so the throw comes after addTransformer. */
