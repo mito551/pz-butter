@@ -2,6 +2,7 @@ package pzbutter;
 
 import java.lang.invoke.VarHandle;
 import java.util.ArrayDeque;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.ArrayList;
 import java.util.Locale;
 import java.util.function.BooleanSupplier;
@@ -17,6 +18,9 @@ import se.krka.kahlua.vm.KahluaThread;
  */
 final class LuaGate {
     private LuaGate() {}
+
+    /** Next slot for a worker created outside FrameBatch (tests may set slot directly instead). */
+    private static final AtomicInteger NEXT_SLOT = new AtomicInteger();
 
     static final Guard guard = new Guard("luaWorkerGate");
 
@@ -37,9 +41,12 @@ final class LuaGate {
         Object[] scratch;
         /** Latch buffer (see {@link Latch}); touched only by this thread during a batch and by the game thread in applyAll. */
         Latch.Buf latch;
+        /** Fixed slot of this worker (FrameBatch pool slot, or the next slot for a worker created outside a batch). Set before start(). */
+        int slot;
         boolean warned;
 
-        Worker(Runnable r, String name) { super(r, name); setDaemon(true); }
+        Worker(Runnable r, String name) { this(r, name, NEXT_SLOT.getAndIncrement()); }
+        Worker(Runnable r, String name, int slot) { super(r, name); setDaemon(true); this.slot = slot; }
 
         /** However the body ends, a hold it still has is given back: the game thread must never wait for a dead owner. */
         @Override public void run() {
@@ -83,6 +90,7 @@ final class LuaGate {
     // ---- worker side ----
 
     static Thread worker(Runnable r, String name) { return new Worker(r, name); }
+    static Thread worker(Runnable r, String name, int slot) { return new Worker(r, name, slot); }
 
     static boolean enter(KahluaThread kt) {
         if (!guard.on) return false;

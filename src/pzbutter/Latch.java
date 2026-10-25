@@ -22,12 +22,12 @@ final class Latch {
         int[] i = new int[8];
         float[] f = new float[8];
         int n;
-        int workerIndex;
+        /** The worker's fixed slot; set once when its thread is created. */
+int slot;
     }
 
     /** Registered buffers (one per worker that has ever recorded), in first-use order. */
     private static final CopyOnWriteArrayList<Buf> bufs = new CopyOnWriteArrayList<>();
-    private static int nextWorkerIndex;
 
     /** Volatile active batch id; 0 means no batch is running. */
     private static volatile int active;
@@ -64,7 +64,9 @@ final class Latch {
                 else {
                     int oc = bs[chosen].order[cur[chosen]];
                     int ow = bs[w].order[cur[w]];
-                    if (ow < oc) chosen = w;
+                    int sc = bs[chosen].slot;
+                    int sw = bs[w].slot;
+                    if (ow < oc || (ow == oc && sw < sc)) chosen = w;
                 }
             }
             Buf buf = bs[chosen];
@@ -93,31 +95,30 @@ final class Latch {
     }
 
     private static void stableSort(Buf b) {
-        Integer[] idx = new Integer[b.n];
-        for (int k = 0; k < b.n; k++) idx[k] = k;
-        final Buf bb = b;
-        Arrays.sort(idx, (x, y) -> Integer.compare(bb.order[x], bb.order[y]));
-        int[] order = new int[b.n];
-        Apply[] op = new Apply[b.n];
-        Object[] a = new Object[b.n];
-        Object[] bb2 = new Object[b.n];
-        int[] ii = new int[b.n];
-        float[] ff = new float[b.n];
-        for (int k = 0; k < b.n; k++) {
-            int pos = idx[k];
-            order[k] = b.order[pos];
-            op[k] = b.op[pos];
-            a[k] = b.a[pos];
-            bb2[k] = b.b[pos];
-            ii[k] = b.i[pos];
-            ff[k] = b.f[pos];
+        for (int k = 1; k < b.n; k++) {
+            int ko = b.order[k];
+            Apply o = b.op[k];
+            Object av = b.a[k];
+            Object bv = b.b[k];
+            int iv = b.i[k];
+            float fv = b.f[k];
+            int j = k;
+            while (j > 0 && b.order[j - 1] > ko) {
+                b.order[j] = b.order[j - 1];
+                b.op[j] = b.op[j - 1];
+                b.a[j] = b.a[j - 1];
+                b.b[j] = b.b[j - 1];
+                b.i[j] = b.i[j - 1];
+                b.f[j] = b.f[j - 1];
+                j--;
+            }
+            b.order[j] = ko;
+            b.op[j] = o;
+            b.a[j] = av;
+            b.b[j] = bv;
+            b.i[j] = iv;
+            b.f[j] = fv;
         }
-        System.arraycopy(order, 0, b.order, 0, b.n);
-        System.arraycopy(op, 0, b.op, 0, b.n);
-        System.arraycopy(a, 0, b.a, 0, b.n);
-        System.arraycopy(bb2, 0, b.b, 0, b.n);
-        System.arraycopy(ii, 0, b.i, 0, b.n);
-        System.arraycopy(ff, 0, b.f, 0, b.n);
     }
 
     static void record(int order, Apply op, Object a, Object b, int i, float f) {
@@ -129,7 +130,7 @@ final class Latch {
             Buf buf = w.latch;
                 if (buf == null) {
                     buf = new Buf();
-                    buf.workerIndex = nextWorkerIndex++;
+                    buf.slot = w.slot;
                     w.latch = buf;
                     bufs.add(buf);
                 }
@@ -143,9 +144,8 @@ final class Latch {
                 buf.f[n] = f;
                 return;
             }
-        // apply at once (stock behaviour)
-        try { op.apply(a, b, i, f); }
-        catch (Throwable ignored) { }
+        // apply at once (stock behaviour): propagate exceptions unchanged
+        op.apply(a, b, i, f);
     }
 
     private static void grow(Buf b) {

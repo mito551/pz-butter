@@ -50,6 +50,8 @@ final class WorkerTest {
         latchThrowingRecordDoesNotStopOthers();
         latchClearsObjectSlots();
         latchUnsortedBufferFallsBack();
+        latchTieByWorkerSlot();
+        latchDirectPropagates();
     }
 
     static void workersResourceInJar() {
@@ -484,18 +486,26 @@ final class WorkerTest {
     static void latchNoAllocationWarm() throws Exception {
         com.sun.management.ThreadMXBean mx;
         try { mx = (com.sun.management.ThreadMXBean) java.lang.management.ManagementFactory.getThreadMXBean(); }
-        catch (ClassCastException e) { return; }
-        if (!mx.isThreadAllocatedMemorySupported()) return;
+        catch (ClassCastException e) { System.out.println("latchNoAllocationWarm: ThreadMXBean not com.sun.management, skipped"); return; }
+        if (!mx.isThreadAllocatedMemorySupported()) { System.out.println("latchNoAllocationWarm: allocated memory not supported, skipped"); return; }
         mx.setThreadAllocatedMemoryEnabled(true);
         LuaGate.resetForTest(); LuaGate.guard.on = true; LuaGate.claim();
         Latch.Apply op = (a, b, i, f) -> { };
+        final long[] delta = {0};
         Thread w = LuaGate.worker(() -> {
+            // warm the buffer past 10,000 capacity first
+            for (int k = 0; k < 20000; k++) Latch.record(1, op, null, null, 0, 0.0f);
+            LuaGate.Worker ww = null; // warm buffer ready
+            long before = mx.getCurrentThreadAllocatedBytes();
             for (int k = 0; k < 10000; k++) Latch.record(1, op, null, null, 0, 0.0f);
+            delta[0] = mx.getCurrentThreadAllocatedBytes() - before;
         }, "w");
         Latch.begin(1);
         w.start(); w.join();
         int c = Latch.applyAll();
-        assert c == 10000 : c;
+        assert c == 30000 : c;
+        // measured with mx.getCurrentThreadAllocatedBytes(); at most 1 KB allowed for the measuring call
+        assert delta[0] <= 1024 : "allocated " + delta[0];
         LuaGate.resetForTest();
     }
 
@@ -549,5 +559,39 @@ final class WorkerTest {
         assert applied.equals(java.util.List.of(3, 4, 5)) : applied;
         assert Latch.unsorted == beforeUnsorted + 1;
         LuaGate.resetForTest();
+    }
+
+    static void latchTieByWorkerSlot() throws Exception {
+        Latch.Apply op = (a, b, i, f) -> { };
+        for (int iter = 0; iter < 50; iter++) {
+            LuaGate.resetForTest(); LuaGate.guard.on = true; LuaGate.claim();
+            java.util.List<Integer> applied = new java.util.ArrayList<>();
+            Latch.Apply op2 = (a, b, i, f) -> applied.add((Integer) a);
+            Thread[] ws = new Thread[2];
+            for (int s = 0; s < 2; s++) {
+                int ss = s;
+                LuaGate.Worker w = (LuaGate.Worker) LuaGate.worker(() -> Latch.record(7, op2, ss, null, 0, 0.0f), "w" + s);
+                w.slot = s;
+                ws[s] = w;
+            }
+            Latch.begin(1);
+            for (Thread w : ws) w.start();
+            for (Thread w : ws) w.join();
+            int count = Latch.applyAll();
+            assert count == 2 : count;
+            assert applied.size() == 2 : applied.size();
+            assert applied.get(0) == 0 : applied;
+            assert applied.get(1) == 1 : applied;
+            LuaGate.resetForTest();
+        }
+    }
+
+    static void latchDirectPropagates() {
+        try {
+            Latch.record(1, (a, b, i, f) -> { throw new IllegalStateException("x"); }, null, null, 0, 0.0f);
+            assert false;
+        } catch (IllegalStateException e) {
+            assert e.getMessage().equals("x");
+        }
     }
 }

@@ -138,7 +138,7 @@ final class FrameBatch {
             stopping = false;
             wake.drainPermits();
             for (int i = 0; i < ts.length; i++) {
-                ts[i] = LuaGate.worker(FrameBatch::workerLoop, "PZButter-frame-" + i);
+                ts[i] = LuaGate.worker(FrameBatch::workerLoop, "PZButter-frame-" + i, i + 1);
                 ts[i].start();
             }
         } catch (Throwable t) {
