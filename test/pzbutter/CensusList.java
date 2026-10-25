@@ -179,7 +179,7 @@ final class CensusList {
         String o = owner;
         boolean shared = o.equals("zombie/iso/IsoGridSquare") || o.equals("zombie/iso/IsoCell") || o.equals("zombie/iso/IsoChunk")
             || o.equals("zombie/iso/IsoChunkMap") || o.equals("zombie/iso/IsoMetaGrid") || o.equals("zombie/iso/IsoWorld")
-            || o.equals("zombie/ai/ZombieGroupManager") || o.equals("zombie/ai/ZombieGroup")
+            || o.equals("zombie/ai/ZombieGroupManager") || o.equals("zombie/characters/ZombieGroup")
             || o.equals("zombie/pathfind/PolygonalMap2") || o.equals("zombie/statistics/StatisticsManager")
             || o.startsWith("zombie/characters/AttachedItems/") || o.startsWith("zombie/popman/")
             || o.equals("zombie/VirtualZombieManager");

@@ -76,8 +76,7 @@ final class WorkerTransform implements ClassFileTransformer {
                         return null;
         }
 
-        ClassFile cf = ClassFile.of(ClassFile.ClassHierarchyResolverOption.of(
-            ClassHierarchyResolver.ofResourceParsing(l).orElse(ClassHierarchyResolver.defaultResolver())));
+        ClassFile cf = classFile(l);
         ClassTransform bodies = ClassTransform.transformingMethodBodies(mm -> !mm.methodName().equalsString("<clinit>"), (b, e) -> {
             if (e instanceof FieldInstruction f && scratchK(f, list) >= 0) {
                 b.loadConstant(scratchK(f, list)).invokestatic(SCRATCH, "get", GET).checkcast(ClassDesc.ofDescriptor(f.type().stringValue()));
@@ -95,6 +94,13 @@ final class WorkerTransform implements ClassFileTransformer {
     private static int scratchK(FieldInstruction f, WorkerList list) {
         if (f.opcode() != Opcode.GETSTATIC) return -1;
         return list.scratchIndex(f.owner().asInternalName(), f.name().stringValue(), f.type().stringValue());
+    }
+
+    /** Package-private: the stack-map resolver both transforms share. Never loads a class. */
+    static ClassFile classFile(ClassLoader loader) {
+        ClassLoader l = loader != null ? loader : ClassLoader.getSystemClassLoader();
+        return ClassFile.of(ClassFile.ClassHierarchyResolverOption.of(
+            ClassHierarchyResolver.ofResourceParsing(l).orElse(ClassHierarchyResolver.defaultResolver())));
     }
 
     private static boolean typeAccessible(String desc, ClassLoader l) {
