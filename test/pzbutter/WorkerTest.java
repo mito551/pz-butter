@@ -28,6 +28,7 @@ final class WorkerTest {
         scratchListArrays();
         transformRewritesArrayRead();
         transformVerifiesOnGameClasses();
+        transformSkipsNonPublicScratchType();
         scratchListResolvesOnGameJar();
         scratchGivesEachWorkerItsCopy();
         scratchKeepsOriginalForOtherThreads();
@@ -368,6 +369,30 @@ final class WorkerTest {
             Class<?> type = java.lang.invoke.MethodType.fromMethodDescriptorString("()" + s.desc(), ClassLoader.getSystemClassLoader()).returnType();
             java.lang.invoke.MethodHandles.privateLookupIn(owner, lookup).findStaticVarHandle(owner, s.field(), type);
         }
+    }
+
+    static void transformSkipsNonPublicScratchType() throws Exception {
+        byte[] ppType = WorkerTestSynth.nonPublicTypeClass();
+        byte[] ppReader = WorkerTestSynth.readerWithType("t.NonPublicType");
+        WorkerList ppList = WorkerList.parse("revision r\nclass t.Rdr\nscratch 0 t/Rdr F Lt/NonPublicType;\n");
+        ClassLoader ppLoader = loaderForTypes(ppReader, ppType, "t.NonPublicType");
+        assert WorkerTransform.transform(ppReader, ppList, ppLoader) == null;
+
+        byte[] pubType = WorkerTestSynth.publicTypeClass();
+        byte[] pubReader = WorkerTestSynth.readerWithType("t.PublicType");
+        WorkerList pubList = WorkerList.parse("revision r\nclass t.Rdr\nscratch 0 t/Rdr F Lt/PublicType;\n");
+        ClassLoader pubLoader = loaderForTypes(pubReader, pubType, "t.PublicType");
+        assert WorkerTransform.transform(pubReader, pubList, pubLoader) != null;
+    }
+
+    private static ClassLoader loaderForTypes(byte[] reader, byte[] type, String typeName) {
+        return new ClassLoader(WorkerTest.class.getClassLoader()) {
+            @Override protected Class<?> findClass(String n) throws ClassNotFoundException {
+                if (n.equals("t.Rdr")) return defineClass(n, reader, 0, reader.length);
+                if (n.equals(typeName)) return defineClass(n, type, 0, type.length);
+                throw new ClassNotFoundException(n);
+            }
+        };
     }
 
     static void untickedModDecision() {

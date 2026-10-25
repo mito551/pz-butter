@@ -134,6 +134,36 @@ final class WorkerTestSynth {
         return jar;
     }
 
+    /** A package-private value type (not public), with no usable public constructor expectation. */
+    static byte[] nonPublicTypeClass() { return typeClass("t.NonPublicType", 0); }
+    /** A public value type with a public no-arg constructor. */
+    static byte[] publicTypeClass() { return typeClass("t.PublicType", ClassFile.ACC_PUBLIC); }
+
+    private static byte[] typeClass(String name, int classFlags) {
+        ClassDesc self = ClassDesc.of(name);
+        int ctorFlags = ((classFlags & ClassFile.ACC_PUBLIC) != 0) ? ClassFile.ACC_PUBLIC : 0;
+        return ClassFile.of().build(self, cb -> {
+            cb.withFlags(classFlags);
+            cb.withMethodBody("<init>", MethodTypeDesc.of(ConstantDescs.CD_void), ctorFlags, b -> b
+                .aload(0).invokespecial(ConstantDescs.CD_Object, "<init>", MethodTypeDesc.of(ConstantDescs.CD_void)).return_());
+        });
+    }
+
+    /** A reader class (t.Rdr) exposing `static final F` of `typeName`, read in `read()`. */
+    static byte[] readerWithType(String typeName) {
+        ClassDesc self = ClassDesc.of("t.Rdr");
+        ClassDesc type = ClassDesc.of(typeName);
+        int sf = ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC | ClassFile.ACC_FINAL;
+        return ClassFile.of().build(self, cb -> {
+            cb.withFlags(ClassFile.ACC_PUBLIC);
+            cb.withField("F", type, sf);
+            cb.withMethodBody("<init>", MethodTypeDesc.of(ConstantDescs.CD_void), ClassFile.ACC_PUBLIC, b -> b
+                .aload(0).invokespecial(ConstantDescs.CD_Object, "<init>", MethodTypeDesc.of(ConstantDescs.CD_void)).return_());
+            cb.withMethodBody("read", MethodTypeDesc.of(ConstantDescs.CD_void), ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC, b -> b
+                .getstatic(self, "F", type).pop().return_());
+        });
+    }
+
     static final String ARR_LIST = "revision r\nclass t.Arr\nscratch 0 t/Arr X [I\n";
 
     /** t.Arr with `static final int[] X` and `static int len()` returning X.length. */
