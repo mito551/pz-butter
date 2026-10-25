@@ -1,7 +1,6 @@
 package pzbutter;
 
 import java.util.Arrays;
-import java.util.concurrent.CopyOnWriteArrayList;
 
 /** Ordered latch records: workers record, the game thread applies in order. */
 final class Latch {
@@ -26,8 +25,30 @@ final class Latch {
 int slot;
     }
 
-    /** Registered buffers (one per worker that has ever recorded), in first-use order. */
-    private static final CopyOnWriteArrayList<Buf> bufs = new CopyOnWriteArrayList<>();
+    /** Buffers indexed by worker slot. A worker's buffer lives at its slot from creation. */
+    static Buf[] bySlot = new Buf[16];
+
+    /** Called when a worker is created: stores its buffer at its slot. */
+    static void register(int slot, Buf buf) {
+        if (slot < 0) return;
+        if (slot >= bySlot.length) {
+            int c = bySlot.length;
+            while (c <= slot) c *= 2;
+            bySlot = Arrays.copyOf(bySlot, c);
+        }
+        bySlot[slot] = buf;
+    }
+
+    /** Clears the buffer registered for a slot (used on pool stop). */
+    static void clearSlot(int slot) {
+        if (slot >= 0 && slot < bySlot.length) bySlot[slot] = null;
+    }
+
+    /** Test reset: clears the whole registry. */
+    static void resetForTest() {
+        for (int i = 0; i < bySlot.length; i++) bySlot[i] = null;
+        active = 0;
+    }
 
     /** Volatile active batch id; 0 means no batch is running. */
     private static volatile int active;
@@ -41,7 +62,10 @@ int slot;
     }
 
     public static int applyAll() {
-        Buf[] bs = bufs.toArray(new Buf[0]);
+        // Collect only buffers that actually hold records.
+        java.util.ArrayList<Buf> nonEmpty = new java.util.ArrayList<>();
+        for (Buf b : bySlot) if (b != null && b.n > 0) nonEmpty.add(b);
+        Buf[] bs = nonEmpty.toArray(new Buf[0]);
         for (Buf b : bs) {
             if (b.n <= 1) continue;
             boolean sorted = true;
@@ -49,6 +73,28 @@ int slot;
                 if (b.order[k] > b.order[k + 1]) { sorted = false; break; }
             }
             if (!sorted) { unsorted++; stableSort(b); }
+        }
+        if (bs.length == 0) { active = 0; return 0; }
+        if (bs.length == 1) {
+            // Straight through, no merge.
+            Buf b = bs[0];
+            int applied = 0;
+            Throwable first = null;
+            for (int idx = 0; idx < b.n; idx++) {
+                Apply op = b.op[idx];
+                Object a = b.a[idx];
+                Object bb = b.b[idx];
+                int ii = b.i[idx];
+                float ff = b.f[idx];
+                try { op.apply(a, bb, ii, ff); }
+                catch (Throwable t) { failed++; if (first == null) first = t; }
+                finally { b.a[idx] = null; b.b[idx] = null; }
+                applied++;
+            }
+            b.n = 0;
+            active = 0;
+            if (first != null) rethrow(first);
+            return applied;
         }
         int total = 0;
         for (Buf b : bs) total += b.n;
@@ -73,11 +119,11 @@ int slot;
             int idx = cur[chosen];
             Apply op = buf.op[idx];
             Object a = buf.a[idx];
-            Object b = buf.b[idx];
+            Object bb = buf.b[idx];
             int ii = buf.i[idx];
             float ff = buf.f[idx];
             try {
-                op.apply(a, b, ii, ff);
+                op.apply(a, bb, ii, ff);
             } catch (Throwable t) {
                 failed++;
                 if (first == null) first = t;
@@ -122,30 +168,28 @@ int slot;
     }
 
     static void record(int order, Apply op, Object a, Object b, int i, float f) {
-        boolean activeNow = active != 0;
+        if (active == 0) {
+            op.apply(a, b, i, f);
+            return;
+        }
         Thread t = Thread.currentThread();
-        boolean isWorker = t instanceof LuaGate.Worker;
-        if (activeNow && isWorker) {
-            LuaGate.Worker w = (LuaGate.Worker) t;
-            Buf buf = w.latch;
-                if (buf == null) {
-                    buf = new Buf();
-                    buf.slot = w.slot;
-                    w.latch = buf;
-                    bufs.add(buf);
-                }
-                if (buf.n == buf.order.length) grow(buf);
-                int n = buf.n++;
-                buf.order[n] = order;
-                buf.op[n] = op;
-                buf.a[n] = a;
-                buf.b[n] = b;
-                buf.i[n] = i;
-                buf.f[n] = f;
-                return;
-            }
-        // apply at once (stock behaviour): propagate exceptions unchanged
-        op.apply(a, b, i, f);
+        if (!(t instanceof LuaGate.Worker w)) {
+            op.apply(a, b, i, f);
+            return;
+        }
+        Buf buf = w.latch;
+        if (buf == null) {
+            op.apply(a, b, i, f);
+            return;
+        }
+        if (buf.n == buf.order.length) grow(buf);
+        int n = buf.n++;
+        buf.order[n] = order;
+        buf.op[n] = op;
+        buf.a[n] = a;
+        buf.b[n] = b;
+        buf.i[n] = i;
+        buf.f[n] = f;
     }
 
     private static void grow(Buf b) {

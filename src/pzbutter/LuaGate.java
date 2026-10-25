@@ -46,7 +46,7 @@ final class LuaGate {
         boolean warned;
 
         Worker(Runnable r, String name) { this(r, name, NEXT_SLOT.getAndIncrement()); }
-        Worker(Runnable r, String name, int slot) { super(r, name); setDaemon(true); this.slot = slot; }
+        Worker(Runnable r, String name, int slot) { super(r, name); setDaemon(true); this.slot = slot; this.latch = new Latch.Buf(); this.latch.slot = slot; Latch.register(slot, this.latch); }
 
         /** However the body ends, a hold it still has is given back: the game thread must never wait for a dead owner. */
         @Override public void run() {

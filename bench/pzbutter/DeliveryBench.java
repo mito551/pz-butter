@@ -1643,43 +1643,40 @@ public final class DeliveryBench {
 
     static void latch() throws Exception {
         LuaGate.resetForTest(); LuaGate.guard.on = true; LuaGate.claim();
+        FrameBatch.start(5);
         long[] chk = {0};
         Latch.Apply op = (a, b, i, f) -> chk[0] += (Integer) a + i;
 
-        // Measure record alone: one worker thread, inside an active batch, tight loop of 100,000 records, warm buffer.
+        final int W = 4, M = 2000;
         double[] rec = new double[7];
-        for (int r = -1; r < 7; r++) {
-            Latch.begin(r + 2);
-            final long[] dt = {0};
-            Thread w = LuaGate.worker(() -> {
-                long t0 = System.nanoTime();
-                for (int k = 0; k < 100_000; k++) Latch.record(k, op, k, null, k, 0.0f);
-                dt[0] = System.nanoTime() - t0;
-            }, "w");
-            w.start(); w.join();
-            if (r >= 0) rec[r] = dt[0] / 100_000.0;
-            Latch.applyAll();
-        }
-        java.util.Arrays.sort(rec);
-
-        // Measure applyAll separately: 4 workers x 2,000 records.
         double[] appl = new double[7];
-        for (int r = -1; r < 7; r++) {
-            Latch.begin(r + 10);
-            Thread[] ws = new Thread[4];
-            for (int t = 0; t < 4; t++) {
-                int tt = t;
-                ws[t] = LuaGate.worker(() -> {
-                    for (int k = 0; k < 2000; k++) Latch.record((k * 4 + tt) % 8000, op, (k * 4 + tt) % 8000, null, k, 0.0f);
-                }, "w" + t);
-                ws[t].start();
-            }
-            for (Thread w : ws) w.join();
+        for (int r = 0; r < 10; r++) {
+            Latch.begin(100 + r);
+            long[] dts = new long[W];
+            FrameBatch.run(W, idx -> {
+                long t0 = System.nanoTime();
+                for (int k = 0; k < M; k++) Latch.record((k * W + idx) % (W * M), op, (k * W + idx) % (W * M), null, k, 0.0f);
+                dts[idx] = System.nanoTime() - t0;
+            });
+            long totalDt = 0;
+            for (int t = 0; t < W; t++) totalDt += dts[t];
             long ta = System.nanoTime();
             int c = Latch.applyAll();
             long da = System.nanoTime() - ta;
-            if (r >= 0) appl[r] = da / (double) c;
+            if (r >= 3) {
+                rec[r - 3] = totalDt / (double) (W * M);
+                appl[r - 3] = da / (double) c;
+            }
         }
+        FrameBatch.stopForTest();
+        java.util.Arrays.sort(rec);
+        java.util.Arrays.sort(appl);
+        System.out.printf("latch record: %6.2f ns/record%n", rec[3]);
+        System.out.printf("latch applyAll: %6.2f ns/record%n", appl[3]);
+        System.out.println("latch checksum " + chk[0]);
+        LuaGate.resetForTest();
+        FrameBatch.stopForTest();
+        java.util.Arrays.sort(rec);
         java.util.Arrays.sort(appl);
         System.out.printf("latch record: %6.2f ns/record%n", rec[3]);
         System.out.printf("latch applyAll: %6.2f ns/record%n", appl[3]);

@@ -52,6 +52,7 @@ final class WorkerTest {
         latchUnsortedBufferFallsBack();
         latchTieByWorkerSlot();
         latchDirectPropagates();
+        latchRegistryNoLeak();
     }
 
     static void workersResourceInJar() {
@@ -570,8 +571,7 @@ final class WorkerTest {
             Thread[] ws = new Thread[2];
             for (int s = 0; s < 2; s++) {
                 int ss = s;
-                LuaGate.Worker w = (LuaGate.Worker) LuaGate.worker(() -> Latch.record(7, op2, ss, null, 0, 0.0f), "w" + s);
-                w.slot = s;
+                LuaGate.Worker w = (LuaGate.Worker) LuaGate.worker(() -> Latch.record(7, op2, ss, null, 0, 0.0f), "w" + s, s);
                 ws[s] = w;
             }
             Latch.begin(1);
@@ -593,5 +593,23 @@ final class WorkerTest {
         } catch (IllegalStateException e) {
             assert e.getMessage().equals("x");
         }
+    }
+
+    static void latchRegistryNoLeak() throws Exception {
+        Latch.resetForTest();
+        for (int round = 0; round < 20; round++) {
+            LuaGate.resetForTest(); LuaGate.guard.on = true; LuaGate.claim();
+            FrameBatch.start(4);
+            FrameBatch.run(4, i -> Latch.record(i, (a, b, ii, f) -> { }, i, null, 0, 0.0f));
+            Latch.applyAll();
+            FrameBatch.stopForTest();
+            LuaGate.resetForTest();
+        }
+        int count = 0;
+        for (Latch.Buf b : Latch.bySlot) if (b != null) count++;
+        assert count == 0 : count;
+        LuaGate.resetForTest(); LuaGate.guard.on = true; LuaGate.claim();
+        assert Latch.applyAll() == 0;
+        LuaGate.resetForTest();
     }
 }
