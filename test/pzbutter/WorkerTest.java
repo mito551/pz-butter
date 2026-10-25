@@ -35,6 +35,9 @@ final class WorkerTest {
         scratchCopiesArrays();
         scratchProbeReportsUncopyable();
         scratchUnresolvableOwner();
+        freshGivesEachWorkerItsOwnInstance();
+        freshListParses();
+        scratchListKeepsHandSection();
         untickedModDecision();
         batchRunsEachIndexOnce();
         batchUsesWorkersAndCaller();
@@ -303,6 +306,47 @@ final class WorkerTest {
             assert seen[0] == null;
             assert Scratch.probe().startsWith("t/Nope.F: ") && Scratch.uncopyable() == 1;
         } finally { Scratch.loader = ClassLoader.getSystemClassLoader(); }
+    }
+
+    static void freshGivesEachWorkerItsOwnInstance() throws Exception {
+        Scratch.init(WorkerList.parse(WorkerTestSynth.FRESH_LIST_TEXT));
+        Class<?> c = WorkerTestSynth.loadFreshTransformed();
+        Scratch.loader = c.getClassLoader();
+        try {
+            Object original = c.getField("INSTANCE").get(null);
+            assert Scratch.get(0) == original;
+            Object[] seen = new Object[2];
+            Thread w1 = LuaGate.worker(() -> seen[0] = Scratch.get(0), "w1");
+            Thread w2 = LuaGate.worker(() -> seen[1] = Scratch.get(0), "w2");
+            w1.start(); w2.start(); w1.join(5000); w2.join(5000);
+            assert seen[0] != null && seen[1] != null && seen[0] != seen[1] && seen[0] != original && seen[1] != original;
+            assert seen[0].getClass().getField("value").get(seen[0]) != null;
+            assert seen[1].getClass().getField("value").get(seen[1]) != null;
+            assert seen[0].getClass().getField("value").get(seen[0]) != seen[1].getClass().getField("value").get(seen[1]);
+            Object[] nth = new Object[1];
+            Thread t = new Thread(() -> nth[0] = Scratch.get(0)); t.start(); t.join(5000);
+            assert nth[0] == original;
+        } finally { Scratch.loader = ClassLoader.getSystemClassLoader(); }
+    }
+
+    static void freshListParses() {
+        WorkerList l = WorkerList.parse("revision r\nclass t.G\nfresh 0 t/G INSTANCE Lt/Gen; init\n");
+        assert l.fresh().size() == 1;
+        assert l.fresh().get(0).equals(new WorkerList.Fresh(0, "t/G", "INSTANCE", "Lt/Gen;", "init"));
+        try { WorkerList.parse("revision r\nfresh 0 t/G INSTANCE Lt/Gen;\n"); assert false; } catch (IllegalArgumentException e) { assert e.getMessage().contains("2"); }
+        try { WorkerList.parse("revision r\nscratch 0 t/G INSTANCE Lt/Gen;\nfresh 0 t/H INSTANCE Lt/Gen; init\n"); assert false; } catch (IllegalArgumentException e) { assert e.getMessage().contains("3"); }
+    }
+
+    static void scratchListKeepsHandSection() throws Exception {
+        java.nio.file.Path jar = WorkerTestSynth.writeScratchJar(SelfTest.tmp("scratch/h.txt").toPath());
+        java.nio.file.Path hand = SelfTest.tmp("scratch/hand.txt").toPath();
+        java.nio.file.Files.writeString(hand, "revision r\n# hand begin\nfresh 0 t/G INSTANCE Lt/Gen; init\nclass t.X\n# hand end\n");
+        java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+        java.io.PrintStream old = System.out;
+        System.setOut(new java.io.PrintStream(baos));
+        try { ScratchList.main(new String[]{"--hand", hand.toString(), jar.toString(), "r", "t.A.m:()V"}); } finally { System.setOut(old); }
+        String out = baos.toString();
+        assert out.contains("# hand begin") && out.contains("fresh 0 t/G INSTANCE Lt/Gen; init") && out.contains("# hand end");
     }
 
     static void batchRunsEachIndexOnce() throws Exception {

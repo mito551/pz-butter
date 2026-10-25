@@ -13,6 +13,7 @@ final class WorkerTestSynth {
     private WorkerTestSynth() {}
 
     static final String LIST_TEXT = "revision r\nclass t.A\nscratch 0 t/A L Ljava/util/ArrayList;\nfield t.A pzbIdx I\n";
+    static final String FRESH_LIST_TEXT = "revision r\nclass t.G\nfresh 0 t/G INSTANCE Lt/Gen; init\n";
     private static final ClassDesc AL = ClassDesc.of("java.util.ArrayList");
     private static final ClassDesc INT = ConstantDescs.CD_Integer;
 
@@ -38,6 +39,54 @@ final class WorkerTestSynth {
             }
         };
         return l.loadClass("t.A");
+    }
+
+    static byte[] classG() {
+        ClassDesc self = ClassDesc.of("t.G");
+        ClassDesc gen = ClassDesc.of("t.Gen");
+        return ClassFile.of().build(self, (ClassBuilder cb) -> {
+            cb.withFlags(ClassFile.ACC_PUBLIC);
+            cb.withField("INSTANCE", gen, ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC | ClassFile.ACC_FINAL);
+            cb.withMethodBody("<init>", MethodTypeDesc.of(ConstantDescs.CD_void), ClassFile.ACC_PUBLIC, b -> b
+                .aload(0).invokespecial(ConstantDescs.CD_Object, "<init>", MethodTypeDesc.of(ConstantDescs.CD_void)).return_());
+            cb.withMethodBody("<clinit>", MethodTypeDesc.of(ConstantDescs.CD_void), ClassFile.ACC_STATIC, b -> b
+                .new_(gen).dup().invokespecial(gen, "<init>", MethodTypeDesc.of(ConstantDescs.CD_void))
+                .putstatic(self, "INSTANCE", gen).return_());
+            cb.withMethodBody("get", MethodTypeDesc.of(gen), ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC, b -> b
+                .getstatic(self, "INSTANCE", gen).areturn());
+        });
+    }
+
+    static byte[] classGen() {
+        ClassDesc self = ClassDesc.of("t.Gen");
+        return ClassFile.of().build(self, (ClassBuilder cb) -> {
+            cb.withFlags(ClassFile.ACC_PUBLIC);
+            cb.withField("value", ConstantDescs.CD_Object, ClassFile.ACC_PUBLIC);
+            cb.withMethodBody("<init>", MethodTypeDesc.of(ConstantDescs.CD_void), ClassFile.ACC_PROTECTED, b -> b
+                .aload(0).invokespecial(ConstantDescs.CD_Object, "<init>", MethodTypeDesc.of(ConstantDescs.CD_void)).return_());
+            cb.withMethodBody("init", MethodTypeDesc.of(ConstantDescs.CD_void), ClassFile.ACC_PUBLIC, b -> b
+                .aload(0).new_(ConstantDescs.CD_Object).dup().invokespecial(ConstantDescs.CD_Object, "<init>", MethodTypeDesc.of(ConstantDescs.CD_void))
+                .putfield(self, "value", ConstantDescs.CD_Object).return_());
+        });
+    }
+
+    static Class<?> loadFreshTransformed() throws Exception {
+        ClassLoader tl = new ClassLoader(WorkerTestSynth.class.getClassLoader()) {
+            @Override protected Class<?> findClass(String n) throws ClassNotFoundException {
+                if (n.equals("t.Gen")) { byte[] b = classGen(); return defineClass(n, b, 0, b.length); }
+                throw new ClassNotFoundException(n);
+            }
+        };
+        byte[] g = WorkerTransform.transform(classG(), WorkerList.parse(FRESH_LIST_TEXT), tl);
+        assert g != null;
+        ClassLoader l = new ClassLoader(WorkerTestSynth.class.getClassLoader()) {
+            @Override protected Class<?> findClass(String n) throws ClassNotFoundException {
+                if (n.equals("t.G")) return defineClass(n, g, 0, g.length);
+                if (n.equals("t.Gen")) { byte[] b = classGen(); return defineClass(n, b, 0, b.length); }
+                throw new ClassNotFoundException(n);
+            }
+        };
+        return l.loadClass("t.G");
     }
 
     private static byte[] build(String name, boolean reads, String extraField) {

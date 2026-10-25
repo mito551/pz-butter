@@ -1,5 +1,6 @@
 package pzbutter;
 
+import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.lang.invoke.VarHandle;
@@ -20,12 +21,18 @@ public final class Scratch {
 
     private static final class Entry {
         final String owner, field, desc;
+        final boolean fresh;
+        final String init;
         volatile VarHandle handle;
         volatile Object original;
         volatile boolean warned;
         volatile boolean failed;   // no copy path, or the owner field cannot be resolved
+        volatile MethodHandle ctor;
+        volatile MethodHandle initHandle;
 
-        Entry(String owner, String field, String desc) { this.owner = owner; this.field = field; this.desc = desc; }
+        Entry(String owner, String field, String desc, boolean fresh, String init) {
+            this.owner = owner; this.field = field; this.desc = desc; this.fresh = fresh; this.init = init;
+        }
     }
 
     private static volatile Entry[] entries = new Entry[0];
@@ -37,8 +44,10 @@ public final class Scratch {
     static void init(WorkerList list) {
         int n = 0;
         for (WorkerList.Scratch s : list.scratch()) n = Math.max(n, s.k() + 1);
+        for (WorkerList.Fresh f : list.fresh()) n = Math.max(n, f.k() + 1);
         Entry[] e = new Entry[n];
-        for (WorkerList.Scratch s : list.scratch()) if (e[s.k()] == null) e[s.k()] = new Entry(s.owner(), s.field(), s.desc());
+        for (WorkerList.Scratch s : list.scratch()) if (e[s.k()] == null) e[s.k()] = new Entry(s.owner(), s.field(), s.desc(), false, null);
+        for (WorkerList.Fresh f : list.fresh()) if (e[f.k()] == null) e[f.k()] = new Entry(f.owner(), f.field(), f.desc(), true, f.init());
         copies.set(0);
         entries = e;
     }
@@ -49,7 +58,7 @@ public final class Scratch {
     /** Entries whose copy failed or whose field could not be resolved: a worker reading those shares the original. */
     static int uncopyable() {
         int n = 0;
-        for (Entry e : entries) if (e.failed) n++;
+        for (Entry e : entries) if (e != null && e.failed) n++;
         return n;
     }
 
@@ -60,11 +69,16 @@ public final class Scratch {
     static String probe() {
         String first = "";
         for (Entry e : entries) {
+            if (e == null) continue;
             String why = null;
             try {
-                Object o = e.original != null ? e.original : resolve(e);
-                if (o == null) why = "unresolved";
-                else makeCopy(o);
+                if (e.fresh) {
+                    makeFresh(e);
+                } else {
+                    Object o = e.original != null ? e.original : resolve(e);
+                    if (o == null) why = "unresolved";
+                    else makeCopy(o);
+                }
             } catch (Throwable t) { why = t.toString(); }
             if (why == null) continue;
             e.failed = true;
@@ -77,14 +91,24 @@ public final class Scratch {
     public static Object get(int k) {
         try {
             Entry[] es = entries;
-            Entry e = es[k];
+            Entry e = (k >= 0 && k < es.length) ? es[k] : null;
+            if (e == null) return null;
             Object o = e.original;
             if (o == null) o = resolve(e);
-            if (!(Thread.currentThread() instanceof LuaGate.Worker w) || o == null) return o;
+            if (!(Thread.currentThread() instanceof LuaGate.Worker w)) return o;
+            if (o == null && !e.fresh) return o;
             Object[] mine = w.scratch;
             if (mine == null || mine.length != es.length) w.scratch = mine = new Object[es.length];
             Object c = mine[k];
-            if (c == null) mine[k] = c = copyOf(e, o);
+            if (c == null) {
+                if (e.fresh) {
+                    try { c = makeFresh(e); copies.incrementAndGet(); }
+                    catch (Throwable t) { e.failed = true; warn(e, t); c = o; }
+                } else {
+                    c = copyOf(e, o);
+                }
+                mine[k] = c;
+            }
             return c;
         } catch (Throwable t) {
             return fallback(k, t);
@@ -128,6 +152,25 @@ public final class Scratch {
             warn(e, t);
             return o;   // stock behaviour: the shared object
         }
+    }
+
+    private static Object makeFresh(Entry e) throws Exception {
+        synchronized (e) {
+            if (e.failed) throw new IllegalStateException("failed");
+            if (e.ctor == null) {
+                String desc = e.desc;
+                String typeName = desc.startsWith("L") && desc.endsWith(";") ? desc.substring(1, desc.length() - 1) : desc;
+                Class<?> owner = Class.forName(typeName.replace('/', '.'), false, Scratch.loader);
+                MethodHandles.Lookup priv = MethodHandles.privateLookupIn(owner, MethodHandles.lookup());
+                e.ctor = priv.findConstructor(owner, MethodType.methodType(void.class));
+                if (e.init != null) e.initHandle = priv.findVirtual(owner, e.init, MethodType.methodType(void.class));
+            }
+        }
+        Object o;
+        try { o = e.ctor.invoke(); } catch (Throwable t) { throw new Exception(t); }
+        MethodHandle ih = e.initHandle;
+        try { if (ih != null) ih.invoke(o); } catch (Throwable t) { throw new Exception(t); }
+        return o;
     }
 
     private static Object makeCopy(Object o) throws Exception {

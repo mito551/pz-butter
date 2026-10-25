@@ -1737,3 +1737,8 @@ scratch 134 zombie/vehicles/VehicleInterpolation tempQuaternionB Lorg/joml/Quate
 # written zombie.vehicles.VirtualVehicleManager.instance:Lzombie/vehicles/VirtualVehicleManager;
 # written zombie.vispoly.VisibilityPolygon2.instance:Lzombie/vispoly/VisibilityPolygon2;
 # written zombie.world.moddata.GlobalModData.lastBlockSize:I
+
+# hand begin
+fresh 135 zombie/core/random/RandStandard INSTANCE Lzombie/core/random/RandStandard; init
+class zombie.core.random.Rand
+# hand end

@@ -412,8 +412,26 @@ final class ScratchList {
     }
 
     public static void main(String[] args) throws IOException {
-        if (args.length < 3) { System.err.println("usage: ScratchList <jar> <revision> <owner.name:desc>..."); System.exit(2); }
-        List<String> out = run(Path.of(args[0]), List.of(args).subList(2, args.length), args[1]);
+        Path hand = null;
+        int i = 0;
+        if (args.length >= 2 && args[0].equals("--hand")) { hand = Path.of(args[1]); i = 2; }
+        if (args.length - i < 3) { System.err.println("usage: ScratchList [--hand <list file>] <jar> <revision> <owner.name:desc>..."); System.exit(2); }
+        List<String> out = new ArrayList<>(run(Path.of(args[i]), List.of(args).subList(i + 2, args.length), args[i + 1]));
+        if (hand != null) out.addAll(handSection(hand));
         System.out.print(String.join("\n", out) + "\n");
+    }
+
+    /** The lines of the file's `# hand begin`..`# hand end` section, inclusive (empty if none). */
+    public static List<String> handSection(Path handFile) throws IOException {
+        List<String> lines = Files.readAllLines(handFile);
+        List<String> out = new ArrayList<>();
+        boolean in = false;
+        for (String raw : lines) {
+            String s = raw.strip();
+            if (s.equals("# hand begin")) in = true;
+            if (in) out.add(raw);
+            if (s.equals("# hand end")) { in = false; }
+        }
+        return out;
     }
 }
