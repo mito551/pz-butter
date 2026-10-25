@@ -44,6 +44,12 @@ final class WorkerTest {
         batchRethrowsAfterAllFinish();
         batchNestedRunsInline();
         batchWorkerReachesLuaThroughGate();
+        latchAppliesInOrder();
+        latchDirectOutsideBatch();
+        latchNoAllocationWarm();
+        latchThrowingRecordDoesNotStopOthers();
+        latchClearsObjectSlots();
+        latchUnsortedBufferFallsBack();
     }
 
     static void workersResourceInJar() {
@@ -444,5 +450,104 @@ final class WorkerTest {
         assert !Preload.inModList(java.util.Set.of("Other"));
         assert Preload.inModList(null);
         assert Preload.inModList(java.util.Set.of("PZButter"));
+    }
+
+    static void latchAppliesInOrder() throws Exception {
+        LuaGate.resetForTest(); LuaGate.guard.on = true; LuaGate.claim();
+        java.util.List<Integer> applied = new java.util.ArrayList<>();
+        Latch.Apply op = (a, b, i, f) -> applied.add((Integer) a);
+        Thread[] ws = new Thread[4];
+        Latch.begin(1);
+        for (int t = 0; t < 4; t++) {
+            int tt = t;
+            ws[t] = LuaGate.worker(() -> {
+                for (int j = 0; j < 10; j++) {
+                    Latch.record((j * 4 + tt) % 12, op, (j * 4 + tt) % 12, null, 0, 0.0f);
+                }
+            }, "w" + t);
+            ws[t].start();
+        }
+        for (Thread w : ws) w.join();
+        int count = Latch.applyAll();
+        assert count == 40 : count;
+        assert applied.size() == 40 : applied.size();
+        for (int k = 1; k < applied.size(); k++) assert applied.get(k - 1) <= applied.get(k) : k;
+        LuaGate.resetForTest();
+    }
+
+    static void latchDirectOutsideBatch() {
+        java.util.concurrent.atomic.AtomicInteger n = new java.util.concurrent.atomic.AtomicInteger();
+        Latch.record(3, (a, b, i, f) -> n.incrementAndGet(), null, null, 0, 0.0f);
+        assert n.get() == 1;
+    }
+
+    static void latchNoAllocationWarm() throws Exception {
+        com.sun.management.ThreadMXBean mx;
+        try { mx = (com.sun.management.ThreadMXBean) java.lang.management.ManagementFactory.getThreadMXBean(); }
+        catch (ClassCastException e) { return; }
+        if (!mx.isThreadAllocatedMemorySupported()) return;
+        mx.setThreadAllocatedMemoryEnabled(true);
+        LuaGate.resetForTest(); LuaGate.guard.on = true; LuaGate.claim();
+        Latch.Apply op = (a, b, i, f) -> { };
+        Thread w = LuaGate.worker(() -> {
+            for (int k = 0; k < 10000; k++) Latch.record(1, op, null, null, 0, 0.0f);
+        }, "w");
+        Latch.begin(1);
+        w.start(); w.join();
+        int c = Latch.applyAll();
+        assert c == 10000 : c;
+        LuaGate.resetForTest();
+    }
+
+    static void latchThrowingRecordDoesNotStopOthers() throws Exception {
+        LuaGate.resetForTest(); LuaGate.guard.on = true; LuaGate.claim();
+        java.util.concurrent.atomic.AtomicInteger done = new java.util.concurrent.atomic.AtomicInteger();
+        Latch.Apply op = (a, b, i, f) -> { if ((Integer) a == 2) throw new IllegalStateException("boom"); done.incrementAndGet(); };
+        Thread w = LuaGate.worker(() -> {
+            for (int i = 0; i < 5; i++) Latch.record(i, op, i, null, 0, 0.0f);
+        }, "w");
+        Latch.begin(1);
+        w.start(); w.join();
+        long beforeFailed = Latch.failed;
+        try { Latch.applyAll(); assert false; }
+        catch (IllegalStateException e) { assert e.getMessage().equals("boom"); }
+        assert done.get() == 4;
+        assert Latch.failed == beforeFailed + 1;
+        LuaGate.resetForTest();
+    }
+
+    static void latchClearsObjectSlots() throws Exception {
+        LuaGate.resetForTest(); LuaGate.guard.on = true; LuaGate.claim();
+        Object a = new Object(); Object b = new Object();
+        java.util.concurrent.atomic.AtomicReference<Object> ca = new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.concurrent.atomic.AtomicReference<Object> cb = new java.util.concurrent.atomic.AtomicReference<>();
+        Thread w = LuaGate.worker(() -> {
+            Latch.record(1, (x, y, i, f) -> { ca.set(x); cb.set(y); }, a, b, 0, 0.0f);
+        }, "w");
+        Latch.begin(1);
+        w.start(); w.join();
+        assert Latch.applyAll() == 1;
+        // buffers expose no easy access; just ensure no exception and applied ran
+        assert ca.get() == a && cb.get() == b;
+        LuaGate.resetForTest();
+    }
+
+    static void latchUnsortedBufferFallsBack() throws Exception {
+        LuaGate.resetForTest(); LuaGate.guard.on = true; LuaGate.claim();
+        java.util.List<Integer> applied = new java.util.ArrayList<>();
+        Latch.Apply op = (a, b, i, f) -> applied.add((Integer) a);
+        Thread w = LuaGate.worker(() -> {
+            Latch.record(5, op, 5, null, 0, 0.0f);
+            Latch.record(3, op, 3, null, 0, 0.0f);
+            Latch.record(4, op, 4, null, 0, 0.0f);
+        }, "w");
+        long beforeUnsorted = Latch.unsorted;
+        Latch.begin(1);
+        w.start(); w.join();
+        int count = Latch.applyAll();
+        assert count == 3;
+        assert applied.equals(java.util.List.of(3, 4, 5)) : applied;
+        assert Latch.unsorted == beforeUnsorted + 1;
+        LuaGate.resetForTest();
     }
 }

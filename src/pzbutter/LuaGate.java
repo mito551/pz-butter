@@ -35,6 +35,8 @@ final class LuaGate {
         int swappedCount;
         /** Scratch copies of the listed static fields, by k (see {@link Scratch}); touched only by this thread. */
         Object[] scratch;
+        /** Latch buffer (see {@link Latch}); touched only by this thread during a batch and by the game thread in applyAll. */
+        Latch.Buf latch;
         boolean warned;
 
         Worker(Runnable r, String name) { super(r, name); setDaemon(true); }
