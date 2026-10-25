@@ -1647,40 +1647,53 @@ public final class DeliveryBench {
         long[] chk = {0};
         Latch.Apply op = (a, b, i, f) -> chk[0] += (Integer) a + i;
 
-        final int W = 4, M = 2000;
-        double[] rec = new double[7];
-        double[] appl = new double[7];
-        for (int r = 0; r < 10; r++) {
+        final int W = 4, M = 20_000;
+        Object[] boxed = new Object[W * M];
+        for (int j = 0; j < boxed.length; j++) boxed[j] = j;
+
+        final int warm = 20, timed = 7;
+        double[] rec = new double[timed];
+        double[] appl = new double[timed];
+        int workerTasks = 0;
+        for (int r = 0; r < warm + timed; r++) {
             Latch.begin(100 + r);
             long[] dts = new long[W];
+            java.util.concurrent.atomic.AtomicInteger wt = new java.util.concurrent.atomic.AtomicInteger();
             FrameBatch.run(W, idx -> {
-                long t0 = System.nanoTime();
-                for (int k = 0; k < M; k++) Latch.record((k * W + idx) % (W * M), op, (k * W + idx) % (W * M), null, k, 0.0f);
-                dts[idx] = System.nanoTime() - t0;
+                if (Thread.currentThread() instanceof LuaGate.Worker) {
+                    wt.incrementAndGet();
+                    long t0 = System.nanoTime();
+                    for (int k = 0; k < M; k++) Latch.record((k * W + idx) % (W * M), op, boxed[(k * W + idx) % (W * M)], null, k, 0.0f);
+                    dts[idx] = System.nanoTime() - t0;
+                } else {
+                    for (int k = 0; k < M; k++) Latch.record((k * W + idx) % (W * M), op, boxed[(k * W + idx) % (W * M)], null, k, 0.0f);
+                }
             });
             long totalDt = 0;
             for (int t = 0; t < W; t++) totalDt += dts[t];
             long ta = System.nanoTime();
             int c = Latch.applyAll();
             long da = System.nanoTime() - ta;
-            if (r >= 3) {
-                rec[r - 3] = totalDt / (double) (W * M);
-                appl[r - 3] = da / (double) c;
+            if (r >= warm) {
+                int wtCount = wt.get();
+                rec[r - warm] = wtCount > 0 ? totalDt / (double) (wtCount * M) : 0.0;
+                appl[r - warm] = c > 0 ? da / (double) c : 0.0;
             }
+            workerTasks = wt.get();
         }
         FrameBatch.stopForTest();
+        // direct (non-worker) cost: tight loop outside a batch, Latch inactive.
+        long td0 = System.nanoTime();
+        for (int k = 0; k < 20_000; k++) Latch.record(k, op, boxed[k], null, k, 0.0f);
+        double directNs = (System.nanoTime() - td0) / 20_000.0;
+
         java.util.Arrays.sort(rec);
         java.util.Arrays.sort(appl);
         System.out.printf("latch record: %6.2f ns/record%n", rec[3]);
         System.out.printf("latch applyAll: %6.2f ns/record%n", appl[3]);
         System.out.println("latch checksum " + chk[0]);
-        LuaGate.resetForTest();
-        FrameBatch.stopForTest();
-        java.util.Arrays.sort(rec);
-        java.util.Arrays.sort(appl);
-        System.out.printf("latch record: %6.2f ns/record%n", rec[3]);
-        System.out.printf("latch applyAll: %6.2f ns/record%n", appl[3]);
-        System.out.println("latch checksum " + chk[0]);
+        System.out.printf("latch worker tasks: %d%n", workerTasks);
+        System.out.printf("latch direct (non-worker): %6.2f ns/record%n", directNs);
         LuaGate.resetForTest();
     }
 }
