@@ -24,7 +24,7 @@ mkdir -p "$B/mod/PZButter/42/media/java/client"
 cp "$B/PZButter.jar" "$B/mod/PZButter/42/media/java/client/"
 # ZombieBuddy signature (.zbs beside the jar): ZB preloads only signed jars of trusted authors. Key and SteamID stay outside the repo.
 ZBS_KEY="${PZB_ZBS_KEY:-$HOME/.config/pz-butter/zbs-ed25519.key}"
-ZBS_ID="${PZB_ZBS_STEAMID:-$(cat "$HOME/.config/pz-butter/zbs-steamid" 2>/dev/null)}"
+ZBS_ID="${PZB_ZBS_STEAMID:-$(cat "$HOME/.config/pz-butter/zbs-steamid" 2>/dev/null || true)}"   # set -e: a missing file must not end the build (CI has no key)
 if [[ -f "$ZBS_KEY" && -n "$ZBS_ID" ]]; then
     "$JDK/bin/java" -cp "$PZ_GAME/ZombieBuddy.jar" "$HERE/tools/ZbsSign.java" sign "$ZBS_KEY" "$ZBS_ID" \
         "$B/mod/PZButter/42/media/java/client/PZButter.jar" | tail -1
