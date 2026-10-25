@@ -622,7 +622,7 @@ final class WorkerTest {
         java.lang.classfile.ClassModel m = java.lang.classfile.ClassFile.of().parse(bytes);
         java.lang.classfile.MethodModel update = null;
         for (java.lang.classfile.MethodModel mm : m.methods()) {
-            if (mm.methodName().equalsString("update")) { update = mm; break; }
+            if (mm.methodName().equalsString("update") && mm.methodType().equalsString("(I)V")) { update = mm; break; }
         }
         assert update != null : "update(I)V not found";
         java.util.List<java.lang.classfile.CodeElement> insns = new java.util.ArrayList<>();
@@ -647,6 +647,7 @@ final class WorkerTest {
         assert firstPre >= 0 && firstFrame >= 0 && firstUpdate >= 0 && firstPre < firstFrame && firstFrame < firstUpdate
             : "preupdate, frameStep and update are not in that order";
 
+        assert multiWrites.size() == 2 : "expected exactly two multiplier writes (set and reset), found " + multiWrites.size();
         assert !multiWrites.isEmpty() && multiWrites.get(0) < firstPre
             : "no multiplier write appears before the first preupdate()V";
 
@@ -670,13 +671,13 @@ final class WorkerTest {
         return e instanceof java.lang.classfile.instruction.FieldInstruction f
             && f.opcode() == java.lang.classfile.Opcode.PUTFIELD
             && f.owner().asInternalName().equals("zombie/GameTime")
-            && f.name().equalsString("perObjectMultiplier");
+            && f.name().equalsString("perObjectMultiplier")
+            && f.type().equalsString("F");
     }
 
     private static boolean isConstOne(java.util.List<java.lang.classfile.CodeElement> insns, int writeIdx) {
         if (writeIdx <= 0) return false;
         java.lang.classfile.CodeElement prev = insns.get(writeIdx - 1);
-        String s = String.valueOf(prev);
-        return s.contains("FCONST_1") || s.contains("ICONST_1");
+        return prev instanceof java.lang.classfile.instruction.ConstantInstruction ci && Float.valueOf(1.0f).equals(ci.constantValue());
     }
 }
