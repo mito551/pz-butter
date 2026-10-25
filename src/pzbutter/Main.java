@@ -25,7 +25,8 @@ public class Main {
         AimHold.init();
         System.out.println("[PZButter] " + Settings.VERSION + ", enabled=" + Settings.enabled);
         System.out.println("[PZButter] workers: " + Preload.status());
-        if (Settings.flag("devCensus")) System.out.println("[PZButter] census: " + Census.status());        pzbutter.luabudget.Budget.init();
+        if (Settings.flag("devCensus")) System.out.println("[PZButter] census: " + Census.status());
+        pzbutter.luabudget.Budget.init();
         LuaFast.init();
         LuaTiming.init();
         LuaGate.init();
