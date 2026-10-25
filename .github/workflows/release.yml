@@ -58,6 +58,23 @@ jobs:
           else jar --create --file "$RUNNER_TEMP/pz/projectzomboid.jar" -C "$J" .; fi   # loose classes
           echo "PZ_EXTRA_CP=$(find "$J" -name '*.jar' ! -name projectzomboid.jar | paste -sd:)" >> "$GITHUB_ENV"
 
+      # ZombieBuddy preloads only a signed jar (.zbs beside it): build.sh signs when the key and SteamID are present.
+      # Secrets ZBS_KEY_B64 (base64 of the Ed25519 PKCS#8 key) and ZBS_STEAMID; without them the build is unsigned.
+      - name: Signing key
+        env:
+          ZBS_KEY_B64: ${{ secrets.ZBS_KEY_B64 }}
+          ZBS_STEAMID: ${{ secrets.ZBS_STEAMID }}
+        run: |
+          if [ -n "$ZBS_KEY_B64" ] && [ -n "$ZBS_STEAMID" ]; then
+            umask 077
+            mkdir -p ~/.config/pz-butter
+            printf '%s' "$ZBS_KEY_B64" | base64 -d > ~/.config/pz-butter/zbs-ed25519.key
+            printf '%s\n' "$ZBS_STEAMID" > ~/.config/pz-butter/zbs-steamid
+            echo "signing key installed"
+          else
+            echo "no signing secrets: the build is unsigned"
+          fi
+
       - name: Build and test
         run: |
           JDK="$JAVA_HOME" PZ_GAME="$RUNNER_TEMP/pz" ./build.sh || {
@@ -74,6 +91,13 @@ jobs:
             echo "::error::release v$v already exists; bump modversion in mod/PZButter/42/mod.info"
             exit 1
           fi
+          test -f build/mod/PZButter/42/media/java/client/PZButter.jar.zbs || {
+            echo "::error::unsigned build: set the ZBS_KEY_B64 and ZBS_STEAMID secrets (ZombieBuddy would never preload it)"
+            exit 1; }
           (cd build/mod && zip -qr "../PZButter-$v.zip" PZButter)
           gh release create "v$v" "build/PZButter-$v.zip" --target "$GITHUB_SHA" \
             --title "PZ Butter $v" --generate-notes
+
+      - name: Remove the signing key
+        if: always()
+        run: rm -rf ~/.config/pz-butter
