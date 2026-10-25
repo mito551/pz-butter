@@ -53,6 +53,7 @@ final class WorkerTest {
         latchTieByWorkerSlot();
         latchDirectPropagates();
         latchRegistryNoLeak();
+        bucketMultiplierWindow();
     }
 
     static void workersResourceInJar() {
@@ -610,5 +611,72 @@ final class WorkerTest {
         LuaGate.resetForTest(); LuaGate.guard.on = true; LuaGate.claim();
         assert Latch.applyAll() == 0;
         LuaGate.resetForTest();
+    }
+
+    static void bucketMultiplierWindow() throws Exception {
+        byte[] bytes;
+        try (java.io.InputStream in = ClassLoader.getSystemResourceAsStream("zombie/MovingObjectUpdateSchedulerUpdateBucket.class")) {
+            assert in != null : "MovingObjectUpdateSchedulerUpdateBucket.class not on the test class path";
+            bytes = in.readAllBytes();
+        }
+        java.lang.classfile.ClassModel m = java.lang.classfile.ClassFile.of().parse(bytes);
+        java.lang.classfile.MethodModel update = null;
+        for (java.lang.classfile.MethodModel mm : m.methods()) {
+            if (mm.methodName().equalsString("update")) { update = mm; break; }
+        }
+        assert update != null : "update(I)V not found";
+        java.util.List<java.lang.classfile.CodeElement> insns = new java.util.ArrayList<>();
+        for (java.lang.classfile.CodeElement e : update.code().orElseThrow()) insns.add(e);
+
+        int countPre = 0, countFrame = 0, countUpdate = 0;
+        int firstPre = -1, firstFrame = -1, firstUpdate = -1, lastUpdate = -1;
+        java.util.List<Integer> multiWrites = new java.util.ArrayList<>();
+        for (int i = 0; i < insns.size(); i++) {
+            java.lang.classfile.CodeElement e = insns.get(i);
+            if (e instanceof java.lang.classfile.instruction.InvokeInstruction inv
+                    && inv.owner().asInternalName().equals("zombie/iso/IsoMovingObject")) {
+                if (inv.name().equalsString("preupdate")) { countPre++; if (firstPre < 0) firstPre = i; }
+                if (inv.name().equalsString("frameStep")) { countFrame++; if (firstFrame < 0) firstFrame = i; }
+                if (inv.name().equalsString("update")) { countUpdate++; if (firstUpdate < 0) firstUpdate = i; lastUpdate = i; }
+            }
+            if (isMultiplierWrite(e)) multiWrites.add(i);
+        }
+        assert countPre == 1 : "preupdate appears " + countPre + " times, expected exactly once";
+        assert countFrame == 1 : "frameStep appears " + countFrame + " times, expected exactly once";
+        assert countUpdate == 1 : "update appears " + countUpdate + " times, expected exactly once";
+        assert firstPre >= 0 && firstFrame >= 0 && firstUpdate >= 0 && firstPre < firstFrame && firstFrame < firstUpdate
+            : "preupdate, frameStep and update are not in that order";
+
+        assert !multiWrites.isEmpty() && multiWrites.get(0) < firstPre
+            : "no multiplier write appears before the first preupdate()V";
+
+        int setIdx = multiWrites.get(0);
+        // find reset write: multiplier write after last update with constant 1 immediately before it
+        int resetIdx = -1;
+        for (int w : multiWrites) {
+            if (w > lastUpdate && isConstOne(insns, w)) { resetIdx = w; break; }
+        }
+        assert resetIdx >= 0 : "no multiplier reset to 1 appears after the last update()V";
+
+        int writesBetween = 0;
+        for (int w : multiWrites) if (w >= setIdx && w <= resetIdx) writesBetween++;
+        assert writesBetween == 2 : "extra multiplier write between the set and the reset (" + writesBetween + " writes)";
+
+        // reset uses constant 1 (already checked isConstOne), and is after last update
+        assert resetIdx > lastUpdate : "reset write does not appear after the last update()V";
+    }
+
+    private static boolean isMultiplierWrite(java.lang.classfile.CodeElement e) {
+        return e instanceof java.lang.classfile.instruction.FieldInstruction f
+            && f.opcode() == java.lang.classfile.Opcode.PUTFIELD
+            && f.owner().asInternalName().equals("zombie/GameTime")
+            && f.name().equalsString("perObjectMultiplier");
+    }
+
+    private static boolean isConstOne(java.util.List<java.lang.classfile.CodeElement> insns, int writeIdx) {
+        if (writeIdx <= 0) return false;
+        java.lang.classfile.CodeElement prev = insns.get(writeIdx - 1);
+        String s = String.valueOf(prev);
+        return s.contains("FCONST_1") || s.contains("ICONST_1");
     }
 }
