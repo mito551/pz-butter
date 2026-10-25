@@ -42,12 +42,6 @@ final class CensusReport {
         // header
         long minutes = 0, calmUpdates = 0, otherUpdates = 0, missed = 0;
         String revision = sites.revision();
-        for (String raw : censusText.lines().toList()) {
-            String line = raw.strip();
-            if (line.startsWith("revision ") || line.contains(" revision ")) {
-                // first line is the header
-            }
-        }
         String[] hdr = censusText.lines().findFirst().orElse("").trim().split("\\s+");
         // header format: revision X minutes N calmUpdates N otherUpdates N missed N
         for (int i = 0; i + 1 < hdr.length; i += 2) {
@@ -115,9 +109,9 @@ final class CensusReport {
         md.append("- calm updates: ").append(calmUpdates).append("\n");
         md.append("- other updates: ").append(otherUpdates).append("\n");
         md.append("- total updates: ").append(totalUpdates).append("\n");
-        md.append("- calm share: ").append(String.format(Locale.US, "%.1f%%", calmShare))
+        md.append("- calm share: ").append(String.format(Locale.ROOT, "%.1f %%", calmShare))
            .append(" (").append(calmUpdates).append("/").append(totalUpdates).append(", ")
-           .append(String.format(Locale.US, "%.0f%%", calmShare)).append(")\n");
+           .append(String.format(Locale.ROOT, "%.1f %%", calmShare)).append(")\n");
         md.append("- minutes: ").append(minutes).append("\n");
         if (zeroCalm.isEmpty()) {
             md.append("- families with zero calm hits (needs no latch): (none)\n");
@@ -136,7 +130,7 @@ final class CensusReport {
             md.append("## ").append(fam).append("\n\n");
             md.append("- sites hit on calm updates: ").append(hitSites).append("\n");
             double perCalm = calmUpdates > 0 ? ((double) calmTotal / calmUpdates) : 0.0;
-            md.append("- calm hits per calm update: ").append(perCalm).append("\n");
+            md.append("- calm hits per calm update: ").append(fmtRate(perCalm)).append("\n");
 
             // top 15 by calm hits
             fr.sort((a, b) -> Long.compare(b.calm(), a.calm()));
@@ -147,7 +141,7 @@ final class CensusReport {
             for (SiteCount r : fr) {
                 if (r.calm() <= 0) continue;
                 if (n++ >= 15) break;
-                md.append("| ").append(dot(r.owner())).append(".").append(r.method())
+                md.append("| ").append(dot(r.owner())).append(".").append(methodName(r.method()))
                    .append(" | ").append(r.offset())
                    .append(" | ").append(r.target())
                    .append(" | ").append(r.calm()).append(" |\n");
@@ -188,9 +182,9 @@ final class CensusReport {
             for (SiteCount r : list) total += r.calm();
             double per = calmUpdates > 0 ? ((double) total / calmUpdates) : 0.0;
             List<String> methods = new ArrayList<>();
-            for (SiteCount r : list) methods.add(dot(r.owner()) + "." + r.method());
+            for (SiteCount r : list) methods.add(dot(r.owner()) + "." + methodName(r.method()));
             md.append("| ").append(fieldOf(target))
-               .append(" | ").append(per)
+               .append(" | ").append(fmtRate(per))
                .append(" | ").append(String.join(", ", methods))
                .append(" |\n");
         }
@@ -223,13 +217,21 @@ final class CensusReport {
         // missed classes
         md.append("## missed classes\n\n");
         md.append(missed).append("\n");
-        md.append("missed: ").append(missed).append("\n");
 
         return md.toString();
     }
 
     private static String dot(String internal) {
         return internal.replace('/', '.');
+    }
+
+    private static String methodName(String method) {
+        int p = method.indexOf('(');
+        return p >= 0 ? method.substring(0, p) : method;
+    }
+
+    private static String fmtRate(double v) {
+        return String.format(Locale.ROOT, "%.3g", v);
     }
 
     private static String targetMethod(String target) {

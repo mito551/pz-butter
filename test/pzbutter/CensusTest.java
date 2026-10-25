@@ -24,6 +24,7 @@ final class CensusTest {
         censusExitOnThrow();
         censusDumpFormat();
         censusStatusLine();
+        censusReportTables();
     }
 
     static void calmPredicate() {
@@ -230,5 +231,37 @@ final class CensusTest {
             }
         }
         throw new AssertionError("hit not inserted before getstatic t/Sub.F");
+    }
+
+    static void censusReportTables() throws Exception {
+        java.io.File siteList = SelfTest.tmp("censusreport/sites.txt");
+        java.io.File censusOut = SelfTest.tmp("censusreport/census.out");
+        String sites = String.join("\n",
+            "revision r",
+            "class t.Z",
+            "site 0 LUA t.Z update()V 0 invokevirtual:zombie/Lua/LuaEventManager.triggerEvent:(Ljava/lang/String;)V",
+            "site 1 SHARED a/O foo()V 1 invokevirtual:zombie/Foo.bar:()V",
+            "site 2 SHARED b/O bar()V 2 invokevirtual:zombie/Foo.bar:()V",
+            "site 3 RNG t.Z update()V 3 invokestatic:java/util/Random.nextInt:()I",
+            "site 4 PHYSICS t.Z update()V 4 invokestatic:zombie/Physics.step:()V"
+        );
+        try (java.io.FileWriter w = new java.io.FileWriter(siteList)) { w.write(sites + "\n"); }
+        String census = "revision r minutes 0 calmUpdates 400 otherUpdates 100 missed 0\n"
+            + "0 LUA 832 0 t.Z update()V 0 invokevirtual:zombie/Lua/LuaEventManager.triggerEvent:(Ljava/lang/String;)V\n"
+            + "1 SHARED 100 0 a/O foo()V 1 invokevirtual:zombie/Foo.bar:()V\n"
+            + "2 SHARED 200 0 b/O bar()V 2 invokevirtual:zombie/Foo.bar:()V\n"
+            + "3 RNG 5 0 t.Z update()V 3 invokestatic:java/util/Random.nextInt:()I\n";
+        try (java.io.FileWriter w = new java.io.FileWriter(censusOut)) { w.write(census); }
+
+        String md = CensusReport.generate(censusOut, siteList);
+        assert md.contains("calm updates: 400") : md;
+        assert md.contains("80.0 %") : md;
+        assert md.contains("triggerEvent") : md;
+        assert md.contains("2.08") : md;
+        // SHARED grouping sums the two sites into one target row
+        assert md.contains("zombie.Foo.bar") : md;
+        assert !md.contains("calm hits") || md.contains("300") : md;
+        // PHYSICS listed with zero calm hits
+        assert md.contains("PHYSICS") && md.contains("needs no latch") : md;
     }
 }
