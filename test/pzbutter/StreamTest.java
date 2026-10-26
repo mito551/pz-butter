@@ -15,6 +15,8 @@ final class StreamTest {
         gloveBoxOffIsStock();
         streamDefaultsWritten();
         pacingTests();
+        hotsaveMsClamps();
+        hotsaveDefaultsWritten();
     }
 
     static void pacingTests() throws Throwable {
@@ -134,5 +136,24 @@ final class StreamTest {
         try { t = java.nio.file.Files.readString(f.toPath()); }
         catch (java.io.IOException e) { throw new RuntimeException(e); }
         assert t.contains("\ngloveBoxFix=false\n") : t;
+    }
+
+    static void hotsaveMsClamps() {
+        assert StreamPatches.hotsaveMs(0) == 1_000L;
+        assert StreamPatches.hotsaveMs(30) == 30_000L;
+        assert StreamPatches.hotsaveMs(9999) == 600_000L;
+        StreamPatches.hotsaveGuard.on = false;
+        StreamPatches.init();
+        assert !StreamPatches.hotsaveGuard.on;
+    }
+
+    static void hotsaveDefaultsWritten() {
+        java.io.File f = SelfTest.tmp("hotsave.properties");
+        f.delete();
+        Settings.load(f);
+        String t = "";
+        try { t = java.nio.file.Files.readString(f.toPath()); }
+        catch (java.io.IOException e) { throw new RuntimeException(e); }
+        assert t.contains("\nhotsaveIntervalSec=0\n") : t;
     }
 }

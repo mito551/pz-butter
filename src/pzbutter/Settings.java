@@ -286,7 +286,11 @@ public final class Settings {
 + "# chunkHandoffDivisor: joins per frame capped by 1 + queued/divisor (0 = off).\n"
 + "chunkHandoffDivisor=0\n"
 + "# chunkHandoffFrameBudgetUs: budget in microseconds for joins this frame (0 = off).\n"
-+ "chunkHandoffFrameBudgetUs=0\n";
++ "chunkHandoffFrameBudgetUs=0\n"
++ "#\n"
++ "# Hot save (Plan 10a). Stock queues hot saves at most once a second.\n"
++ "# hotsaveIntervalSec: hot-save interval in seconds (0 = stock 1 s; 30 = 30 s). A crash can lose up to this many seconds of the world.\n"
++ "hotsaveIntervalSec=0\n";
 
     public static volatile boolean enabled;
     public static volatile boolean frameLog;
