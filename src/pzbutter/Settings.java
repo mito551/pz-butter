@@ -276,7 +276,11 @@ public final class Settings {
       + "# cursorLatch: the cursor is moved to the newest pointer position just before the frame is drawn.\n"
       + "cursorLatch=false\n"
       + "# aimHoldMs: right-button hold before aiming starts.\n"
-      + "aimHoldMs=150\n";
+      + "aimHoldMs=150\n"
+      + "#\n"
+      + "# World load (Plan 11).\n"
+      + "# storyKidsRoomMemo: memoise RoomDef.isKidsRoom per room for one building's story pass.\n"
+      + "storyKidsRoomMemo=false\n";
 
     public static volatile boolean enabled;
     public static volatile boolean frameLog;
