@@ -18,6 +18,7 @@ public final class ZombiePatches {
         ZombieMisc.init();
         EntityTiming.init();
         ZombieStats.init();
+        AnimSkip.init();
     }
 
     /** IsoGameCharacter.setForwardDirection(float, float) entry: true skips the body (the character keeps its facing). */
@@ -375,4 +376,108 @@ public final class ZombiePatches {
         @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
         public static void exit() { ZombiePatches.onSchedExit(EntityTiming.POSTUPDATE); }
     }
+
+    // ---- zombieAnimDistantSkip: far zombies refill bone matrices one frame in N, staggered ----
+
+    /** AnimationPlayer.updateAnimation_StandardAnimation entry: decides per call whether this player's matrix fill is skipped. */
+    public static void onAnimEnter(Object self, long frameNo) {
+        AnimSkip.skipping = false;
+        if (!AnimSkip.distGuard.on) return;
+        if (Thread.currentThread() != FrameClock.mainThread) return;
+        try {
+            zombie.core.skinnedmodel.animation.AnimationPlayer ap =
+                (zombie.core.skinnedmodel.animation.AnimationPlayer) self;
+            zombie.characters.IsoGameCharacter c = ap.getIsoGameCharacter();
+            boolean isZombie = c instanceof zombie.characters.IsoZombie;
+            boolean needFirst = ap.isBoneTransformsNeedFirstFrame();
+            boolean hasParent = ap.parentPlayer != null;
+            boolean busy = false;
+            int id = 0;
+            float dx = 0, dy = 0;
+            if (isZombie) {
+                zombie.characters.IsoZombie z = (zombie.characters.IsoZombie) c;
+                id = z.getOnlineID();
+                boolean ragdoll = false, dead = false, fakeDead = false, onFloor = false, knocked = false, attacking = false,
+                    crawling = false, onFire = false, inVehicle = false, hasTarget = false, thumping = false, gr = false, grl = false;
+                try { ragdoll = z.isRagdoll(); } catch (Throwable t) { ragdoll = false; }
+                try { dead = z.isDead(); } catch (Throwable t) { dead = false; }
+                try { fakeDead = z.isFakeDead(); } catch (Throwable t) { fakeDead = false; }
+                try { onFloor = z.isOnFloor(); } catch (Throwable t) { onFloor = false; }
+                try { knocked = z.isKnockedDown(); } catch (Throwable t) { knocked = false; }
+                try { attacking = z.isAttacking(); } catch (Throwable t) { attacking = false; }
+                try { crawling = z.isCrawling(); } catch (Throwable t) { crawling = false; }
+                try { onFire = z.isOnFire(); } catch (Throwable t) { onFire = false; }
+                try { inVehicle = z.getVehicle() != null; } catch (Throwable t) { inVehicle = false; }
+                try { hasTarget = z.getTarget() != null; } catch (Throwable t) { hasTarget = false; }
+                try { thumping = z.getThumpTarget() != null; } catch (Throwable t) { thumping = false; }
+                try {
+                    zombie.core.skinnedmodel.IGrappleable g = z.getGrappleable();
+                    if (g != null) { gr = g.isGrappling(); grl = g.isBeingGrappled(); }
+                } catch (Throwable t) { gr = false; grl = false; }
+                int hitTime = 0;
+                try { hitTime = z.getHitTime(); } catch (Throwable t) { hitTime = 0; }
+                boolean attached = false;
+                try { attached = z.getAttachedItems() != null; } catch (Throwable t) { attached = false; }
+                boolean held = false;
+                try { held = z.getPrimaryHandItem() != null; } catch (Throwable t) { held = false; }
+                busy = ragdoll || dead || fakeDead || onFloor || knocked || attacking || crawling || onFire
+                    || inVehicle || hasTarget || thumping || gr || grl || hitTime > 0 || attached || held;
+                // nearest local player distance
+                zombie.characters.IsoPlayer[] ps = zombie.characters.IsoPlayer.players;
+                int n = zombie.characters.IsoPlayer.numPlayers;
+                float best = Float.MAX_VALUE;
+                zombie.characters.IsoPlayer nearest = null;
+                for (int i = 0; i < n; i++) {
+                    zombie.characters.IsoPlayer p = (ps == null || i >= ps.length) ? null : ps[i];
+                    if (p == null) continue;
+                    float d = z.DistTo(p);
+                    if (d < best) { best = d; nearest = p; }
+                }
+                if (nearest != null) {
+                    dx = z.getX() - nearest.getX();
+                    dy = z.getY() - nearest.getY();
+                }
+            }
+            if (!AnimSkip.eligible(isZombie, needFirst, hasParent, busy)) return;
+            if (!AnimSkip.distant(dx, dy, AnimSkip.distTiles)) return;
+            AnimSkip.skipping = AnimSkip.cadenceSkip(id, frameNo, AnimSkip.distEvery);
+            if (AnimSkip.skipping) AnimSkip.skipped++;
+            else AnimSkip.rebuilt++;
+        } catch (Throwable t) {
+            AnimSkip.skipping = false;
+            AnimSkip.distGuard.fail(t);
+        }
+    }
+
+    /** Clears the flag on exit (also on a throw). */
+    public static void onAnimExit() {
+        AnimSkip.skipping = false;
+    }
+
+    @Patch(className = "zombie.core.skinnedmodel.animation.AnimationPlayer", methodName = "updateAnimation_StandardAnimation")
+    public static class AnimStandard {
+        @Patch.OnEnter
+        public static void enter(@Patch.This Object self) { ZombiePatches.onAnimEnter(self, FrameClock.frameNo); }
+
+        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
+        public static void exit() { ZombiePatches.onAnimExit(); }
+    }
+
+    @Patch(className = "zombie.core.skinnedmodel.animation.AnimationPlayer", methodName = "updateMultiTrackBoneTransforms")
+    public static class AnimMultiTrackBones { @Patch.OnEnter(skipOn = true) public static boolean enter() { return AnimSkip.skipping; } }
+
+    @Patch(className = "zombie.core.skinnedmodel.animation.AnimationPlayer", methodName = "copyBoneTransformsFromParentPlayer")
+    public static class AnimCopyParent { @Patch.OnEnter(skipOn = true) public static boolean enter() { return AnimSkip.skipping; } }
+
+    @Patch(className = "zombie.core.skinnedmodel.animation.AnimationPlayer", methodName = "updateTwistBone")
+    public static class AnimTwist { @Patch.OnEnter(skipOn = true) public static boolean enter() { return AnimSkip.skipping; } }
+
+    @Patch(className = "zombie.core.skinnedmodel.animation.AnimationPlayer", methodName = "applyBoneReParenting")
+    public static class AnimReParent { @Patch.OnEnter(skipOn = true) public static boolean enter() { return AnimSkip.skipping; } }
+
+    @Patch(className = "zombie.core.skinnedmodel.animation.AnimationPlayer", methodName = "updateModelTransforms")
+    public static class AnimModelTransforms { @Patch.OnEnter(skipOn = true) public static boolean enter() { return AnimSkip.skipping; } }
+
+    @Patch(className = "zombie.core.skinnedmodel.animation.AnimationPlayer", methodName = "UpdateSkinTransforms")
+    public static class AnimSkinTransforms { @Patch.OnEnter(skipOn = true) public static boolean enter() { return AnimSkip.skipping; } }
 }

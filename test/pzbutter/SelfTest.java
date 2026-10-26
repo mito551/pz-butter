@@ -39,6 +39,7 @@ public final class SelfTest {
         LuaGateTest.run();
         ChunkShimTest.run();
         ZombieTest.run();
+        AnimSkipTest.run();
         WorkerTest.run();
         CensusTest.run();
         GpuTest.run();
