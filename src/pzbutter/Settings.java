@@ -292,7 +292,13 @@ public final class Settings {
 + "#\n"
 + "# Hot save (Plan 10a). Stock queues hot saves at most once a second.\n"
 + "# hotsaveIntervalSec: hot-save interval in seconds (0 = stock 1 s; 30 = 30 s). A crash can lose at least that many seconds of the world, and several times that when many chunks changed (the game writes at most about 10 chunks per hot save). Saving and quitting always write everything.\n"
-+ "hotsaveIntervalSec=0\n";
++ "hotsaveIntervalSec=0\n"
+      + "#\n"
+      + "# World load (Plan 11).\n"
+      + "# skipIdChecks: the building and room ID consistency walks on every continued save run only in debug (they only report mismatches to the debug log).\n"
+      + "skipIdChecks=false\n"
+      + "# noLoadFade: no 350 ms fade to black between the finished load and the first game frame (not on the first new game of a session).\n"
+      + "noLoadFade=false\n";
 
     public static volatile boolean enabled;
     public static volatile boolean frameLog;

@@ -43,6 +43,7 @@ public final class SelfTest {
         CensusTest.run();
         GpuTest.run();
         StreamTest.run();
+        LoadTest.run();
         delete(DIR);
         System.out.println("ok");
     }
