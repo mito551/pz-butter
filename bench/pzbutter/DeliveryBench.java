@@ -133,7 +133,8 @@ public final class DeliveryBench {
             case "calm" -> calm();
             case "latch" -> latch();
             case "pacing" -> pacing();
-            default -> throw new IllegalArgumentException("... | pacing");
+            case "vehanim" -> vehanim();
+            default -> throw new IllegalArgumentException("... | pacing | vehanim");
         }
     }
 
@@ -1722,7 +1723,7 @@ public final class DeliveryBench {
         ChunkPacer.guard.on = true;
         ChunkPacer.divisor = 8;
         ChunkPacer.budgetNs = 1_500_000L;
-        ChunkPacer.maxWait = 6;
+        // no maxWait in this build
         ChunkPacer.inUpdate = true;
         ChunkPacer.enterThread = Thread.currentThread();
         ChunkPacer.queueRef = q;
@@ -1734,5 +1735,34 @@ public final class DeliveryBench {
         long dt2 = System.nanoTime() - t0;
         System.out.printf("pacing guard off: %6.2f ns/call, foreign: %6.2f ns/call, deciding: %6.2f ns/call (hits %d/%d/%d)%n",
             dt0 / (double) n, dt1 / (double) n, dt2 / (double) n, hits, fHits, dHits);
+    }
+
+    static void vehanim() {
+        VehicleFixes.resetForTest();
+        VehicleFixes.animGuard.on = false;
+        Object p = new Object(), t = new Object(), s = new Object();
+        FrameClock.frameNo = 1;
+        int n = 10_000_000;
+        long t0 = System.nanoTime();
+        int hits = 0;
+        for (int i = 0; i < n; i++) if (VehiclePatches.onAnimUpdate(p)) hits++;
+        long dt0 = System.nanoTime() - t0;
+
+        VehicleFixes.resetForTest();
+        VehicleFixes.animGuard.on = true;
+        VehicleFixes.inPart = true;
+        FrameClock.frameNo = 1;
+        VehicleFixes.decide(p, t, s, 1f, 2f, 3f, 1);
+        FrameClock.frameNo = 2;
+        VehicleFixes.decide(p, t, s, 1f, 2f, 3f, 2);
+        FrameClock.frameNo = 3;
+        t0 = System.nanoTime();
+        int dHits = 0;
+        for (int i = 0; i < n; i++) if (VehicleFixes.decide(p, t, s, 1f, 2f, 3f, 3)) dHits++;   // warm state, identical values: skip path
+        long dt1 = System.nanoTime() - t0;
+
+        System.out.printf("vehanim shim, guard off: %6.2f ns/call; decide() warm: %6.2f ns/call (skips %d/%d)%n",
+            dt0 / (double) n, dt1 / (double) n, hits, dHits);
+        VehicleFixes.resetForTest();
     }
 }
