@@ -13,6 +13,8 @@ final class AnimSkipTest {
         skipSetCoversMatrixCallsOnly();
         flagClearedOnThrow();
         offIsStock();
+        offscreenOnlyWhenNotOnScreen();
+        offscreenAndDistantCompose();
     }
 
     static void cadenceStaggered() {
@@ -99,5 +101,14 @@ final class AnimSkipTest {
         ZombiePatches.onAnimExit();
         assert !AnimSkip.skipping;
         AnimSkip.distGuard.on = false;
+    }
+
+    static void offscreenOnlyWhenNotOnScreen() {
+        assert AnimSkip.offGuard != null;
+        assert AnimSkip.offEvery == 8;
+    }
+
+    static void offscreenAndDistantCompose() {
+        assert Math.max(AnimSkip.distEvery, AnimSkip.offEvery) == Math.max(4, 8);
     }
 }

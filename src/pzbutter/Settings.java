@@ -245,6 +245,8 @@ public final class Settings {
       + "zombieAnimDistantSkip=false\n"
       + "zombieAnimDistantTiles=50\n"
       + "zombieAnimDistantEvery=4\n"
+      + "zombieBoneSkipOffscreen=false\n"
+      + "zombieBoneSkipOffscreenEvery=8\n"
       + "#\n"
       + "# Sprite buffers and GPU (Plan 9). Every key is off or at the game's value until its in-game check.\n"
       + "# persistentVbo: the sprite and puddle ring buffers keep persistently mapped storage (OpenGL 4.4) instead of new storage and a map per 64 KB batch.\n"

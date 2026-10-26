@@ -382,7 +382,7 @@ public final class ZombiePatches {
     /** AnimationPlayer.updateAnimation_StandardAnimation entry: decides per call whether this player's matrix fill is skipped. */
     public static void onAnimEnter(Object self, long frameNo) {
         AnimSkip.skipping = false;
-        if (!AnimSkip.distGuard.on) return;
+        if (!AnimSkip.distGuard.on && !AnimSkip.offGuard.on) return;
         if (Thread.currentThread() != FrameClock.mainThread) return;
         try {
             zombie.core.skinnedmodel.animation.AnimationPlayer ap =
@@ -393,6 +393,7 @@ public final class ZombiePatches {
             boolean hasParent = ap.parentPlayer != null;
             int id = 0;
             float dx = 0, dy = 0;
+            boolean distantCond = false, offscreenCond = false;
             if (isZombie) {
                 zombie.characters.IsoZombie z = (zombie.characters.IsoZombie) c;
                 // stagger id must be stable and distinct per zombie. In single player onlineId is -1 for
@@ -415,7 +416,14 @@ public final class ZombiePatches {
                     dx = z.getX() - nearest.getX();
                     dy = z.getY() - nearest.getY();
                 }
-                if (!AnimSkip.distant(dx, dy, AnimSkip.distTiles)) return;
+                distantCond = AnimSkip.distGuard.on && AnimSkip.distant(dx, dy, AnimSkip.distTiles);
+                offscreenCond = AnimSkip.offGuard.on;
+                if (offscreenCond) {
+                    boolean onScreen = false;
+                    try { onScreen = c.isOnScreen(); } catch (Throwable t) { onScreen = true; }
+                    offscreenCond = !onScreen;
+                }
+                if (!distantCond && !offscreenCond) return;
                 boolean ragdoll = false, dead = false, fakeDead = false, onFloor = false, knocked = false, attacking = false,
                     crawling = false, onFire = false, inVehicle = false, hasTarget = false, thumping = false, gr = false, grl = false;
                 boolean busyFailed = false;
@@ -445,7 +453,11 @@ public final class ZombiePatches {
                 if (busy) return;
             }
             if (!isZombie || needFirst || hasParent) return;
-            AnimSkip.skipping = AnimSkip.cadenceSkip(id, frameNo, AnimSkip.distEvery);
+            int every = AnimSkip.distEvery;
+            if (distantCond && offscreenCond) every = Math.max(AnimSkip.distEvery, AnimSkip.offEvery);
+            else if (offscreenCond) every = AnimSkip.offEvery;
+            else if (distantCond) every = AnimSkip.distEvery;
+            AnimSkip.skipping = AnimSkip.cadenceSkip(id, frameNo, every);
             if (AnimSkip.skipping) AnimSkip.skipped++;
             else AnimSkip.rebuilt++;
         } catch (Throwable t) {

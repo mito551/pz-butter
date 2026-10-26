@@ -119,7 +119,8 @@ The mod creates `~/Zomboid/PZButter.properties` on first start and reads it once
 | `zombieAnimDistantSkip` | Zombies farther than `zombieAnimDistantTiles` tiles from every player refill their bone matrices one frame in `zombieAnimDistantEvery` (staggered); animation clock, events and movement stay stock. Changes what you see. Off by default. |
 | `zombieAnimDistantTiles` | Distance for `zombieAnimDistantSkip` (`50`). |
 | `zombieAnimDistantEvery` | Cadence for `zombieAnimDistantSkip` (`4`). |
-| `persistentVbo` | The sprite and puddle buffers keep storage that stays mapped (OpenGL 4.4 or `GL_ARB_buffer_storage`) instead of asking the driver for new storage and a mapping every 64 KB of sprites. Off by default; stays off by itself on older drivers. |
+| `zombieBoneSkipOffscreen` | Zombies off screen for every player refill their bone matrices one frame in `zombieBoneSkipOffscreenEvery` (staggered); animation clock, events and movement stay stock. Changes what you see. Off by default. |
+| `zombieBoneSkipOffscreenEvery` | Cadence for `zombieBoneSkipOffscreen` (`8`). || `persistentVbo` | The sprite and puddle buffers keep storage that stays mapped (OpenGL 4.4 or `GL_ARB_buffer_storage`) instead of asking the driver for new storage and a mapping every 64 KB of sprites. Off by default; stays off by itself on older drivers. |
 | `persistentVboSlots` | With `persistentVbo`: storages per buffer, used in turn (`1` to `8`, default `4`; fewer when the buffers would pass 64 MB). |
 | `persistentVboFrameSync` | With `persistentVbo`: one fence per frame decides when a storage may be written again, and a storage from 8 frames ago is reused without asking. `false`: one fence per batch. Default `true`. |
 | `vboBatchKb` | Batch size, in KB, of the game's drawer for lines, shapes, the world map, fog and rain (`0` keeps the game's 4 KB; `8` to `1792`). Bigger batches mean fewer uploads and draw calls. |

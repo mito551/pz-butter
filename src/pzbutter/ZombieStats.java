@@ -27,7 +27,7 @@ final class ZombieStats {
 
     static void init() {
         guard.on = FacingFix.guard.on || ZombieLod.blendGuard.on || ZombieLod.capGuard.on || ZombieLod.budgetGuard.on
-            || ZombiePatches.losGuard.on || CullSort.guard.on || AnimSkip.distGuard.on;
+            || ZombiePatches.losGuard.on || CullSort.guard.on || AnimSkip.distGuard.on || AnimSkip.offGuard.on;
         started = false;
         last = new long[N];
     }
