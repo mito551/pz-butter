@@ -1,8 +1,6 @@
 package pzbutter;
 
 import java.util.IdentityHashMap;
-import java.util.Map;
-
 /**
  * Vehicle fixes (Plan 10a Task 1 and 4: gloveBoxFix, vehicleAnimIdleSkip). A vehicle whose GloveBox part has no item
  * container no longer throws when adding a key; parked vehicle parts skip unchanged animation updates.
@@ -20,9 +18,9 @@ final class VehicleFixes {
     static volatile long animChecked;
     static volatile long animSkipped;
 
-    /** Set while inside BaseVehicle.updateAnimationPlayer with a non-null part. */
-    public static volatile boolean inPart;
-
+    /** Exact AnimationPlayer being updated for a parked part, and the thread doing it. */
+    public static volatile Object currentPartPlayer;
+    public static volatile Thread currentPartThread;
     /** Identity-keyed state for the parked-part skip decision. */
     static final IdentityHashMap<Object, AnimState> animStates = new IdentityHashMap<>();
 
@@ -101,8 +99,8 @@ final class VehicleFixes {
         gloveSkipped = 0;
         animChecked = 0;
         animSkipped = 0;
-        inPart = false;
-        animStates.clear();
+        currentPartPlayer = null;
+        currentPartThread = null;        animStates.clear();
         lastReapFrame = 0;
         reapedOnce = false;
     }

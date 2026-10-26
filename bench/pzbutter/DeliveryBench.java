@@ -1750,7 +1750,8 @@ public final class DeliveryBench {
 
         VehicleFixes.resetForTest();
         VehicleFixes.animGuard.on = true;
-        VehicleFixes.inPart = true;
+        VehicleFixes.currentPartPlayer = p;
+        VehicleFixes.currentPartThread = Thread.currentThread();
         FrameClock.frameNo = 1;
         VehicleFixes.decide(p, t, s, 1f, 2f, 3f, 1);
         FrameClock.frameNo = 2;

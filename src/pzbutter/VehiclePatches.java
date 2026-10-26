@@ -37,20 +37,28 @@ public final class VehiclePatches {
         }
     }
 
-    /** Called by the updateAnimationPlayer holder to track whether this update is for a part. */
-    public static void onAnimPartEnter(Object part) {
-        VehicleFixes.inPart = (part != null);
+    /** Called by the updateAnimationPlayer holder to track the exact part player being processed. */
+    public static void onAnimPartEnter(Object player, Object part) {
+        if (part != null) {
+            VehicleFixes.currentPartPlayer = player;
+            VehicleFixes.currentPartThread = Thread.currentThread();
+        } else {
+            VehicleFixes.currentPartPlayer = null;
+            VehicleFixes.currentPartThread = null;
+        }
     }
 
-    /** Called by the updateAnimationPlayer holder to clear the part flag. */
+    /** Called by the updateAnimationPlayer holder to clear the part tracking. */
     public static void onAnimPartExit() {
-        VehicleFixes.inPart = false;
+        VehicleFixes.currentPartPlayer = null;
+        VehicleFixes.currentPartThread = null;
     }
 
     /** AnimationPlayer.Update entry for parked parts: true skips the whole update. */
     public static boolean onAnimUpdate(Object player) {
         if (!VehicleFixes.animGuard.on) return false;
-        if (!VehicleFixes.inPart) return false;
+        if (VehicleFixes.currentPartThread != Thread.currentThread()) return false;
+        if (player != VehicleFixes.currentPartPlayer) return false;
         try {
             VehicleFixes.animChecked++;
             AnimationPlayer p = (AnimationPlayer) player;
@@ -84,7 +92,7 @@ public final class VehiclePatches {
     public static class UpdateAnimationPlayer {
         @Patch.OnEnter
         public static void enter(Object player, Object part) {
-            VehiclePatches.onAnimPartEnter(part);
+            VehiclePatches.onAnimPartEnter(player, part);
         }
 
         @Patch.OnExit(onThrowable = Throwable.class)

@@ -19,6 +19,8 @@ final class StreamTest {
         vehicleAnimNewTrackResets();
         vehicleAnimReaps();
         vehicleAnimOnlyInPart();
+        vehicleAnimOtherPlayerNeverSkips();
+        vehicleAnimOtherThreadNeverSkips();
         vehicleAnimDefaultsWritten();
         pacingTests();
         hotsaveMsClamps();
@@ -165,7 +167,6 @@ final class StreamTest {
 
     static void vehicleAnimSkipsThirdIdentical() {
         VehicleFixes.resetForTest();
-        VehicleFixes.inPart = true;
         Object player = new Object(), track = new Object(), skin = new Object();
         assert !VehicleFixes.decide(player, track, skin, 1f, 2f, 3f, 1);
         assert !VehicleFixes.decide(player, track, skin, 1f, 2f, 3f, 2);
@@ -206,8 +207,27 @@ final class StreamTest {
     static void vehicleAnimOnlyInPart() {
         VehicleFixes.resetForTest();
         VehicleFixes.animGuard.on = true;
-        VehicleFixes.inPart = false;
         assert !VehiclePatches.onAnimUpdate(new Object());
+        VehicleFixes.resetForTest();
+    }
+
+    static void vehicleAnimOtherPlayerNeverSkips() {
+        VehicleFixes.resetForTest();
+        Object p1 = new Object(), p2 = new Object();
+        VehicleFixes.animGuard.on = true;
+        VehicleFixes.currentPartPlayer = p1;
+        VehicleFixes.currentPartThread = Thread.currentThread();
+        assert !VehiclePatches.onAnimUpdate(p2);
+        VehicleFixes.resetForTest();
+    }
+
+    static void vehicleAnimOtherThreadNeverSkips() throws Exception {
+        VehicleFixes.resetForTest();
+        Object p = new Object();
+        VehicleFixes.animGuard.on = true;
+        VehicleFixes.currentPartPlayer = p;
+        VehicleFixes.currentPartThread = new Thread();
+        assert !VehiclePatches.onAnimUpdate(p);
         VehicleFixes.resetForTest();
     }
 
