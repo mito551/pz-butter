@@ -14,6 +14,12 @@ final class StreamTest {
         gloveBoxSkipsOnlyNullContainer();
         gloveBoxOffIsStock();
         streamDefaultsWritten();
+        vehicleAnimSkipsThirdIdentical();
+        vehicleAnimResumesOnChange();
+        vehicleAnimNewTrackResets();
+        vehicleAnimReaps();
+        vehicleAnimOnlyInPart();
+        vehicleAnimDefaultsWritten();
         pacingTests();
         hotsaveMsClamps();
         hotsaveDefaultsWritten();
@@ -155,5 +161,63 @@ final class StreamTest {
         try { t = java.nio.file.Files.readString(f.toPath()); }
         catch (java.io.IOException e) { throw new RuntimeException(e); }
         assert t.contains("\nhotsaveIntervalSec=0\n") : t;
+    }
+
+    static void vehicleAnimSkipsThirdIdentical() {
+        VehicleFixes.resetForTest();
+        VehicleFixes.inPart = true;
+        Object player = new Object(), track = new Object(), skin = new Object();
+        assert !VehicleFixes.decide(player, track, skin, 1f, 2f, 3f, 1);
+        assert !VehicleFixes.decide(player, track, skin, 1f, 2f, 3f, 2);
+        assert VehicleFixes.decide(player, track, skin, 1f, 2f, 3f, 3);
+        VehicleFixes.resetForTest();
+    }
+
+    static void vehicleAnimResumesOnChange() {
+        VehicleFixes.resetForTest();
+        Object player = new Object(), track = new Object(), skin = new Object();
+        assert !VehicleFixes.decide(player, track, skin, 1f, 2f, 3f, 1);
+        assert !VehicleFixes.decide(player, track, skin, 1f, 2f, 3f, 2);
+        assert VehicleFixes.decide(player, track, skin, 1f, 2f, 3f, 3);
+        assert !VehicleFixes.decide(player, track, skin, 9f, 2f, 3f, 4);
+        assert !VehicleFixes.decide(player, track, skin, 9f, 2f, 3f, 5);
+        assert VehicleFixes.decide(player, track, skin, 9f, 2f, 3f, 6);
+        VehicleFixes.resetForTest();
+    }
+
+    static void vehicleAnimNewTrackResets() {
+        VehicleFixes.resetForTest();
+        Object player = new Object(), track = new Object(), skin = new Object(), track2 = new Object();
+        assert !VehicleFixes.decide(player, track, skin, 1f, 2f, 3f, 1);
+        assert !VehicleFixes.decide(player, track2, skin, 1f, 2f, 3f, 2);
+        VehicleFixes.resetForTest();
+    }
+
+    static void vehicleAnimReaps() {
+        VehicleFixes.resetForTest();
+        Object player = new Object(), track = new Object(), skin = new Object();
+        assert !VehicleFixes.decide(player, track, skin, 1f, 2f, 3f, 0);
+        Object other = new Object();
+        VehicleFixes.decide(other, track, skin, 1f, 2f, 3f, 1900);
+        assert !VehicleFixes.decide(player, track, skin, 1f, 2f, 3f, 1900);
+        VehicleFixes.resetForTest();
+    }
+
+    static void vehicleAnimOnlyInPart() {
+        VehicleFixes.resetForTest();
+        VehicleFixes.animGuard.on = true;
+        VehicleFixes.inPart = false;
+        assert !VehiclePatches.onAnimUpdate(new Object());
+        VehicleFixes.resetForTest();
+    }
+
+    static void vehicleAnimDefaultsWritten() {
+        java.io.File f = SelfTest.tmp("veh.properties");
+        f.delete();
+        Settings.load(f);
+        String t = "";
+        try { t = java.nio.file.Files.readString(f.toPath()); }
+        catch (java.io.IOException e) { throw new RuntimeException(e); }
+        assert t.contains("\nvehicleAnimIdleSkip=false\n") : t;
     }
 }

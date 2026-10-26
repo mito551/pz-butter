@@ -2,6 +2,10 @@ package pzbutter;
 
 import me.zed_0xff.zombie_buddy.Patch;
 
+import zombie.core.skinnedmodel.animation.AnimationMultiTrack;
+import zombie.core.skinnedmodel.animation.AnimationPlayer;
+import zombie.core.skinnedmodel.animation.AnimationTrack;
+
 /**
  * Plan 10 vehicle hooks: one holder per game method. Advice is inlined into the game class, so it reaches only public
  * members: each holder's advice is one call into a public static shim here, which catches its own Throwable into the
@@ -33,11 +37,67 @@ public final class VehiclePatches {
         }
     }
 
+    /** Called by the updateAnimationPlayer holder to track whether this update is for a part. */
+    public static void onAnimPartEnter(Object part) {
+        VehicleFixes.inPart = (part != null);
+    }
+
+    /** Called by the updateAnimationPlayer holder to clear the part flag. */
+    public static void onAnimPartExit() {
+        VehicleFixes.inPart = false;
+    }
+
+    /** AnimationPlayer.Update entry for parked parts: true skips the whole update. */
+    public static boolean onAnimUpdate(Object player) {
+        if (!VehicleFixes.animGuard.on) return false;
+        if (!VehicleFixes.inPart) return false;
+        try {
+            VehicleFixes.animChecked++;
+            AnimationPlayer p = (AnimationPlayer) player;
+            AnimationMultiTrack mt = p.getMultiTrack();
+            if (mt == null || mt.getTrackCount() != 1) return false;
+            AnimationTrack t = mt.getTracks().get(0);
+            if (t == null || !t.isPlaying) {
+                VehicleFixes.removeState(player);
+                return false;
+            }
+            boolean skip = VehicleFixes.decide(player, t, p.getSkinningData(),
+                    t.getCurrentTimeValue(), t.getBlendWeight(), t.getSpeedDelta(),
+                    FrameClock.frameNo);
+            if (skip) VehicleFixes.animSkipped++;
+            return skip;
+        } catch (Throwable t) {
+            VehicleFixes.animGuard.fail(t);
+            return false;
+        }
+    }
+
     @Patch(className = "zombie.vehicles.BaseVehicle", methodName = "addKeyToGloveBox")
     public static class GloveBox {
         @Patch.OnEnter(skipOn = true)
         public static boolean enter(@Patch.This Object vehicle) {
             return VehiclePatches.onGloveBox(vehicle);
+        }
+    }
+
+    @Patch(className = "zombie.vehicles.BaseVehicle", methodName = "updateAnimationPlayer")
+    public static class UpdateAnimationPlayer {
+        @Patch.OnEnter
+        public static void enter(Object player, Object part) {
+            VehiclePatches.onAnimPartEnter(part);
+        }
+
+        @Patch.OnExit(onThrowable = Throwable.class)
+        public static void exit() {
+            VehiclePatches.onAnimPartExit();
+        }
+    }
+
+    @Patch(className = "zombie.core.skinnedmodel.animation.AnimationPlayer", methodName = "Update")
+    public static class AnimationUpdate {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(float dt, @Patch.This Object player) {
+            return VehiclePatches.onAnimUpdate(player);
         }
     }
 }

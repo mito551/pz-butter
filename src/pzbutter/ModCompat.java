@@ -130,6 +130,8 @@ final class ModCompat {
         Map.entry("ZombiePatches.CullSortHook", k("zombieCullSortFast")),
         Map.entry("ZombiePatches.StatsGet", k("statsNoBox")),
         Map.entry("VehiclePatches.GloveBox", k("gloveBoxFix")),
+        Map.entry("VehiclePatches.UpdateAnimationPlayer", k("vehicleAnimIdleSkip")),
+        Map.entry("VehiclePatches.AnimationUpdate", k("vehicleAnimIdleSkip")),
         Map.entry("StreamPatches.ChunkUpdate", k("chunkHandoffDivisor", "chunkHandoffFrameBudgetUs")),
         Map.entry("StreamPatches.Join", k("chunkHandoffDivisor", "chunkHandoffFrameBudgetUs")),
         Map.entry("StreamPatches.Poll", k("chunkHandoffDivisor", "chunkHandoffFrameBudgetUs")),

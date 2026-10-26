@@ -106,6 +106,7 @@ The mod creates `~/Zomboid/PZButter.properties` on first start and reads it once
 | `bloodRebakeCoalesceMs` | With `bakeScheduler`: a texture whose only change is new blood waits this long, so several splats share one redraw. `0`: at once. Default `250`. |
 | `zeroFacingFix` | A character asked to face a zero-length direction keeps its facing, instead of the game stopping with "Forward Direction cannot be zero length vector". Only the calls the game would have stopped on change. Off by default. |
 | `gloveBoxFix` | A vehicle whose GloveBox part has no item container no longer throws when adding a key. Off by default. |
+| `vehicleAnimIdleSkip` | Parked car parts skip unchanged animation updates. Off by default. |
 | `chunkHandoffDivisor` | Caps how many streamed chunks join per frame while driving (0 = off). Try 8. |
 | `chunkHandoffFrameBudgetUs` | Microsecond budget for joining streamed chunks per frame (0 = off). Try 1500. |
 | `hotsaveIntervalSec` | Hot-save interval in seconds (0 = stock 1 s; 30 = 30 s). A crash can lose up to that many seconds of the world. |
