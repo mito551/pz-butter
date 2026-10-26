@@ -1,6 +1,11 @@
 package pzbutter;
 
-/** zombieAnimDistantSkip: far zombies refill bone matrices on one frame in N, staggered. */
+/**
+ * zombieAnimDistantSkip / zombieBoneSkipOffscreen: zombies refill bone matrices on one frame in N, staggered.
+ * A zombie whose matrices are skipped this frame keeps its last pose and refreshes on its next rebuild frame.
+ * For zombieBoneSkipOffscreen one frame stale: a zombie coming into view can show its pose from up to N frames
+ * ago for one frame; the in-game check decides whether to skip. No buffer overflow / array bounds.
+ */
 public final class AnimSkip {
     private AnimSkip() {}
 
@@ -40,5 +45,19 @@ public final class AnimSkip {
     /** Squared distance beyond tiles*tiles skips. Exactly tiles does not skip. */
     public static boolean distant(float dx, float dy, int tiles) {
         return dx * dx + dy * dy > (float) tiles * tiles;
+    }
+
+    /**
+     * Pure decision: given which guards are on, whether the zombie is distant, whether it is on screen, how many local
+     * players there are and the two cadences, returns the cadence to use (0 = no skip). Off-screen only applies with
+     * exactly one local player.
+     */
+    public static int every(boolean distOn, boolean offOn, boolean distant, boolean onScreen, int localPlayers, int distEvery, int offEvery) {
+        boolean distCond = distOn && distant;
+        boolean offCond = offOn && localPlayers == 1 && !onScreen;
+        if (!distCond && !offCond) return 0;
+        if (distCond && offCond) return Math.max(distEvery, offEvery);
+        if (offCond) return offEvery;
+        return distEvery;
     }
 }

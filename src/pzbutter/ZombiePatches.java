@@ -384,6 +384,8 @@ public final class ZombiePatches {
         AnimSkip.skipping = false;
         if (!AnimSkip.distGuard.on && !AnimSkip.offGuard.on) return;
         if (Thread.currentThread() != FrameClock.mainThread) return;
+        // track whether the off-screen guard was the trigger, for failure attribution
+        boolean offTriggered = false;
         try {
             zombie.core.skinnedmodel.animation.AnimationPlayer ap =
                 (zombie.core.skinnedmodel.animation.AnimationPlayer) self;
@@ -393,37 +395,43 @@ public final class ZombiePatches {
             boolean hasParent = ap.parentPlayer != null;
             int id = 0;
             float dx = 0, dy = 0;
-            boolean distantCond = false, offscreenCond = false;
+            boolean distantCond = false;
+            boolean onScreen = true;
+            int localPlayers = zombie.characters.IsoPlayer.numPlayers;
             if (isZombie) {
                 zombie.characters.IsoZombie z = (zombie.characters.IsoZombie) c;
-                // stagger id must be stable and distinct per zombie. In single player onlineId is -1 for
-                // every zombie (assigned only on the server path), so use object identity instead.
                 id = System.identityHashCode(z) & 0x7fffffff;
-                // nearest local player distance FIRST (squared, no DistTo); return before busy checks unless distant
-                zombie.characters.IsoPlayer[] ps = zombie.characters.IsoPlayer.players;
-                int n = zombie.characters.IsoPlayer.numPlayers;
-                float best = Float.MAX_VALUE;
-                zombie.characters.IsoPlayer nearest = null;
-                for (int i = 0; i < n; i++) {
-                    zombie.characters.IsoPlayer p = (ps == null || i >= ps.length) ? null : ps[i];
-                    if (p == null) continue;
-                    float ddx = z.getX() - p.getX();
-                    float ddy = z.getY() - p.getY();
-                    float d2 = ddx * ddx + ddy * ddy;
-                    if (d2 < best) { best = d2; nearest = p; }
-                }
-                if (nearest != null) {
-                    dx = z.getX() - nearest.getX();
-                    dy = z.getY() - nearest.getY();
-                }
-                distantCond = AnimSkip.distGuard.on && AnimSkip.distant(dx, dy, AnimSkip.distTiles);
-                offscreenCond = AnimSkip.offGuard.on;
+                // off-screen condition (cheap) first; only with one local player
+                boolean offscreenCond = AnimSkip.offGuard.on && localPlayers == 1;
                 if (offscreenCond) {
-                    boolean onScreen = false;
                     try { onScreen = c.isOnScreen(); } catch (Throwable t) { onScreen = true; }
                     offscreenCond = !onScreen;
+                    offTriggered = offscreenCond;
                 }
-                if (!distantCond && !offscreenCond) return;
+                // nearest-player loop + distant() only when the distant guard is on
+                if (AnimSkip.distGuard.on) {
+                    zombie.characters.IsoPlayer[] ps = zombie.characters.IsoPlayer.players;
+                    int n = localPlayers;
+                    float best = Float.MAX_VALUE;
+                    zombie.characters.IsoPlayer nearest = null;
+                    for (int i = 0; i < n; i++) {
+                        zombie.characters.IsoPlayer p = (ps == null || i >= ps.length) ? null : ps[i];
+                        if (p == null) continue;
+                        float ddx = z.getX() - p.getX();
+                        float ddy = z.getY() - p.getY();
+                        float d2 = ddx * ddx + ddy * ddy;
+                        if (d2 < best) { best = d2; nearest = p; }
+                    }
+                    if (nearest != null) {
+                        dx = z.getX() - nearest.getX();
+                        dy = z.getY() - nearest.getY();
+                    }
+                    distantCond = AnimSkip.distant(dx, dy, AnimSkip.distTiles);
+                }
+                int every = AnimSkip.every(AnimSkip.distGuard.on, AnimSkip.offGuard.on, distantCond, onScreen, localPlayers, AnimSkip.distEvery, AnimSkip.offEvery);
+                if (every == 0) return;
+                // busy predicates only if a condition can apply
+                if (!(distantCond || (AnimSkip.offGuard.on && localPlayers == 1 && !onScreen))) return;
                 boolean ragdoll = false, dead = false, fakeDead = false, onFloor = false, knocked = false, attacking = false,
                     crawling = false, onFire = false, inVehicle = false, hasTarget = false, thumping = false, gr = false, grl = false;
                 boolean busyFailed = false;
@@ -453,16 +461,16 @@ public final class ZombiePatches {
                 if (busy) return;
             }
             if (!isZombie || needFirst || hasParent) return;
-            int every = AnimSkip.distEvery;
-            if (distantCond && offscreenCond) every = Math.max(AnimSkip.distEvery, AnimSkip.offEvery);
-            else if (offscreenCond) every = AnimSkip.offEvery;
-            else if (distantCond) every = AnimSkip.distEvery;
+            int every = AnimSkip.every(AnimSkip.distGuard.on, AnimSkip.offGuard.on, distantCond, onScreen, localPlayers, AnimSkip.distEvery, AnimSkip.offEvery);
+            if (every == 0) return;
             AnimSkip.skipping = AnimSkip.cadenceSkip(id, frameNo, every);
             if (AnimSkip.skipping) AnimSkip.skipped++;
             else AnimSkip.rebuilt++;
         } catch (Throwable t) {
             AnimSkip.skipping = false;
-            AnimSkip.distGuard.fail(t);
+            if (offTriggered) AnimSkip.offGuard.fail(t);
+            else if (AnimSkip.distGuard.on) AnimSkip.distGuard.fail(t);
+            else AnimSkip.offGuard.fail(t);
         }
     }
 

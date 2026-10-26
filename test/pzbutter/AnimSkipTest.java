@@ -104,11 +104,18 @@ final class AnimSkipTest {
     }
 
     static void offscreenOnlyWhenNotOnScreen() {
-        assert AnimSkip.offGuard != null;
-        assert AnimSkip.offEvery == 8;
+        // off-screen contributes only with one local player
+        assert AnimSkip.every(false, true, false, false, 1, 4, 8) == 8;
+        assert AnimSkip.every(false, true, false, false, 2, 4, 8) == 0;
+        assert AnimSkip.every(false, true, false, true, 1, 4, 8) == 0;
     }
 
     static void offscreenAndDistantCompose() {
-        assert Math.max(AnimSkip.distEvery, AnimSkip.offEvery) == Math.max(4, 8);
+        // on screen -> only the distant cadence
+        assert AnimSkip.every(true, false, true, true, 1, 4, 8) == 4;
+        // both -> the larger
+        assert AnimSkip.every(true, true, true, false, 1, 4, 8) == 8;
+        // both guards off -> 0
+        assert AnimSkip.every(false, false, false, false, 1, 4, 8) == 0;
     }
 }
