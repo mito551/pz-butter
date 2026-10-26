@@ -24,15 +24,17 @@ public final class ChunkPacer {
     // stats
     public static volatile long joins;
     public static volatile long framesHeld;
+    public static volatile int maxQueueDepth;
 
     private static volatile long joinStartNs;
+    private static volatile long queueDepthFrame = -1L;
 
     static void init() {
         try {
             divisor = Settings.num("chunkHandoffDivisor", 0, 0, 100);
             budgetNs = (long) Settings.num("chunkHandoffFrameBudgetUs", 0, 0, 100000) * 1000L;
             // chunkHandoffSlackMaxWait not built: the first join of each frame already guarantees progress.
-            guard.on = divisor > 0 || budgetNs > 0;
+            guard.on = Settings.enabled && (divisor > 0 || budgetNs > 0);
         } catch (Throwable t) {
             guard.fail(t);
             guard.on = false;
@@ -105,6 +107,10 @@ public final class ChunkPacer {
             if (queue instanceof CappedConcurrentQueue) {
                 queued = ((CappedConcurrentQueue) queue).size();
             }
+            if (FrameClock.frameNo != queueDepthFrame) {
+                queueDepthFrame = FrameClock.frameNo;
+                if (queued > maxQueueDepth) maxQueueDepth = queued;
+            }
             int gw = IsoChunkMap.chunkGridWidth;
             long since = System.nanoTime() - FrameClock.frameStartNs;
             boolean h = hold(finishedThisFrame, queued, gw, since, meanJoinNs, divisor, budgetNs);
@@ -124,8 +130,9 @@ public final class ChunkPacer {
 
     public static String drain() {
         long j = joins, m = meanJoinNs, fh = framesHeld;
-        joins = 0; framesHeld = 0;
-        return String.format("[PZButter] chunk pacing: %d joins (mean %.2f ms), %d frames held", j, m / 1e6, fh);
+        int q = maxQueueDepth;
+        joins = 0; framesHeld = 0; maxQueueDepth = 0;
+        return String.format("[PZButter] chunk pacing: %d joins (mean %.2f ms), %d frames held, max queue %d", j, m / 1e6, fh, q);
     }
 
     static void resetForTest() {
@@ -138,6 +145,8 @@ public final class ChunkPacer {
         meanJoinNs = 0;
         joins = 0;
         framesHeld = 0;
+        maxQueueDepth = 0;
+        queueDepthFrame = -1L;
         joinStartNs = 0;
         divisor = 0;
         budgetNs = 0;

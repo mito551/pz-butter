@@ -12,7 +12,7 @@ public final class StreamPatches {
         ChunkPacer.init();
         try {
             int sec = Settings.num("hotsaveIntervalSec", 0, 0, 600);
-            hotsaveGuard.on = sec > 0;
+            hotsaveGuard.on = Settings.enabled && sec > 0;
         } catch (Throwable t) {
             hotsaveGuard.fail(t);
             hotsaveGuard.on = false;
@@ -66,6 +66,38 @@ public final class StreamPatches {
             ((zombie.core.utils.UpdateLimit) ul).setUpdatePeriod(hotsaveMs(sec));
         } catch (Throwable t) {
             hotsaveGuard.fail(t);
+        }
+    }
+
+    private static final long MINUTE_NS = 60_000_000_000L;
+    private static boolean streamStarted;
+    private static long streamNextNs;
+
+    /** Once a minute: print pacing and vehicle lines when something happened. */
+    public static void tick(long nowNs) {
+        boolean pacing = ChunkPacer.guard.on;
+        boolean veh = VehicleFixes.animGuard.on;
+        if (!pacing && !veh) return;
+        if (!streamStarted) {
+            streamStarted = true;
+            streamNextNs = nowNs + MINUTE_NS;
+            return;
+        }
+        if (nowNs < streamNextNs) return;
+        streamNextNs = nowNs + MINUTE_NS;
+        if (pacing) {
+            long j = ChunkPacer.joins;
+            String line = ChunkPacer.drain();
+            if (j > 0) System.out.println(line);
+        }
+        if (veh) {
+            long checked = VehicleFixes.animChecked;
+            long skipped = VehicleFixes.animSkipped;
+            if (checked > 0) System.out.println("[PZButter] vehicle parts: " + skipped + " of " + checked + " parked-part updates skipped");
+            long f = FrameClock.frameNo;
+            VehicleFixes.animStates.entrySet().removeIf(e -> f - e.getValue().seen > 1800);
+            VehicleFixes.animChecked = 0;
+            VehicleFixes.animSkipped = 0;
         }
     }
 }

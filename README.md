@@ -109,7 +109,7 @@ The mod creates `~/Zomboid/PZButter.properties` on first start and reads it once
 | `vehicleAnimIdleSkip` | Parked car parts skip unchanged animation updates. Off by default. |
 | `chunkHandoffDivisor` | Caps how many streamed chunks join per frame while driving (0 = off). Try 8. |
 | `chunkHandoffFrameBudgetUs` | Microsecond budget for joining streamed chunks per frame (0 = off). Try 1500. |
-| `hotsaveIntervalSec` | Hot-save interval in seconds (0 = stock 1 s; 30 = 30 s). A crash can lose up to that many seconds of the world. |
+| `hotsaveIntervalSec` | Hot-save interval in seconds (0 = stock 1 s; 30 = 30 s). A crash can lose at least that many seconds of the world, and several times that when many chunks changed (the game writes at most about 10 chunks per hot save). Saving and quitting always write everything. |
 | `numberZombiesBlended` | How many of the most relevant zombies get blended animations. `0` keeps the game's 20; `1` to `64`. Fewer looks stiffer and costs less. |
 | `zombieLodFixed3d` | Changes the simulation. At most this many zombies are drawn as 3D models; the rest are flat sprites and, like the game's own zombies past 510, update less often. `0` keeps the game's 510; `50` to `510`, never below `numberZombiesBlended`. |
 | `zombieModelAddBudgetUs` | Changes the simulation for a few frames. Microseconds a frame for zombies getting their 3D model; past it the next ones stay sprites (and update less often) one frame longer. At least one gets its model each frame. `0`: no limit, as the game. |

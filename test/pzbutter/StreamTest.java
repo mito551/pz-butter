@@ -18,6 +18,7 @@ final class StreamTest {
         vehicleAnimResumesOnChange();
         vehicleAnimNewTrackResets();
         vehicleAnimReaps();
+        masterSwitchOffDisablesStreamKeys();
         vehicleAnimOnlyInPart();
         vehicleAnimOtherPlayerNeverSkips();
         vehicleAnimOtherThreadNeverSkips();
@@ -81,23 +82,40 @@ final class StreamTest {
 
     static void pacingIgnoresOtherQueues() throws Exception {
         ChunkPacer.resetForTest();
-        ChunkPacer.guard.on = true;
-        Object q1 = new Object();
+        zombie.util.CappedConcurrentQueue<Object> q1 = new zombie.util.CappedConcurrentQueue<>(10);
+        for (int i = 0; i < 10; i++) q1.add(new Object());
         Object q2 = new Object();
+        ChunkPacer.guard.on = true;
         ChunkPacer.queueRef = q1;
         ChunkPacer.inUpdate = true;
         ChunkPacer.enterThread = Thread.currentThread();
-        FrameClock.frameStartNs = 1;
+        ChunkPacer.divisor = 1;
+        ChunkPacer.finishedThisFrame = 2;
+        ChunkPacer.meanJoinNs = 10_000_000L;
+        ChunkPacer.budgetNs = 1L;
+        FrameClock.frameStartNs = System.nanoTime();
+        assert ChunkPacer.onPoll(q1);
         assert !ChunkPacer.onPoll(q2);
+        ChunkPacer.exit();
+        assert !ChunkPacer.onPoll(q1);
         ChunkPacer.resetForTest();
     }
 
     static void pacingFlagClearedOnThrow() throws Exception {
         ChunkPacer.resetForTest();
+        zombie.util.CappedConcurrentQueue<Object> q1 = new zombie.util.CappedConcurrentQueue<>(10);
+        for (int i = 0; i < 10; i++) q1.add(new Object());
         ChunkPacer.guard.on = true;
+        ChunkPacer.queueRef = q1;
+        ChunkPacer.divisor = 1;
+        ChunkPacer.meanJoinNs = 10_000_000L;
+        ChunkPacer.budgetNs = 1L;
+        FrameClock.frameStartNs = System.nanoTime();
         ChunkPacer.enter();
+        ChunkPacer.finishedThisFrame = 2;
+        assert ChunkPacer.onPoll(q1);
         ChunkPacer.exit();
-        assert !ChunkPacer.onPoll(ChunkPacer.queueRef == null ? new Object() : ChunkPacer.queueRef);
+        assert !ChunkPacer.onPoll(q1);
         me.zed_0xff.zombie_buddy.Patch.OnExit a = StreamPatches.ChunkUpdate.class.getMethod("exit").getAnnotation(me.zed_0xff.zombie_buddy.Patch.OnExit.class);
         assert a != null && a.onThrowable() == Throwable.class;
         ChunkPacer.resetForTest();
@@ -190,7 +208,9 @@ final class StreamTest {
         VehicleFixes.resetForTest();
         Object player = new Object(), track = new Object(), skin = new Object(), track2 = new Object();
         assert !VehicleFixes.decide(player, track, skin, 1f, 2f, 3f, 1);
-        assert !VehicleFixes.decide(player, track2, skin, 1f, 2f, 3f, 2);
+        assert !VehicleFixes.decide(player, track, skin, 1f, 2f, 3f, 2);
+        assert VehicleFixes.decide(player, track, skin, 1f, 2f, 3f, 3);
+        assert !VehicleFixes.decide(player, track2, skin, 1f, 2f, 3f, 4);
         VehicleFixes.resetForTest();
     }
 
@@ -200,6 +220,7 @@ final class StreamTest {
         assert !VehicleFixes.decide(player, track, skin, 1f, 2f, 3f, 0);
         Object other = new Object();
         VehicleFixes.decide(other, track, skin, 1f, 2f, 3f, 1900);
+        assert !VehicleFixes.animStates.containsKey(player);
         assert !VehicleFixes.decide(player, track, skin, 1f, 2f, 3f, 1900);
         VehicleFixes.resetForTest();
     }
@@ -239,5 +260,20 @@ final class StreamTest {
         try { t = java.nio.file.Files.readString(f.toPath()); }
         catch (java.io.IOException e) { throw new RuntimeException(e); }
         assert t.contains("\nvehicleAnimIdleSkip=false\n") : t;
+    }
+
+    static void masterSwitchOffDisablesStreamKeys() throws Exception {
+        java.io.File f = SelfTest.tmp("masterstream.properties");
+        f.delete();
+        java.nio.file.Files.writeString(f.toPath(),
+            "enabled=false\nchunkHandoffDivisor=5\nchunkHandoffFrameBudgetUs=100\nhotsaveIntervalSec=30\n");
+        Settings.load(f);
+        ChunkPacer.resetForTest();
+        VehicleFixes.resetForTest();
+        StreamPatches.init();
+        assert !ChunkPacer.guard.on;
+        assert !StreamPatches.hotsaveGuard.on;
+        ChunkPacer.resetForTest();
+        VehicleFixes.resetForTest();
     }
 }
