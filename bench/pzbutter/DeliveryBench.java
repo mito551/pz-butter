@@ -1700,7 +1700,8 @@ public final class DeliveryBench {
     }
 
     static void pacing() {
-        Object q = new Object();
+        zombie.util.CappedConcurrentQueue<Object> q = new zombie.util.CappedConcurrentQueue<>(64);   // the real queue type: size() is part of the decision
+        for (int k = 0; k < 10; k++) q.add(new Object());
         FrameClock.frameStartNs = 1L;
         // guard off
         ChunkPacer.resetForTest();
