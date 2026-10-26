@@ -279,12 +279,10 @@ public final class Settings {
       + "aimHoldMs=150\n"
       + "#\n"
       + "# World load (Plan 11).\n"
-      + "# skipIdChecks: the building and room ID consistency walks at world load run only in debug (they only report to the debug log).\n"
+      + "# skipIdChecks: the building and room ID consistency walks on every continued save run only in debug (they only report mismatches to the debug log).\n"
       + "skipIdChecks=false\n"
-      + "# noLoadFade: no 350 ms fade to black before the load starts.\n"
-      + "noLoadFade=false\n"
-      + "# noLoadingScreen: no fade from black during the new-game load.\n"
-      + "noLoadingScreen=false\n";
+      + "# noLoadFade: no 350 ms fade to black between the finished load and the first game frame (not on the first new game of a session).\n"
+      + "noLoadFade=false\n";
 
     public static volatile boolean enabled;
     public static volatile boolean frameLog;

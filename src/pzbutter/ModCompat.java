@@ -71,9 +71,7 @@ final class ModCompat {
         // frame loop: everything driven by the frame counter, the main thread mark or the frame ticks
         Map.entry("LoadPatches.CheckBuildingAndRoomIDs", k("skipIdChecks")),
         Map.entry("LoadPatches.FadeToBlack", k("noLoadFade")),
-        Map.entry("LoadPatches.FadeFromBlack", k("noLoadingScreen")),
         Map.entry("LoadPatches.GameLoadingExit", k("noLoadFade")),
-        Map.entry("LoadPatches.GameLoadingEnter", k("noLoadingScreen")),
         Map.entry("Patches.Frame", k("luaWorkerGate", "luaFileWriteThrottle", "logDedupe", "luaBudget", "luaTiming", "frameStartGate",
             "presentPacing", "reflexSleep", "bakeScheduler", "lightSwitchCheckFrames", "gridStackInterval", "roofHideDebounceFrames",
             "soundTickHz", "mapStreetMemo", "mapStreetCache", "textWidthCache", "uiTiming", "uiCensus", "uiRetained", "uiRetainCheck", "entityTiming")),

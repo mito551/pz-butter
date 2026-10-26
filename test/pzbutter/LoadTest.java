@@ -8,10 +8,8 @@ final class LoadTest {
         idChecksSkippedOnlyOutsideDebug();
         idChecksOffStock();
         loadingKeysOffStock();
+        noLoadFadeThroughShim();
         noLoadFadeOnlyInsideExit();
-        noLoadingScreenOnlyInsideEnter();
-        otherFadersStock();
-        noLoadingScreenNeverLeavesBlack();
         flagClearedOnThrow();
         leaveFromOtherThreadKeepsFlag();
         loadDefaultsWritten();
@@ -30,14 +28,20 @@ final class LoadTest {
 
     static void loadingKeysOffStock() {
         LoadFixes.noLoadFadeGuard.on = false;
-        LoadFixes.noLoadingScreenGuard.on = false;
-        LoadFixes.loadExitEnter();
-        LoadFixes.loadEnterEnter();
+        LoadFixes.loadExitEnter();                  // off: the holder sets no flag
+        assert !LoadFixes.inLoadExit();
         assert !LoadPatches.onLoadFade();
-        assert !LoadPatches.onLoadingScreen(null);
-        assert !LoadFixes.skipLoadingScreen(0f);
+    }
+
+    /** On: the shim skips the fade only inside GameLoadingState.exit(), on the thread that entered it. */
+    static void noLoadFadeThroughShim() {
+        LoadFixes.noLoadFadeGuard.on = true;
+        assert !LoadPatches.onLoadFade();
+        LoadFixes.loadExitEnter();
+        assert LoadPatches.onLoadFade();
         LoadFixes.loadExitLeave();
-        LoadFixes.loadEnterLeave();
+        assert !LoadPatches.onLoadFade();
+        LoadFixes.noLoadFadeGuard.on = false;
     }
 
     static void noLoadFadeOnlyInsideExit() {
@@ -48,35 +52,6 @@ final class LoadTest {
         LoadFixes.loadExitLeave();
         assert !LoadFixes.skipLoadFade();
         LoadFixes.noLoadFadeGuard.on = false;
-    }
-
-    static void noLoadingScreenOnlyInsideEnter() {
-        LoadFixes.noLoadingScreenGuard.on = true;
-        assert !LoadFixes.skipLoadingScreen(0f);
-        LoadFixes.loadEnterEnter();
-        assert LoadFixes.skipLoadingScreen(0f);
-        LoadFixes.loadEnterLeave();
-        assert !LoadFixes.skipLoadingScreen(0f);
-        LoadFixes.noLoadingScreenGuard.on = false;
-    }
-
-    /** A null or unknown fader never skips (the shim fails safe). */
-    static void otherFadersStock() {
-        LoadFixes.noLoadingScreenGuard.on = true;
-        LoadFixes.loadEnterEnter();
-        assert !LoadPatches.onLoadingScreen(null);
-        assert !LoadPatches.onLoadingScreen(new Object());   // not a ScreenFader: caught, no skip
-        LoadFixes.loadEnterLeave();
-        LoadFixes.noLoadingScreenGuard.on = false;
-    }
-
-    static void noLoadingScreenNeverLeavesBlack() {
-        LoadFixes.noLoadingScreenGuard.on = true;
-        LoadFixes.loadEnterEnter();
-        assert !LoadFixes.skipLoadingScreen(1f);
-        assert !LoadFixes.skipLoadingScreen(0.5f);
-        LoadFixes.loadEnterLeave();
-        LoadFixes.noLoadingScreenGuard.on = false;
     }
 
     static void leaveFromOtherThreadKeepsFlag() throws Exception {
@@ -99,16 +74,12 @@ final class LoadTest {
             java.lang.reflect.Method m = c1.getMethod("exit");
             me.zed_0xff.zombie_buddy.Patch.OnExit a = m.getAnnotation(me.zed_0xff.zombie_buddy.Patch.OnExit.class);
             assert a != null && a.onThrowable() == Throwable.class && a.suppress() == Throwable.class;
-            Class<?> c2 = Class.forName("pzbutter.LoadPatches$GameLoadingEnter");
-            m = c2.getMethod("exit");
-            a = m.getAnnotation(me.zed_0xff.zombie_buddy.Patch.OnExit.class);
-            assert a != null && a.onThrowable() == Throwable.class && a.suppress() == Throwable.class;
         } catch (NoSuchMethodException | ClassNotFoundException e) { throw new AssertionError(e); }
     }
 
     static void loadDefaultsWritten() {
         assert Settings.render(new java.util.Properties()).contains("\nskipIdChecks=false\n");
         assert Settings.render(new java.util.Properties()).contains("\nnoLoadFade=false\n");
-        assert Settings.render(new java.util.Properties()).contains("\nnoLoadingScreen=false\n");
+        assert !Settings.render(new java.util.Properties()).contains("noLoadingScreen");
     }
 }
