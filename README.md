@@ -115,6 +115,8 @@ The mod creates `~/Zomboid/PZButter.properties` on first start and reads it once
 | `statsNoBox` | Character stat reads skip a throwaway object per read. The same values. Off by default. |
 | `entityTiming` | Diagnostic. Once a minute the console gets the time per frame of the zombie update phases (sorting into update tiers, update, movement and animation, 3D model picking, the player's sight pass) and the zombie count (the phases overlap: the sight pass runs inside the update and movement phases, so do not add the columns up); with `frameLog`, one line per frame in `Zomboid/pzbutter/entity.out`. Off by default. |
 | `skipIdChecks` | The building and room ID consistency walks at world load run only in debug; outside debug their findings only went to the debug log. Off by default. |
+| `noLoadFade` | No 350 ms fade to black before the load starts. Off by default. |
+| `noLoadingScreen` | No fade from black during the new-game load. Off by default. |
 | `frameThreads` | Width of PZ Butter's frame worker pool for the zombie update on workers. Needs `luaWorkerGate`, and one restart after it changes. `0` or `1`: no pool, no class changes. Max `32`. Nothing uses the pool yet in this version. Off by default (`0`). |
 | `devCensus` | Diagnostic. Counts, in play, which game calls a calm zombie's update reaches, and writes `Zomboid/pzbutter/census.out` once a minute. Needs the preload (one restart). Off by default. |
 | `persistentVbo` | The sprite and puddle buffers keep storage that stays mapped (OpenGL 4.4 or `GL_ARB_buffer_storage`) instead of asking the driver for new storage and a mapping every 64 KB of sprites. Off by default; stays off by itself on older drivers. |
