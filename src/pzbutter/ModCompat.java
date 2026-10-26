@@ -69,8 +69,7 @@ final class ModCompat {
      */
     static final Map<String, String[]> KEYS = Map.ofEntries(
         // frame loop: everything driven by the frame counter, the main thread mark or the frame ticks
-        Map.entry("LoadPatches.KidsRoom", k("storyKidsRoomMemo")),
-        Map.entry("LoadPatches.KidsRoomClear", k("storyKidsRoomMemo")),
+        Map.entry("LoadPatches.CheckBuildingAndRoomIDs", k("skipIdChecks")),
         Map.entry("Patches.Frame", k("luaWorkerGate", "luaFileWriteThrottle", "logDedupe", "luaBudget", "luaTiming", "frameStartGate",
             "presentPacing", "reflexSleep", "bakeScheduler", "lightSwitchCheckFrames", "gridStackInterval", "roofHideDebounceFrames",
             "soundTickHz", "mapStreetMemo", "mapStreetCache", "textWidthCache", "uiTiming", "uiCensus", "uiRetained", "uiRetainCheck", "entityTiming")),

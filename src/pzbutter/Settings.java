@@ -279,8 +279,8 @@ public final class Settings {
       + "aimHoldMs=150\n"
       + "#\n"
       + "# World load (Plan 11).\n"
-      + "# storyKidsRoomMemo: memoise RoomDef.isKidsRoom per room for one building's story pass.\n"
-      + "storyKidsRoomMemo=false\n";
+      + "# skipIdChecks: the building and room ID consistency walks at world load run only in debug (they only report to the debug log).\n"
+      + "skipIdChecks=false\n";
 
     public static volatile boolean enabled;
     public static volatile boolean frameLog;
