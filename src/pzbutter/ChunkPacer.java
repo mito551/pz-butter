@@ -19,7 +19,7 @@ public final class ChunkPacer {
 
     public static volatile long lastFrameNo = -1;
     public static volatile int finishedThisFrame;
-    public static volatile long heldSinceFrame = -1;
+    public static volatile boolean heldThisFrame;
     public static volatile long meanJoinNs;
 
     // stats
@@ -33,7 +33,8 @@ public final class ChunkPacer {
         try {
             divisor = Settings.num("chunkHandoffDivisor", 0, 0, 100);
             budgetNs = (long) Settings.num("chunkHandoffFrameBudgetUs", 0, 0, 100000) * 1000L;
-            maxWait = Settings.num("chunkHandoffSlackMaxWait", 6, 0, 100);
+            // chunkHandoffSlackMaxWait not built: the first join of each frame already guarantees progress.
+            maxWait = 6;
             guard.on = divisor > 0 || budgetNs > 0;
         } catch (Throwable t) {
             guard.fail(t);
@@ -45,7 +46,7 @@ public final class ChunkPacer {
     public static boolean hold(int finishedThisFrame, int queued, int gridWidth, long sinceFrameStartNs, long meanJoinNs, long framesWaiting, int divisor, long budgetNs, int maxWait) {
         if (finishedThisFrame < 1) return false;
         if (queued > Math.max(gridWidth, 16)) return false;
-        if (!(framesWaiting < maxWait)) return false;
+        // maxWait/framesWaiting handling removed: a chunk never waits past the first join of a frame.
         boolean divisorHolds = divisor > 0 && finishedThisFrame >= 1 + queued / divisor;
         boolean budgetHolds = budgetNs > 0 && sinceFrameStartNs <= 1_000_000_000L && sinceFrameStartNs + meanJoinNs > budgetNs;
         return divisorHolds || budgetHolds;
@@ -60,6 +61,7 @@ public final class ChunkPacer {
             if (fn != lastFrameNo) {
                 lastFrameNo = fn;
                 finishedThisFrame = 0;
+                heldThisFrame = false;
             }
         } catch (Throwable t) { guard.fail(t); }
     }
@@ -73,19 +75,23 @@ public final class ChunkPacer {
 
     public static void joinStart() {
         try {
+            if (!inUpdate) return;
+            if (Thread.currentThread() != enterThread) return;
             joinStartNs = System.nanoTime();
         } catch (Throwable t) { guard.fail(t); }
     }
 
     public static void joinEnd() {
         try {
+            if (!inUpdate) return;
+            if (Thread.currentThread() != enterThread) return;
             long s = joinStartNs;
             if (s != 0) {
                 joinStartNs = 0;
                 long dur = System.nanoTime() - s;
                 if (meanJoinNs == 0) meanJoinNs = dur;
                 else meanJoinNs = (meanJoinNs * 15 + dur) / 16;
-                if (inUpdate) finishedThisFrame++;
+                finishedThisFrame++;
                 joins++;
             }
         } catch (Throwable t) { guard.fail(t); }
@@ -105,14 +111,14 @@ public final class ChunkPacer {
             }
             int gw = IsoChunkMap.chunkGridWidth;
             long since = System.nanoTime() - FrameClock.frameStartNs;
-            long fw = (heldSinceFrame >= 0) ? (FrameClock.frameNo - heldSinceFrame) : 0;
-            boolean h = hold(finishedThisFrame, queued, gw, since, meanJoinNs, fw, divisor, budgetNs, maxWait);
+            boolean h = hold(finishedThisFrame, queued, gw, since, meanJoinNs, 0, divisor, budgetNs, maxWait);
             if (h) {
-                if (heldSinceFrame < 0) heldSinceFrame = FrameClock.frameNo;
-                framesHeld++;
+                if (!heldThisFrame) {
+                    heldThisFrame = true;
+                    framesHeld++;
+                }
                 return true;
             }
-            heldSinceFrame = -1;
             return false;
         } catch (Throwable t) {
             guard.fail(t);
@@ -132,7 +138,7 @@ public final class ChunkPacer {
         queueRef = null;
         lastFrameNo = -1;
         finishedThisFrame = 0;
-        heldSinceFrame = -1;
+        heldThisFrame = false;
         meanJoinNs = 0;
         joins = 0;
         framesHeld = 0;

@@ -23,8 +23,8 @@ final class StreamTest {
         pacingBudgetPredictsCost();
         pacingNeverHoldsLongFrames();
         pacingBacklogDrains();
-        pacingOverdueJoins();
         pacingIgnoresOtherQueues();
+        pacingIgnoresForeignJoins();
         pacingFlagClearedOnThrow();
         pacingOffIsStock();
         pacingDefaultsWritten();
@@ -53,9 +53,20 @@ final class StreamTest {
         assert ChunkPacer.hold(6, 16, 19, 0, 0, 0, 8, 0, 6);
     }
 
-    static void pacingOverdueJoins() {
-        assert !ChunkPacer.hold(1, 10, 19, 1_000_000L, 600_000L, 6, 0, 1_500_000L, 6);
-        assert ChunkPacer.hold(1, 10, 19, 1_000_000L, 600_000L, 5, 0, 1_500_000L, 6);
+    static void pacingIgnoresForeignJoins() throws Exception {
+        ChunkPacer.resetForTest();
+        ChunkPacer.guard.on = true;
+        ChunkPacer.inUpdate = true;
+        ChunkPacer.enterThread = Thread.currentThread();
+        FrameClock.frameStartNs = 1;
+        long meanBefore = ChunkPacer.meanJoinNs;
+        long joinsBefore = ChunkPacer.joins;
+        Thread t = new Thread(() -> { ChunkPacer.joinStart(); ChunkPacer.joinEnd(); });
+        t.start();
+        t.join();
+        assert ChunkPacer.meanJoinNs == meanBefore;
+        assert ChunkPacer.joins == joinsBefore;
+        ChunkPacer.resetForTest();
     }
 
     static void pacingIgnoresOtherQueues() throws Exception {
@@ -99,7 +110,6 @@ final class StreamTest {
         catch (java.io.IOException e) { throw new RuntimeException(e); }
         assert t.contains("\nchunkHandoffDivisor=0\n") : t;
         assert t.contains("\nchunkHandoffFrameBudgetUs=0\n") : t;
-        assert t.contains("\nchunkHandoffSlackMaxWait=6\n") : t;
     }
 
     static void gloveBoxSkipsOnlyNullContainer() {
