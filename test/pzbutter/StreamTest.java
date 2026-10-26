@@ -33,26 +33,26 @@ final class StreamTest {
     }
 
     static void pacingFirstJoinAlwaysRuns() {
-        assert !ChunkPacer.hold(0, 50, 19, 5_000_000_000L, 9_000_000L, 0, 8, 1_500_000L, 6);
+        assert !ChunkPacer.hold(0, 50, 19, 5_000_000_000L, 9_000_000L, 8, 1_500_000L);
     }
 
     static void pacingDivisorCaps() {
-        assert !ChunkPacer.hold(5, 40, 19, 0, 0, 0, 8, 0, 6);
-        assert ChunkPacer.hold(6, 40, 40, 0, 0, 0, 8, 0, 6);
+        assert !ChunkPacer.hold(5, 40, 19, 0, 0, 8, 0);
+        assert ChunkPacer.hold(6, 40, 40, 0, 0, 8, 0);
     }
 
     static void pacingBudgetPredictsCost() {
-        assert ChunkPacer.hold(1, 10, 19, 1_000_000L, 600_000L, 0, 0, 1_500_000L, 6);
-        assert !ChunkPacer.hold(1, 10, 19, 1_000_000L, 400_000L, 0, 0, 1_500_000L, 6);
+        assert ChunkPacer.hold(1, 10, 19, 1_000_000L, 600_000L, 0, 1_500_000L);
+        assert !ChunkPacer.hold(1, 10, 19, 1_000_000L, 400_000L, 0, 1_500_000L);
     }
 
     static void pacingNeverHoldsLongFrames() {
-        assert !ChunkPacer.hold(1, 10, 19, 1_000_000_001L, 600_000L, 0, 0, 1_500_000L, 6);
+        assert !ChunkPacer.hold(1, 10, 19, 1_000_000_001L, 600_000L, 0, 1_500_000L);
     }
 
     static void pacingBacklogDrains() {
-        assert !ChunkPacer.hold(6, 17, 13, 0, 0, 0, 8, 0, 6);
-        assert ChunkPacer.hold(6, 16, 19, 0, 0, 0, 8, 0, 6);
+        assert !ChunkPacer.hold(6, 17, 13, 0, 0, 8, 0);
+        assert ChunkPacer.hold(6, 16, 19, 0, 0, 8, 0);
     }
 
     static void pacingIgnoresForeignJoins() throws Exception {

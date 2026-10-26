@@ -15,7 +15,6 @@ public final class ChunkPacer {
 
     public static volatile int divisor;
     public static volatile long budgetNs;
-    public static volatile int maxWait = 6;
 
     public static volatile long lastFrameNo = -1;
     public static volatile int finishedThisFrame;
@@ -25,7 +24,6 @@ public final class ChunkPacer {
     // stats
     public static volatile long joins;
     public static volatile long framesHeld;
-    public static volatile long overdueJoins;
 
     private static volatile long joinStartNs;
 
@@ -34,7 +32,6 @@ public final class ChunkPacer {
             divisor = Settings.num("chunkHandoffDivisor", 0, 0, 100);
             budgetNs = (long) Settings.num("chunkHandoffFrameBudgetUs", 0, 0, 100000) * 1000L;
             // chunkHandoffSlackMaxWait not built: the first join of each frame already guarantees progress.
-            maxWait = 6;
             guard.on = divisor > 0 || budgetNs > 0;
         } catch (Throwable t) {
             guard.fail(t);
@@ -43,10 +40,9 @@ public final class ChunkPacer {
     }
 
     /** Pure decision. */
-    public static boolean hold(int finishedThisFrame, int queued, int gridWidth, long sinceFrameStartNs, long meanJoinNs, long framesWaiting, int divisor, long budgetNs, int maxWait) {
+    public static boolean hold(int finishedThisFrame, int queued, int gridWidth, long sinceFrameStartNs, long meanJoinNs, int divisor, long budgetNs) {
         if (finishedThisFrame < 1) return false;
         if (queued > Math.max(gridWidth, 16)) return false;
-        // maxWait/framesWaiting handling removed: a chunk never waits past the first join of a frame.
         boolean divisorHolds = divisor > 0 && finishedThisFrame >= 1 + queued / divisor;
         boolean budgetHolds = budgetNs > 0 && sinceFrameStartNs <= 1_000_000_000L && sinceFrameStartNs + meanJoinNs > budgetNs;
         return divisorHolds || budgetHolds;
@@ -111,7 +107,7 @@ public final class ChunkPacer {
             }
             int gw = IsoChunkMap.chunkGridWidth;
             long since = System.nanoTime() - FrameClock.frameStartNs;
-            boolean h = hold(finishedThisFrame, queued, gw, since, meanJoinNs, 0, divisor, budgetNs, maxWait);
+            boolean h = hold(finishedThisFrame, queued, gw, since, meanJoinNs, divisor, budgetNs);
             if (h) {
                 if (!heldThisFrame) {
                     heldThisFrame = true;
@@ -127,9 +123,9 @@ public final class ChunkPacer {
     }
 
     public static String drain() {
-        long j = joins, m = meanJoinNs, fh = framesHeld, od = overdueJoins;
-        joins = 0; framesHeld = 0; overdueJoins = 0;
-        return String.format("[PZButter] chunk pacing: %d joins (mean %.2f ms), %d frames held, %d overdue joins", j, m / 1e6, fh, od);
+        long j = joins, m = meanJoinNs, fh = framesHeld;
+        joins = 0; framesHeld = 0;
+        return String.format("[PZButter] chunk pacing: %d joins (mean %.2f ms), %d frames held", j, m / 1e6, fh);
     }
 
     static void resetForTest() {
@@ -142,11 +138,9 @@ public final class ChunkPacer {
         meanJoinNs = 0;
         joins = 0;
         framesHeld = 0;
-        overdueJoins = 0;
         joinStartNs = 0;
         divisor = 0;
         budgetNs = 0;
-        maxWait = 6;
         guard.on = false;
     }
 }

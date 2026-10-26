@@ -1342,7 +1342,8 @@ final class LuaGateTest {
     /** Keys of the table that are numbers or modes (not switches); every one needs its stock answer checked below. */
     static final java.util.Set<String> VALUE_KEYS = java.util.Set.of("aimHoldMs", "bakeMipLevels", "borderlessFullscreen", "cutawayRadius", "gpuMaxFrames",
         "gridStackInterval", "lightSwitchCheckFrames", "lightingFps", "presentPacing", "roofHideDebounceFrames", "soundTickHz", "treeBakeMaxChunksPerSec", "vrr", "zoomEaseMs",
-        "numberZombiesBlended", "zombieLodFixed3d", "zombieModelAddBudgetUs", "zombieSimLodTiles", "zombieSimLodSteps", "vboBatchKb", "vboSizeClasses");
+        "numberZombiesBlended", "zombieLodFixed3d", "zombieModelAddBudgetUs", "zombieSimLodTiles", "zombieSimLodSteps", "vboBatchKb", "vboSizeClasses",
+        "hotsaveIntervalSec", "chunkHandoffDivisor", "chunkHandoffFrameBudgetUs");
 
     /**
      * Forced off answers stock for every key of the table: a switch is false (true for the stock-true ones), and each number or mode key
@@ -1371,6 +1372,7 @@ final class LuaGateTest {
         Settings.forcedOff.add("persistentVbo");                                   // a switch, forced like the table's others (load cleared them)
         AimHold.init(); Cutaways.init(); GridGate.init(); ZoomEase.init(); BakeMisc.init(); ChunkTrees.init(); SoundTick.init();
         LightChecks.init(); SwapHold.init(); Vrr.init(); ZombieLod.init(); BatchSize.init(); UploadSizer.init(); PersistentVbo.init(); NoSync.init(); GpuTimer.init();
+        StreamPatches.init(); ChunkPacer.init();
         try {
             assert AimHold.holdMs == 150 && Cutaways.radius == 0 && GridGate.interval == 0 && GridGate.roofFrames == 0 && ZoomEase.ms == 0;
             assert BakeMisc.mipLevels == 0 && ChunkTrees.maxPerSec == 0 && !SoundPatches.tickGuard.on && LightChecks.switchTtl == 0 && LightChecks.lightingFps == 0;
@@ -1381,6 +1383,8 @@ final class LuaGateTest {
             assert UploadSizer.mode == 0 && !UploadSizer.guard.on;                  // vboSizeClasses: the game's upload
             assert !PersistentVbo.guard.on;                                         // persistentVbo: the game's map and unmap
             assert !NoSync.guard.on && !NoSync.check;                               // bakeNoSync: the driver answers
+            assert !StreamPatches.hotsaveGuard.on;                                  // hotsaveIntervalSec: stock 0
+            assert !ChunkPacer.guard.on;                                            // chunk pacing off when both keys 0
             assert !GpuTimer.guard.on && GpuTimer.loadMs(5.0) == 5.0;               // bakeBudgetGpu: the game thread's step alone
             // gpuMaxFrames (stock-off means a different number) has its own test below
         } finally {

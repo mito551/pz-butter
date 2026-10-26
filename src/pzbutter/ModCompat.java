@@ -43,7 +43,7 @@ final class ModCompat {
     /** The classes whose nested classes are PZ Butter's holders. */
     static final Class<?>[] OUTERS = {Patches.class, DeliveryPatches.class, LuaPatches.class, UiPatches.class, MapPatches.class,
         SoundPatches.class, WorldPatches.class, ChunkPatches.class, LogPatches.class, ZombiePatches.class, GpuPatches.class, CensusPatches.class,
-        VehiclePatches.class};
+        VehiclePatches.class, StreamPatches.class};
 
     private static final String PATCH = "Lme/zed_0xff/zombie_buddy/Patch;";
     private static final String ON_ENTER = "Lme/zed_0xff/zombie_buddy/Patch$OnEnter;";
@@ -130,6 +130,10 @@ final class ModCompat {
         Map.entry("ZombiePatches.CullSortHook", k("zombieCullSortFast")),
         Map.entry("ZombiePatches.StatsGet", k("statsNoBox")),
         Map.entry("VehiclePatches.GloveBox", k("gloveBoxFix")),
+        Map.entry("StreamPatches.ChunkUpdate", k("chunkHandoffDivisor", "chunkHandoffFrameBudgetUs")),
+        Map.entry("StreamPatches.Join", k("chunkHandoffDivisor", "chunkHandoffFrameBudgetUs")),
+        Map.entry("StreamPatches.Poll", k("chunkHandoffDivisor", "chunkHandoffFrameBudgetUs")),
+        Map.entry("StreamPatches.HotSaveInit", k("hotsaveIntervalSec")),
         Map.entry("ZombiePatches.SchedStart", k("entityTiming")),
         Map.entry("ZombiePatches.SchedUpdate", k("entityTiming")),
         Map.entry("ZombiePatches.SchedPost", k("entityTiming")),
