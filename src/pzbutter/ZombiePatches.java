@@ -391,7 +391,6 @@ public final class ZombiePatches {
             boolean isZombie = c instanceof zombie.characters.IsoZombie;
             boolean needFirst = ap.isBoneTransformsNeedFirstFrame();
             boolean hasParent = ap.parentPlayer != null;
-            boolean busy = false, busyFailed = false;
             int id = 0;
             float dx = 0, dy = 0;
             if (isZombie) {
@@ -399,8 +398,27 @@ public final class ZombiePatches {
                 // stagger id must be stable and distinct per zombie. In single player onlineId is -1 for
                 // every zombie (assigned only on the server path), so use object identity instead.
                 id = System.identityHashCode(z) & 0x7fffffff;
+                // nearest local player distance FIRST (squared, no DistTo); return before busy checks unless distant
+                zombie.characters.IsoPlayer[] ps = zombie.characters.IsoPlayer.players;
+                int n = zombie.characters.IsoPlayer.numPlayers;
+                float best = Float.MAX_VALUE;
+                zombie.characters.IsoPlayer nearest = null;
+                for (int i = 0; i < n; i++) {
+                    zombie.characters.IsoPlayer p = (ps == null || i >= ps.length) ? null : ps[i];
+                    if (p == null) continue;
+                    float ddx = z.getX() - p.getX();
+                    float ddy = z.getY() - p.getY();
+                    float d2 = ddx * ddx + ddy * ddy;
+                    if (d2 < best) { best = d2; nearest = p; }
+                }
+                if (nearest != null) {
+                    dx = z.getX() - nearest.getX();
+                    dy = z.getY() - nearest.getY();
+                }
+                if (!AnimSkip.distant(dx, dy, AnimSkip.distTiles)) return;
                 boolean ragdoll = false, dead = false, fakeDead = false, onFloor = false, knocked = false, attacking = false,
                     crawling = false, onFire = false, inVehicle = false, hasTarget = false, thumping = false, gr = false, grl = false;
+                boolean busyFailed = false;
                 try { ragdoll = z.isRagdoll(); } catch (Throwable t) { ragdoll = true; busyFailed = true; }
                 try { dead = z.isDead(); } catch (Throwable t) { dead = true; busyFailed = true; }
                 try { fakeDead = z.isFakeDead(); } catch (Throwable t) { fakeDead = true; busyFailed = true; }
@@ -422,26 +440,11 @@ public final class ZombiePatches {
                 try { attached = z.getAttachedItems() != null; } catch (Throwable t) { attached = true; busyFailed = true; }
                 boolean held = false;
                 try { held = z.getPrimaryHandItem() != null; } catch (Throwable t) { held = true; busyFailed = true; }
-                busy = ragdoll || dead || fakeDead || onFloor || knocked || attacking || crawling || onFire
+                boolean busy = ragdoll || dead || fakeDead || onFloor || knocked || attacking || crawling || onFire
                     || inVehicle || hasTarget || thumping || gr || grl || hitTime > 0 || attached || held || busyFailed;
-                // nearest local player distance
-                zombie.characters.IsoPlayer[] ps = zombie.characters.IsoPlayer.players;
-                int n = zombie.characters.IsoPlayer.numPlayers;
-                float best = Float.MAX_VALUE;
-                zombie.characters.IsoPlayer nearest = null;
-                for (int i = 0; i < n; i++) {
-                    zombie.characters.IsoPlayer p = (ps == null || i >= ps.length) ? null : ps[i];
-                    if (p == null) continue;
-                    float d = z.DistTo(p);
-                    if (d < best) { best = d; nearest = p; }
-                }
-                if (nearest != null) {
-                    dx = z.getX() - nearest.getX();
-                    dy = z.getY() - nearest.getY();
-                }
+                if (busy) return;
             }
-            if (!AnimSkip.eligible(isZombie, needFirst, hasParent, busy)) return;
-            if (!AnimSkip.distant(dx, dy, AnimSkip.distTiles)) return;
+            if (!isZombie || needFirst || hasParent) return;
             AnimSkip.skipping = AnimSkip.cadenceSkip(id, frameNo, AnimSkip.distEvery);
             if (AnimSkip.skipping) AnimSkip.skipped++;
             else AnimSkip.rebuilt++;

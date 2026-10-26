@@ -96,8 +96,7 @@ final class AnimSkipTest {
     static void offIsStock() {
         AnimSkip.distGuard.on = false;
         AnimSkip.skipping = true;
-        // guard off means outer would leave skipping false; simulate via init? just flag
-        AnimSkip.skipping = false;
+        ZombiePatches.onAnimExit();
         assert !AnimSkip.skipping;
         AnimSkip.distGuard.on = false;
     }

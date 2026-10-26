@@ -27,7 +27,7 @@ final class ZombieStats {
 
     static void init() {
         guard.on = FacingFix.guard.on || ZombieLod.blendGuard.on || ZombieLod.capGuard.on || ZombieLod.budgetGuard.on
-            || ZombiePatches.losGuard.on || CullSort.guard.on;
+            || ZombiePatches.losGuard.on || CullSort.guard.on || AnimSkip.distGuard.on;
         started = false;
         last = new long[N];
     }
@@ -73,6 +73,13 @@ final class ZombieStats {
         }
         last = cur;
         if (any) out.accept(line(d));
+        long animSkipped = AnimSkip.skipped;
+        long animTotal = animSkipped + AnimSkip.rebuilt;
+        if (animTotal > 0) {
+            out.accept(String.format(java.util.Locale.ROOT, "[PZButter] anim skip: %d of %d zombie matrix updates skipped", animSkipped, animTotal));
+            AnimSkip.skipped = 0;
+            AnimSkip.rebuilt = 0;
+        }
     }
 
     static void resetForTest() {
