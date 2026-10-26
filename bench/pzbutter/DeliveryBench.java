@@ -132,7 +132,8 @@ public final class DeliveryBench {
             case "batch" -> batch();
             case "calm" -> calm();
             case "latch" -> latch();
-            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | uislice | readset | soundgate | cutaway | splash | edge | plan | gate | luagate | replay | luafiles | dedupe | scenecull | simlod | spotted | cullsort | statsget | vbosize | vboslots | glrecord | scratch | batch | calm | latch");
+            case "animskip" -> animskip();
+            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | uislice | readset | soundgate | cutaway | splash | edge | plan | gate | luagate | replay | luafiles | dedupe | scenecull | simlod | spotted | cullsort | statsget | vbosize | vboslots | glrecord | scratch | batch | calm | latch | animskip");
         }
     }
 
@@ -1695,5 +1696,37 @@ public final class DeliveryBench {
         System.out.printf("latch worker tasks: %d%n", workerTasks);
         System.out.printf("latch direct (non-worker): %6.2f ns/record%n", directNs);
         LuaGate.resetForTest();
+    }
+
+    static void animskip() {
+        // A real AnimationPlayer cannot be built headless in this harness, so the pure decision path is
+        // benched: AnimSkip.eligible, AnimSkip.distant and AnimSkip.cadenceSkip (guard off is one flag read).
+        final int n = 10_000_000;
+        double[] a = new double[7], b = new double[7], c = new double[7];
+        for (int r = -3; r < 7; r++) {
+            long t0 = System.nanoTime();
+            boolean s = false;
+            for (int i = 0; i < n; i++) s ^= AnimSkip.eligible(false, false, false, false);
+            if (r >= 0) a[r] = (System.nanoTime() - t0) / (double) n;
+            if (s) throw new IllegalStateException("animskip: unexpected");
+        }
+        for (int r = -3; r < 7; r++) {
+            long t0 = System.nanoTime();
+            boolean s = false;
+            for (int i = 0; i < n; i++) s ^= AnimSkip.distant(30.0f, 41.0f, 50);
+            if (r >= 0) b[r] = (System.nanoTime() - t0) / (double) n;
+            if (s) throw new IllegalStateException("animskip: expected distant");
+        }
+        for (int r = -3; r < 7; r++) {
+            long t0 = System.nanoTime();
+            boolean s = false;
+            for (int i = 0; i < n; i++) s ^= AnimSkip.cadenceSkip(i, i, 4);
+            if (r >= 0) c[r] = (System.nanoTime() - t0) / (double) n;
+        }
+        java.util.Arrays.sort(a); java.util.Arrays.sort(b); java.util.Arrays.sort(c);
+        System.out.printf("animskip eligible (non-zombie, guard on): %6.2f ns/call (min %.2f, max %.2f)%n", a[3], a[0], a[6]);
+        System.out.printf("animskip distant  (far zombie, guard on):    %6.2f ns/call (min %.2f, max %.2f)%n", b[3], b[0], b[6]);
+        System.out.printf("animskip cadenceSkip:                        %6.2f ns/call (min %.2f, max %.2f)%n", c[3], c[0], c[6]);
+        System.out.println("animskip note: guard off is a single volatile flag read; AnimationPlayer not constructible headless.");
     }
 }

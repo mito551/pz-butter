@@ -391,37 +391,39 @@ public final class ZombiePatches {
             boolean isZombie = c instanceof zombie.characters.IsoZombie;
             boolean needFirst = ap.isBoneTransformsNeedFirstFrame();
             boolean hasParent = ap.parentPlayer != null;
-            boolean busy = false;
+            boolean busy = false, busyFailed = false;
             int id = 0;
             float dx = 0, dy = 0;
             if (isZombie) {
                 zombie.characters.IsoZombie z = (zombie.characters.IsoZombie) c;
-                id = z.getOnlineID();
+                // stagger id must be stable and distinct per zombie. In single player onlineId is -1 for
+                // every zombie (assigned only on the server path), so use object identity instead.
+                id = System.identityHashCode(z) & 0x7fffffff;
                 boolean ragdoll = false, dead = false, fakeDead = false, onFloor = false, knocked = false, attacking = false,
                     crawling = false, onFire = false, inVehicle = false, hasTarget = false, thumping = false, gr = false, grl = false;
-                try { ragdoll = z.isRagdoll(); } catch (Throwable t) { ragdoll = false; }
-                try { dead = z.isDead(); } catch (Throwable t) { dead = false; }
-                try { fakeDead = z.isFakeDead(); } catch (Throwable t) { fakeDead = false; }
-                try { onFloor = z.isOnFloor(); } catch (Throwable t) { onFloor = false; }
-                try { knocked = z.isKnockedDown(); } catch (Throwable t) { knocked = false; }
-                try { attacking = z.isAttacking(); } catch (Throwable t) { attacking = false; }
-                try { crawling = z.isCrawling(); } catch (Throwable t) { crawling = false; }
-                try { onFire = z.isOnFire(); } catch (Throwable t) { onFire = false; }
-                try { inVehicle = z.getVehicle() != null; } catch (Throwable t) { inVehicle = false; }
-                try { hasTarget = z.getTarget() != null; } catch (Throwable t) { hasTarget = false; }
-                try { thumping = z.getThumpTarget() != null; } catch (Throwable t) { thumping = false; }
+                try { ragdoll = z.isRagdoll(); } catch (Throwable t) { ragdoll = true; busyFailed = true; }
+                try { dead = z.isDead(); } catch (Throwable t) { dead = true; busyFailed = true; }
+                try { fakeDead = z.isFakeDead(); } catch (Throwable t) { fakeDead = true; busyFailed = true; }
+                try { onFloor = z.isOnFloor(); } catch (Throwable t) { onFloor = true; busyFailed = true; }
+                try { knocked = z.isKnockedDown(); } catch (Throwable t) { knocked = true; busyFailed = true; }
+                try { attacking = z.isAttacking(); } catch (Throwable t) { attacking = true; busyFailed = true; }
+                try { crawling = z.isCrawling(); } catch (Throwable t) { crawling = true; busyFailed = true; }
+                try { onFire = z.isOnFire(); } catch (Throwable t) { onFire = true; busyFailed = true; }
+                try { inVehicle = z.getVehicle() != null; } catch (Throwable t) { inVehicle = true; busyFailed = true; }
+                try { hasTarget = z.getTarget() != null; } catch (Throwable t) { hasTarget = true; busyFailed = true; }
+                try { thumping = z.getThumpTarget() != null; } catch (Throwable t) { thumping = true; busyFailed = true; }
                 try {
                     zombie.core.skinnedmodel.IGrappleable g = z.getGrappleable();
                     if (g != null) { gr = g.isGrappling(); grl = g.isBeingGrappled(); }
-                } catch (Throwable t) { gr = false; grl = false; }
+                } catch (Throwable t) { gr = true; grl = true; busyFailed = true; }
                 int hitTime = 0;
-                try { hitTime = z.getHitTime(); } catch (Throwable t) { hitTime = 0; }
+                try { hitTime = z.getHitTime(); } catch (Throwable t) { hitTime = 1; busyFailed = true; }
                 boolean attached = false;
-                try { attached = z.getAttachedItems() != null; } catch (Throwable t) { attached = false; }
+                try { attached = z.getAttachedItems() != null; } catch (Throwable t) { attached = true; busyFailed = true; }
                 boolean held = false;
-                try { held = z.getPrimaryHandItem() != null; } catch (Throwable t) { held = false; }
+                try { held = z.getPrimaryHandItem() != null; } catch (Throwable t) { held = true; busyFailed = true; }
                 busy = ragdoll || dead || fakeDead || onFloor || knocked || attacking || crawling || onFire
-                    || inVehicle || hasTarget || thumping || gr || grl || hitTime > 0 || attached || held;
+                    || inVehicle || hasTarget || thumping || gr || grl || hitTime > 0 || attached || held || busyFailed;
                 // nearest local player distance
                 zombie.characters.IsoPlayer[] ps = zombie.characters.IsoPlayer.players;
                 int n = zombie.characters.IsoPlayer.numPlayers;

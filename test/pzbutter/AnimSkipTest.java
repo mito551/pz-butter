@@ -6,6 +6,7 @@ final class AnimSkipTest {
 
     static void run() throws Exception {
         cadenceStaggered();
+        cadenceSpreadsDistinctObjects();
         cadenceEveryOneNeverSkips();
         distantThreshold();
         eligibleFalseInputs();
@@ -28,6 +29,19 @@ final class AnimSkipTest {
             int sharing = 0;
             for (int id = 0; id < 4; id++) if (!AnimSkip.cadenceSkip(id, f, every)) sharing++;
             assert sharing <= 1 : "frame " + f + " rebuilds " + sharing;
+        }
+    }
+
+    static void cadenceSpreadsDistinctObjects() {
+        Object[] objs = new Object[8];
+        for (int i = 0; i < objs.length; i++) objs[i] = new Object();
+        for (long f = 0; f < 16; f++) {
+            int rebuilds = 0;
+            for (int i = 0; i < objs.length; i++) {
+                int id = System.identityHashCode(objs[i]) & 0x7fffffff;
+                if (!AnimSkip.cadenceSkip(id, f, 4)) rebuilds++;
+            }
+            assert rebuilds < objs.length : "all rebuild frame " + f;
         }
     }
 
