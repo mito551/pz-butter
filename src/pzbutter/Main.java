@@ -44,6 +44,7 @@ public class Main {
         SoundTick.init();
         WorldSounds.init();
         SoundFixes.init();
+        VehiclePatches.init();
         LightChecks.init();
         GridGate.init();
         Cutaways.init();

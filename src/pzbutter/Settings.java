@@ -276,7 +276,11 @@ public final class Settings {
       + "# cursorLatch: the cursor is moved to the newest pointer position just before the frame is drawn.\n"
       + "cursorLatch=false\n"
       + "# aimHoldMs: right-button hold before aiming starts.\n"
-      + "aimHoldMs=150\n";
+      + "aimHoldMs=150\n"
+      + "#\n"
+      + "# Vehicles (Plan 10).\n"
+      + "# gloveBoxFix: a vehicle whose GloveBox part has no item container no longer throws when adding a key.\n"
+      + "gloveBoxFix=false\n";
 
     public static volatile boolean enabled;
     public static volatile boolean frameLog;
