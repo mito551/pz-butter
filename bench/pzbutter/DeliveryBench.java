@@ -132,7 +132,8 @@ public final class DeliveryBench {
             case "batch" -> batch();
             case "calm" -> calm();
             case "latch" -> latch();
-            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | uislice | readset | soundgate | cutaway | splash | edge | plan | gate | luagate | replay | luafiles | dedupe | scenecull | simlod | spotted | cullsort | statsget | vbosize | vboslots | glrecord | scratch | batch | calm | latch");
+            case "pacing" -> pacing();
+            default -> throw new IllegalArgumentException("... | pacing");
         }
     }
 
@@ -1695,5 +1696,43 @@ public final class DeliveryBench {
         System.out.printf("latch worker tasks: %d%n", workerTasks);
         System.out.printf("latch direct (non-worker): %6.2f ns/record%n", directNs);
         LuaGate.resetForTest();
+    }
+
+    static void pacing() {
+        Object q = new Object();
+        FrameClock.frameStartNs = 1L;
+        // guard off
+        ChunkPacer.resetForTest();
+        ChunkPacer.inUpdate = true;
+        ChunkPacer.enterThread = Thread.currentThread();
+        ChunkPacer.queueRef = q;
+        int n = 10_000_000;
+        long t0 = System.nanoTime();
+        int hits = 0;
+        for (int i = 0; i < n; i++) if (ChunkPacer.onPoll(q)) hits++;
+        long dt0 = System.nanoTime() - t0;
+        // foreign queue
+        Object foreign = new Object();
+        t0 = System.nanoTime();
+        int fHits = 0;
+        for (int i = 0; i < n; i++) if (ChunkPacer.onPoll(foreign)) fHits++;
+        long dt1 = System.nanoTime() - t0;
+        // deciding hold
+        ChunkPacer.resetForTest();
+        ChunkPacer.guard.on = true;
+        ChunkPacer.divisor = 8;
+        ChunkPacer.budgetNs = 1_500_000L;
+        ChunkPacer.maxWait = 6;
+        ChunkPacer.inUpdate = true;
+        ChunkPacer.enterThread = Thread.currentThread();
+        ChunkPacer.queueRef = q;
+        ChunkPacer.finishedThisFrame = 1;
+        ChunkPacer.meanJoinNs = 600_000L;
+        t0 = System.nanoTime();
+        int dHits = 0;
+        for (int i = 0; i < n; i++) if (ChunkPacer.onPoll(q)) dHits++;
+        long dt2 = System.nanoTime() - t0;
+        System.out.printf("pacing guard off: %6.2f ns/call, foreign: %6.2f ns/call, deciding: %6.2f ns/call (hits %d/%d/%d)%n",
+            dt0 / (double) n, dt1 / (double) n, dt2 / (double) n, hits, fHits, dHits);
     }
 }

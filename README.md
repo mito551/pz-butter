@@ -106,6 +106,9 @@ The mod creates `~/Zomboid/PZButter.properties` on first start and reads it once
 | `bloodRebakeCoalesceMs` | With `bakeScheduler`: a texture whose only change is new blood waits this long, so several splats share one redraw. `0`: at once. Default `250`. |
 | `zeroFacingFix` | A character asked to face a zero-length direction keeps its facing, instead of the game stopping with "Forward Direction cannot be zero length vector". Only the calls the game would have stopped on change. Off by default. |
 | `gloveBoxFix` | A vehicle whose GloveBox part has no item container no longer throws when adding a key. Off by default. |
+| `chunkHandoffDivisor` | Caps how many streamed chunks join per frame while driving (0 = off). Try 8. |
+| `chunkHandoffFrameBudgetUs` | Microsecond budget for joining streamed chunks per frame (0 = off). Try 1500. |
+| `chunkHandoffSlackMaxWait` | Frames a held chunk may wait before joining anyway. Default 6. |
 | `numberZombiesBlended` | How many of the most relevant zombies get blended animations. `0` keeps the game's 20; `1` to `64`. Fewer looks stiffer and costs less. |
 | `zombieLodFixed3d` | Changes the simulation. At most this many zombies are drawn as 3D models; the rest are flat sprites and, like the game's own zombies past 510, update less often. `0` keeps the game's 510; `50` to `510`, never below `numberZombiesBlended`. |
 | `zombieModelAddBudgetUs` | Changes the simulation for a few frames. Microseconds a frame for zombies getting their 3D model; past it the next ones stay sprites (and update less often) one frame longer. At least one gets its model each frame. `0`: no limit, as the game. |

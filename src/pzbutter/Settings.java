@@ -280,7 +280,15 @@ public final class Settings {
       + "#\n"
       + "# Vehicles (Plan 10).\n"
       + "# gloveBoxFix: a vehicle whose GloveBox part has no item container no longer throws when adding a key.\n"
-      + "gloveBoxFix=false\n";
+      + "gloveBoxFix=false\n"
++ "#\n"
++ "# Chunk hand-off pacing (Plan 10a).\n"
++ "# chunkHandoffDivisor: joins per frame capped by 1 + queued/divisor (0 = off).\n"
++ "chunkHandoffDivisor=0\n"
++ "# chunkHandoffFrameBudgetUs: budget in microseconds for joins this frame (0 = off).\n"
++ "chunkHandoffFrameBudgetUs=0\n"
++ "# chunkHandoffSlackMaxWait: frames a held chunk may wait before it joins anyway.\n"
++ "chunkHandoffSlackMaxWait=6\n";
 
     public static volatile boolean enabled;
     public static volatile boolean frameLog;

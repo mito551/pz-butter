@@ -14,6 +14,92 @@ final class StreamTest {
         gloveBoxSkipsOnlyNullContainer();
         gloveBoxOffIsStock();
         streamDefaultsWritten();
+        pacingTests();
+    }
+
+    static void pacingTests() throws Throwable {
+        pacingFirstJoinAlwaysRuns();
+        pacingDivisorCaps();
+        pacingBudgetPredictsCost();
+        pacingNeverHoldsLongFrames();
+        pacingBacklogDrains();
+        pacingOverdueJoins();
+        pacingIgnoresOtherQueues();
+        pacingFlagClearedOnThrow();
+        pacingOffIsStock();
+        pacingDefaultsWritten();
+    }
+
+    static void pacingFirstJoinAlwaysRuns() {
+        assert !ChunkPacer.hold(0, 50, 19, 5_000_000_000L, 9_000_000L, 0, 8, 1_500_000L, 6);
+    }
+
+    static void pacingDivisorCaps() {
+        assert !ChunkPacer.hold(5, 40, 19, 0, 0, 0, 8, 0, 6);
+        assert ChunkPacer.hold(6, 40, 40, 0, 0, 0, 8, 0, 6);
+    }
+
+    static void pacingBudgetPredictsCost() {
+        assert ChunkPacer.hold(1, 10, 19, 1_000_000L, 600_000L, 0, 0, 1_500_000L, 6);
+        assert !ChunkPacer.hold(1, 10, 19, 1_000_000L, 400_000L, 0, 0, 1_500_000L, 6);
+    }
+
+    static void pacingNeverHoldsLongFrames() {
+        assert !ChunkPacer.hold(1, 10, 19, 1_000_000_001L, 600_000L, 0, 0, 1_500_000L, 6);
+    }
+
+    static void pacingBacklogDrains() {
+        assert !ChunkPacer.hold(6, 17, 13, 0, 0, 0, 8, 0, 6);
+        assert ChunkPacer.hold(6, 16, 19, 0, 0, 0, 8, 0, 6);
+    }
+
+    static void pacingOverdueJoins() {
+        assert !ChunkPacer.hold(1, 10, 19, 1_000_000L, 600_000L, 6, 0, 1_500_000L, 6);
+        assert ChunkPacer.hold(1, 10, 19, 1_000_000L, 600_000L, 5, 0, 1_500_000L, 6);
+    }
+
+    static void pacingIgnoresOtherQueues() throws Exception {
+        ChunkPacer.resetForTest();
+        ChunkPacer.guard.on = true;
+        Object q1 = new Object();
+        Object q2 = new Object();
+        ChunkPacer.queueRef = q1;
+        ChunkPacer.inUpdate = true;
+        ChunkPacer.enterThread = Thread.currentThread();
+        FrameClock.frameStartNs = 1;
+        assert !ChunkPacer.onPoll(q2);
+        ChunkPacer.resetForTest();
+    }
+
+    static void pacingFlagClearedOnThrow() throws Exception {
+        ChunkPacer.resetForTest();
+        ChunkPacer.guard.on = true;
+        ChunkPacer.enter();
+        ChunkPacer.exit();
+        assert !ChunkPacer.onPoll(ChunkPacer.queueRef == null ? new Object() : ChunkPacer.queueRef);
+        me.zed_0xff.zombie_buddy.Patch.OnExit a = StreamPatches.ChunkUpdate.class.getMethod("exit").getAnnotation(me.zed_0xff.zombie_buddy.Patch.OnExit.class);
+        assert a != null && a.onThrowable() == Throwable.class;
+        ChunkPacer.resetForTest();
+    }
+
+    static void pacingOffIsStock() {
+        ChunkPacer.resetForTest();
+        ChunkPacer.init();
+        assert !ChunkPacer.guard.on;
+        assert !ChunkPacer.onPoll(new Object());
+        ChunkPacer.resetForTest();
+    }
+
+    static void pacingDefaultsWritten() {
+        java.io.File f = SelfTest.tmp("pacing.properties");
+        f.delete();
+        Settings.load(f);
+        String t = "";
+        try { t = java.nio.file.Files.readString(f.toPath()); }
+        catch (java.io.IOException e) { throw new RuntimeException(e); }
+        assert t.contains("\nchunkHandoffDivisor=0\n") : t;
+        assert t.contains("\nchunkHandoffFrameBudgetUs=0\n") : t;
+        assert t.contains("\nchunkHandoffSlackMaxWait=6\n") : t;
     }
 
     static void gloveBoxSkipsOnlyNullContainer() {

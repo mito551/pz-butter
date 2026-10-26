@@ -45,6 +45,7 @@ public class Main {
         WorldSounds.init();
         SoundFixes.init();
         VehiclePatches.init();
+        StreamPatches.init();
         LightChecks.init();
         GridGate.init();
         Cutaways.init();
