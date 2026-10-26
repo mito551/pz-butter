@@ -3,8 +3,8 @@ package pzbutter;
 import java.util.IdentityHashMap;
 
 /**
- * World-load keys (Plan 11a). {@code storyKidsRoomMemo} memoises {@code RoomDef.isKidsRoom()} per room for one building's
- * story pass; the rest of the family lives alongside (Task 2-3).
+ * World-load keys (Plan 11a). {@code storyKidsRoomMemo} memoises {@code RoomDef.isKidsRoom()} per room, but only while a
+ * building's story pass is active on one thread.
  */
 public final class LoadFixes {
     private LoadFixes() {}
@@ -15,7 +15,10 @@ public final class LoadFixes {
     /** Identity-keyed memo: a room is the key, its computed kids-room answer is the value. */
     private static final IdentityHashMap<Object, Boolean> kidsMemo = new IdentityHashMap<>();
 
-    /** The thread that first touched the memo (the story pass's thread). Other threads pass through. */
+    /** True only between a {@code RandomizedBuildingBase.randomizeBuilding} entry and exit on the owning thread. */
+    private static volatile boolean kidsPassActive;
+
+    /** The thread running the active story pass. */
     private static volatile Thread kidsOwner;
 
     public static void init() {
@@ -26,23 +29,41 @@ public final class LoadFixes {
     public static void resetForTest() {
         kidsGuard.on = false;
         kidsMemo.clear();
+        kidsPassActive = false;
         kidsOwner = null;
     }
 
-    /** True when the current thread is the memo's owner (or becomes it on the first call). */
+    /** Begin a building's story pass on the current thread: sets the owner/active flag and clears the memo. */
+    public static void kidsPassEnter() { kidsBegin(); }
+    public static void kidsBegin() { kidsBeginPass(); }
+    public static void kidsBeginPass() { kidsEnterPass(); }
+    public static void kidsEnterPass() { kidsEnter(); }
+    public static void kidsEnter() {
+        kidsPassActive = true;
+        kidsOwner = Thread.currentThread();
+        synchronized (kidsMemo) { kidsMemo.clear(); }
+    }
+    public static void enterPass() { kidsEnter(); }
+
+    /** End a building's story pass: clears the active flag, owner, and memo. */
+    public static void kidsPassExit() { kidsEnd(); }
+    public static void kidsEnd() { kidsEndPass(); }
+    public static void kidsEndPass() { kidsExitPass(); }
+    public static void kidsExitPass() { kidsExit(); }
+    public static void kidsExit() { kidsPassExit0(); }
+    private static void kidsPassExit0() {
+        kidsPassActive = false;
+        kidsOwner = null;
+        synchronized (kidsMemo) { kidsMemo.clear(); }
+    }
+    public static void exitPass() { kidsPassExit0(); }
+
+    /** True when the current thread owns an active story pass. */
     private static boolean ownerThread() {
-        Thread t = Thread.currentThread();
-        Thread o = kidsOwner;
-        if (o == null) {
-            synchronized (LoadFixes.class) {
-                o = kidsOwner;
-                if (o == null) { kidsOwner = o = t; }
-            }
-        }
-        return t == o;
+        return kidsPassActive && Thread.currentThread() == kidsOwner;
     }
 
-    /** A cached answer for {@code room}, or null when uncached, off, or on another thread. */
+    /** A cached answer for {@code room}, or null when uncached, off, or outside an active pass. */
     public static Boolean kidsCached(Object room) {
         if (!kidsGuard.on) return null;
         if (!ownerThread()) return null;

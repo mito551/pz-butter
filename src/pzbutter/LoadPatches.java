@@ -29,6 +29,16 @@ public final class LoadPatches {
         catch (Throwable t) { LoadFixes.kidsGuard.fail(t); }
     }
 
+    public static void onKidsPassEnter() {
+        try { LoadFixes.kidsEnter(); }
+        catch (Throwable t) { LoadFixes.kidsGuard.fail(t); }
+    }
+
+    public static void onKidsPassExit() {
+        try { LoadFixes.kidsExit(); }
+        catch (Throwable t) { LoadFixes.kidsGuard.fail(t); }
+    }
+
     public static void onKidsClear() {
         try { LoadFixes.kidsClear(); }
         catch (Throwable t) { LoadFixes.kidsGuard.fail(t); }
@@ -51,7 +61,10 @@ public final class LoadPatches {
 
     @Patch(className = "zombie.randomizedWorld.randomizedBuilding.RandomizedBuildingBase", methodName = "randomizeBuilding")
     public static class KidsRoomClear {
+        @Patch.OnEnter
+        public static void enter() { LoadPatches.onKidsPassEnter(); }
+
         @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
-        public static void exit() { LoadPatches.onKidsClear(); }
+        public static void exit() { LoadPatches.onKidsPassExit(); }
     }
 }

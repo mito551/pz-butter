@@ -1,5 +1,7 @@
 package pzbutter;
 
+import me.zed_0xff.zombie_buddy.Patch;
+
 /** Plan 11a checks (world load: storyKidsRoomMemo). Run from SelfTest.main. */
 final class LoadTest {
     private LoadTest() {}
@@ -15,6 +17,8 @@ final class LoadTest {
         kidsMemoClearedPerBuilding();
         kidsMemoOtherThreadPassesThrough();
         kidsMemoOffStock();
+        kidsMemoInactiveOutsidePass();
+        kidsMemoClearedOnThrow();
     }
 
     // ---- storyKidsRoomMemo ----
@@ -22,28 +26,33 @@ final class LoadTest {
     static void kidsMemoHitsSecondCall() {
         LoadFixes.resetForTest();
         LoadFixes.kidsGuard.on = true;
+        LoadFixes.kidsEnter();
         Object room = new Object();
         assert LoadFixes.kidsCached(room) == null;
         LoadFixes.kidsStore(room, true);
         assert Boolean.TRUE.equals(LoadFixes.kidsCached(room));
         assert Boolean.TRUE.equals(LoadFixes.kidsCached(room)); // second call cached
+        LoadFixes.kidsExit();
         LoadFixes.resetForTest();
     }
 
     static void kidsMemoClearedPerBuilding() {
         LoadFixes.resetForTest();
         LoadFixes.kidsGuard.on = true;
+        LoadFixes.kidsEnter();
         Object room = new Object();
         LoadFixes.kidsStore(room, true);
         assert Boolean.TRUE.equals(LoadFixes.kidsCached(room));
         LoadFixes.kidsClear();
         assert LoadFixes.kidsCached(room) == null;
+        LoadFixes.kidsExit();
         LoadFixes.resetForTest();
     }
 
     static void kidsMemoOtherThreadPassesThrough() throws InterruptedException {
         LoadFixes.resetForTest();
         LoadFixes.kidsGuard.on = true;
+        LoadFixes.kidsEnter();
         Object room = new Object();
         // first caller is this (test) thread: it owns the memo
         LoadFixes.kidsStore(room, false);
@@ -57,6 +66,7 @@ final class LoadTest {
         Thread t2 = new Thread(() -> got[0] = (LoadFixes.kidsCached(room) == null));
         t2.start(); t2.join(5000);
         assert !t2.isAlive() && got[0];
+        LoadFixes.kidsExit();
         LoadFixes.resetForTest();
     }
 
@@ -69,5 +79,26 @@ final class LoadTest {
         LoadFixes.kidsClear();
         assert Settings.render(new java.util.Properties()).contains("\nstoryKidsRoomMemo=false\n");
         LoadFixes.resetForTest();
+    }
+
+    static void kidsMemoInactiveOutsidePass() {
+        LoadFixes.resetForTest();
+        LoadFixes.kidsGuard.on = true;
+        Object room = new Object();
+        // outside an active pass: store is ignored and cache misses
+        LoadFixes.kidsStore(room, true);
+        assert LoadFixes.kidsCached(room) == null;
+        LoadFixes.kidsClear(); // no-op outside a pass
+        assert LoadFixes.kidsCached(room) == null;
+        LoadFixes.resetForTest();
+    }
+
+    static void kidsMemoClearedOnThrow() {
+        try {
+            Patch.OnExit a = LoadPatches.KidsRoomClear.class.getMethod("exit").getAnnotation(Patch.OnExit.class);
+            assert a.onThrowable() == Throwable.class;
+        } catch (NoSuchMethodException e) {
+            throw new AssertionError(e);
+        }
     }
 }
