@@ -4,7 +4,7 @@ package pzbutter;
 final class LoadTest {
     private LoadTest() {}
 
-    static void run() {
+    static void run() throws Exception {
         idChecksSkippedOnlyOutsideDebug();
         idChecksOffStock();
         loadingKeysOffStock();
@@ -13,7 +13,7 @@ final class LoadTest {
         otherFadersStock();
         noLoadingScreenNeverLeavesBlack();
         flagClearedOnThrow();
-        loadingKeyDecisions();
+        leaveFromOtherThreadKeepsFlag();
         loadDefaultsWritten();
     }
 
@@ -34,56 +34,63 @@ final class LoadTest {
         LoadFixes.loadExitEnter();
         LoadFixes.loadEnterEnter();
         assert !LoadPatches.onLoadFade();
-        assert !LoadPatches.onLoadingScreen();
+        assert !LoadPatches.onLoadingScreen(null);
+        assert !LoadFixes.skipLoadingScreen(0f);
         LoadFixes.loadExitLeave();
         LoadFixes.loadEnterLeave();
     }
 
     static void noLoadFadeOnlyInsideExit() {
         LoadFixes.noLoadFadeGuard.on = true;
-        LoadFixes.loadExitLeave();
-        assert !LoadFixes.skipLoadFade(); // outside exit -> no skip
+        assert !LoadFixes.skipLoadFade();
         LoadFixes.loadExitEnter();
-        assert LoadFixes.skipLoadFade(); // inside exit -> skip
+        assert LoadFixes.skipLoadFade();
         LoadFixes.loadExitLeave();
+        assert !LoadFixes.skipLoadFade();
         LoadFixes.noLoadFadeGuard.on = false;
     }
 
     static void noLoadingScreenOnlyInsideEnter() {
         LoadFixes.noLoadingScreenGuard.on = true;
-        LoadFixes.loadEnterLeave();
-        class F { float getAlpha() { return 0f; } }
-        // alpha not consulted outside enter: still no skip
-        assert !LoadFixes.skipLoadingScreen(null);
+        assert !LoadFixes.skipLoadingScreen(0f);
         LoadFixes.loadEnterEnter();
-        assert LoadFixes.skipLoadingScreen(null); // inside enter, null treated as alpha 0
+        assert LoadFixes.skipLoadingScreen(0f);
         LoadFixes.loadEnterLeave();
+        assert !LoadFixes.skipLoadingScreen(0f);
         LoadFixes.noLoadingScreenGuard.on = false;
     }
 
+    /** A null or unknown fader never skips (the shim fails safe). */
     static void otherFadersStock() {
-        // a ScreenFader call outside the loading state never skips
-        LoadFixes.noLoadFadeGuard.on = true;
         LoadFixes.noLoadingScreenGuard.on = true;
-        LoadFixes.loadExitLeave();
+        LoadFixes.loadEnterEnter();
+        assert !LoadPatches.onLoadingScreen(null);
+        assert !LoadPatches.onLoadingScreen(new Object());   // not a ScreenFader: caught, no skip
         LoadFixes.loadEnterLeave();
-        assert !LoadPatches.onLoadFade();
-        assert !LoadPatches.onLoadingScreen(new Object());
-        LoadFixes.noLoadFadeGuard.on = false;
         LoadFixes.noLoadingScreenGuard.on = false;
     }
 
     static void noLoadingScreenNeverLeavesBlack() {
         LoadFixes.noLoadingScreenGuard.on = true;
         LoadFixes.loadEnterEnter();
-        // alpha 1 -> no skip (would leave screen black)
-        class F {
-            public float getAlpha() { return 1f; }
-        }
-        assert !LoadFixes.skipLoadingScreen(new F());
-        assert !LoadPatches.onLoadingScreen(new F());
+        assert !LoadFixes.skipLoadingScreen(1f);
+        assert !LoadFixes.skipLoadingScreen(0.5f);
         LoadFixes.loadEnterLeave();
         LoadFixes.noLoadingScreenGuard.on = false;
+    }
+
+    static void leaveFromOtherThreadKeepsFlag() throws Exception {
+        LoadFixes.noLoadFadeGuard.on = true;
+        LoadFixes.loadExitEnter();
+        Thread t = new Thread(LoadFixes::loadExitLeave);
+        t.start(); t.join();
+        assert LoadFixes.skipLoadFade();
+        boolean[] other = new boolean[1];
+        Thread u = new Thread(() -> other[0] = LoadFixes.skipLoadFade());
+        u.start(); u.join();
+        assert !other[0];
+        LoadFixes.loadExitLeave();
+        LoadFixes.noLoadFadeGuard.on = false;
     }
 
     static void flagClearedOnThrow() {
@@ -97,24 +104,6 @@ final class LoadTest {
             a = m.getAnnotation(me.zed_0xff.zombie_buddy.Patch.OnExit.class);
             assert a != null && a.onThrowable() == Throwable.class && a.suppress() == Throwable.class;
         } catch (NoSuchMethodException | ClassNotFoundException e) { throw new AssertionError(e); }
-    }
-
-    static void loadingKeyDecisions() {
-        LoadFixes.noLoadFadeGuard.on = false;
-        assert !LoadFixes.skipLoadFade();
-        LoadFixes.noLoadFadeGuard.on = true;
-        LoadFixes.loadExitEnter();
-        assert LoadFixes.skipLoadFade();
-        LoadFixes.loadExitLeave();
-        LoadFixes.noLoadFadeGuard.on = false;
-
-        LoadFixes.noLoadingScreenGuard.on = false;
-        assert !LoadFixes.skipLoadingScreen();
-        LoadFixes.noLoadingScreenGuard.on = true;
-        LoadFixes.loadEnterEnter();
-        assert LoadFixes.skipLoadingScreen();
-        LoadFixes.loadEnterLeave();
-        LoadFixes.noLoadingScreenGuard.on = false;
     }
 
     static void loadDefaultsWritten() {

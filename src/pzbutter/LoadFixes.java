@@ -26,20 +26,19 @@ public final class LoadFixes {
         return !debug;
     }
 
-    // ---- scoped flag for GameLoadingState.exit() ----
+    // Scoped flags: set by GameLoadingState.exit() / enter() holders for their duration, on the thread that runs them.
+    // A leave from another thread does not clear the owner's flag.
     public static volatile boolean loadExitActive;
     public static volatile Thread loadExitOwner;
-
-    public static void loadExitEnter() { loadExitActive = true; loadExitOwner = Thread.currentThread(); }
-    public static void loadExitLeave() { loadExitActive = false; loadExitOwner = null; }
-    public static boolean inLoadExit() { return loadExitActive && loadExitOwner == Thread.currentThread(); }
-
-    // ---- scoped flag for GameLoadingState.enter() ----
     public static volatile boolean loadEnterActive;
     public static volatile Thread loadEnterOwner;
 
-    public static void loadEnterEnter() { loadEnterActive = true; loadEnterOwner = Thread.currentThread(); }
-    public static void loadEnterLeave() { loadEnterActive = false; loadEnterOwner = null; }
+    public static void loadExitEnter() { loadExitOwner = Thread.currentThread(); loadExitActive = true; }
+    public static void loadExitLeave() { if (loadExitOwner == Thread.currentThread()) { loadExitActive = false; loadExitOwner = null; } }
+    public static boolean inLoadExit() { return loadExitActive && loadExitOwner == Thread.currentThread(); }
+
+    public static void loadEnterEnter() { loadEnterOwner = Thread.currentThread(); loadEnterActive = true; }
+    public static void loadEnterLeave() { if (loadEnterOwner == Thread.currentThread()) { loadEnterActive = false; loadEnterOwner = null; } }
     public static boolean inLoadEnter() { return loadEnterActive && loadEnterOwner == Thread.currentThread(); }
 
     /** True when the pre-load fade to black is skipped (only inside GameLoadingState.exit). */
@@ -47,30 +46,11 @@ public final class LoadFixes {
         return noLoadFadeGuard.on && inLoadExit();
     }
 
-    /** True when the fade from black during the new-game load is skipped (only inside GameLoadingState.enter, and only at alpha 0). */
-    static boolean skipLoadingScreen() {
-        return noLoadingScreenGuard.on && inLoadEnter();
-    }
-
-    static boolean skipLoadingScreen(Object fader) {
-        if (!(noLoadingScreenGuard.on && inLoadEnter())) return false;
-        float alpha = alphaOf(fader);
-        return alpha == 0f;
-    }
-
-    static boolean skipLoadingScreen(Object fader, float alpha) {
-        if (!(noLoadingScreenGuard.on && inLoadEnter())) return false;
-        return alpha == 0f;
-    }
-
-    private static float alphaOf(Object fader) {
-        if (fader == null) return 0f;
-        if (fader instanceof zombie.ui.ScreenFader sf) return sf.getAlpha();
-        try {
-            java.lang.reflect.Method m = fader.getClass().getMethod("getAlpha");
-            Object v = m.invoke(fader);
-            if (v instanceof Number n) return n.floatValue();
-        } catch (Throwable ignored) {}
-        return 0f;
+    /**
+     * True when the fade from black is skipped: only inside GameLoadingState.enter, and only when the fader is already
+     * clear (alpha 0), so a skip can never leave the screen black.
+     */
+    static boolean skipLoadingScreen(float alpha) {
+        return noLoadingScreenGuard.on && inLoadEnter() && alpha == 0f;
     }
 }

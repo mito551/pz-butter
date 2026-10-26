@@ -20,16 +20,10 @@ public final class LoadPatches {
         catch (Throwable t) { LoadFixes.noLoadFadeGuard.fail(t); return false; }
     }
 
-    /** ScreenFader.startFadeFromBlack entry: true skips the fade from black (only inside GameLoadingState.enter, and only at alpha 0). */
-    public static boolean onLoadingScreen() {
-        if (!LoadFixes.noLoadingScreenGuard.on) return false;
-        try { return LoadFixes.skipLoadingScreen(); }
-        catch (Throwable t) { LoadFixes.noLoadingScreenGuard.fail(t); return false; }
-    }
-
+    /** ScreenFader.startFadeFromBlack entry: true skips the fade (only inside GameLoadingState.enter, only at alpha 0). */
     public static boolean onLoadingScreen(Object fader) {
         if (!LoadFixes.noLoadingScreenGuard.on) return false;
-        try { return LoadFixes.skipLoadingScreen(fader); }
+        try { return fader != null && LoadFixes.skipLoadingScreen(((zombie.ui.ScreenFader) fader).getAlpha()); }
         catch (Throwable t) { LoadFixes.noLoadingScreenGuard.fail(t); return false; }
     }
 
