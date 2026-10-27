@@ -58,7 +58,7 @@ case "$SCENE" in
     *) echo "unknown scene: $SCENE"; exit 2 ;;
 esac
 
-if (( PERF == 1 && SCENE == "S7" )); then echo "--perf is incompatible with S7"; exit 2; fi
+if (( PERF == 1 )) && [[ $SCENE == S7 ]]; then echo "--perf is incompatible with S7"; exit 2; fi
 if (( MANGO == 1 )); then
     command -v mangohud >/dev/null 2>&1 || die "mangohud is not on PATH"
 fi
@@ -105,7 +105,7 @@ if (( DRY )); then echo "[build] jar-equality check: OK"; fi
 # step 1
 echo "[step1] checking game process"
 if pgrep -x ProjectZomboid6 >/dev/null 2>&1; then
-    echo "refusing: a game process is running"; exit 1
+    if (( DRY )); then echo "[step1] a game process is running (would refuse in real run)"; else echo "refusing: a game process is running"; exit 1; fi
 fi
 if [[ "$LIST" == "full" ]]; then
     if ! pgrep -x steam >/dev/null 2>&1; then
