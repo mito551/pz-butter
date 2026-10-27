@@ -333,7 +333,7 @@ public final class ZombiePatches {
      */
     public static void onFrameEnd() {
         DevMarks.poll();
-        SceneDriver.tick(System.currentTimeMillis());
+        if (SceneDriver.sceneSet()) SceneDriver.tick(System.currentTimeMillis());
         if (RuntimeFixes.gcGuard.on) {
             if (Thread.currentThread() == FrameClock.mainThread) {
                 try { RuntimeFixes.tick(System.nanoTime()); }

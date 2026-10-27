@@ -1383,7 +1383,7 @@ final class LuaGateTest {
             assert !NoSync.guard.on && !NoSync.check;                               // bakeNoSync: the driver answers
             assert !GpuTimer.guard.on && GpuTimer.loadMs(5.0) == 5.0;               // bakeBudgetGpu: the game thread's step alone
             assert !Cores.guard.on;                                                 // corePlacement: forced off
-        assert !SceneDriver.guard.on;                                           // devScene: forced off
+            assert !SceneDriver.guard.on;                                           // devScene: forced off
             // gpuMaxFrames (stock-off means a different number) has its own test below
         } finally {
             Settings.load(SelfTest.write("enabled=true\n"));                         // back to the shipped values for the features that follow

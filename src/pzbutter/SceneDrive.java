@@ -13,14 +13,17 @@ public final class SceneDrive implements SceneDriver.Action {
     public SceneDrive(Driver driver) { this.driver = driver; }
 
     public interface Driver {
+        zombie.characters.IsoPlayer player();
         // returns spawned vehicle or null
         Object spawn(zombie.characters.IsoPlayer player, int targetKmh);
         boolean enter(Object vehicle, zombie.characters.IsoPlayer player);
         void hotwire(Object vehicle);
         boolean startEngine(Object vehicle);
+        boolean engineRunning(Object vehicle);
         float speed(Object vehicle);
         float heading(Object vehicle);
         zombie.iso.Vector2 position(Object vehicle);
+        boolean inWorld(Object vehicle);
         void holdForward(boolean on);
         void holdLeft(boolean on);
         void holdRight(boolean on);
@@ -28,18 +31,24 @@ public final class SceneDrive implements SceneDriver.Action {
     }
 
     public static class Fake implements Driver {
+        public zombie.characters.IsoPlayer playerVal = null;
         public Object vehicle = new Object();
         public boolean enterOk = true;
         public boolean engineOk = true;
+        public boolean inWorldOk = true;
+        public boolean engineRunningOk = true;
         public float speedVal = 0;
         public float headingVal = 0;
         public zombie.iso.Vector2 pos = new zombie.iso.Vector2(0, 0);
         public boolean deadVal = false;
         public boolean heldF, heldL, heldR;
+        public zombie.characters.IsoPlayer player() { return playerVal; }
         public Object spawn(zombie.characters.IsoPlayer player, int targetKmh) { return vehicle; }
+        public boolean inWorld(Object vehicle) { return inWorldOk; }
         public boolean enter(Object vehicle, zombie.characters.IsoPlayer player) { return enterOk; }
         public void hotwire(Object vehicle) { }
         public boolean startEngine(Object vehicle) { return engineOk; }
+        public boolean engineRunning(Object vehicle) { return engineRunningOk; }
         public float speed(Object vehicle) { return speedVal; }
         public float heading(Object vehicle) { return headingVal; }
         public zombie.iso.Vector2 position(Object vehicle) { return pos; }
@@ -70,11 +79,13 @@ public final class SceneDrive implements SceneDriver.Action {
     private boolean hasRoute;
     private zombie.characters.IsoPlayer player;
     private int targetKmh;
+    private long windowStartMs = -1;
+    private boolean windowChecked;
 
     @Override
-    public void start() {
+    public void prepare() {
         try {
-            player = zombie.characters.IsoPlayer.getInstance();
+            player = driver.player();
             targetKmh = Settings.num("devDriveKmh", 60, 0, 10000);
             route = SceneDriver.parseRoute(Settings.text("devRoute", ""));
             hasRoute = route != null && route.length > 0;
@@ -90,10 +101,11 @@ public final class SceneDrive implements SceneDriver.Action {
             leftCode = zombie.core.Core.getInstance().getKeyBinding("Left").keyValue();
             rightCode = zombie.core.Core.getInstance().getKeyBinding("Right").keyValue();
 
-            if (player == null) { SceneDriver.end("no car"); return; }
+            if (player == null) { SceneDriver.end("no player"); return; }
 
             vehicle = driver.spawn(player, targetKmh);
             if (vehicle == null) { SceneDriver.end("no car"); return; }
+            if (!driver.inWorld(vehicle)) { SceneDriver.end("no car: invalid spot"); return; }
             if (!driver.enter(vehicle, player)) { SceneDriver.end("no car"); return; }
             driver.hotwire(vehicle);
             if (!driver.startEngine(vehicle)) { SceneDriver.end("no car"); return; }
@@ -104,8 +116,21 @@ public final class SceneDrive implements SceneDriver.Action {
     }
 
     @Override
+    public void start() {
+        windowStartMs = -1;
+        windowChecked = false;
+    }
+
+    @Override
     public void frame(long nowMs) {
         if (vehicle == null) return;
+        if (windowStartMs < 0) windowStartMs = nowMs;
+        if (!windowChecked && nowMs - windowStartMs >= 5000L) {
+            windowChecked = true;
+            try {
+                if (!driver.engineRunning(vehicle) || driver.speed(vehicle) <= 1f) { SceneDriver.end("car not moving"); return; }
+            } catch (Throwable t) { SceneDriver.guard.fail(t); SceneDriver.end("car not moving"); return; }
+        }
         try {
             if (player != null && driver.dead(player)) { SceneDriver.end("player dead"); return; }
             // waypoint logic
@@ -121,8 +146,9 @@ public final class SceneDrive implements SceneDriver.Action {
                 // target degrees from vehicle heading to waypoint
                 double targetDeg = 0;
                 if (p != null) {
-                    zombie.iso.Vector2 delta = new zombie.iso.Vector2((float) (wx - p.x), (float) (wy - p.y));
-                    targetDeg = zombie.iso.IsoDirections.fromAngle(delta).toAngleDegrees();
+                    double dx = wx - p.x;
+                    double dy = wy - p.y;
+                    targetDeg = Math.toDegrees(Math.atan2(dy, dx));
                 }
                 int bits = steer(driver.heading(vehicle), targetDeg, driver.speed(vehicle), targetKmh);
                 driver.holdForward((bits & FORWARD) != 0);
@@ -147,6 +173,7 @@ public final class SceneDrive implements SceneDriver.Action {
     }
 
     private static final class GameDriver implements Driver {
+        public zombie.characters.IsoPlayer player() { return zombie.characters.IsoPlayer.getInstance(); }
         public Object spawn(zombie.characters.IsoPlayer player, int targetKmh) {
             try {
                 if (player == null) return null;
@@ -175,13 +202,25 @@ public final class SceneDrive implements SceneDriver.Action {
             try { ((zombie.vehicles.BaseVehicle) vehicle).tryStartEngine(); return true; }
             catch (Throwable t) { SceneDriver.guard.fail(t); return false; }
         }
+        public boolean engineRunning(Object vehicle) {
+            try { return ((zombie.vehicles.BaseVehicle) vehicle).isEngineRunning(); }
+            catch (Throwable t) { SceneDriver.guard.fail(t); return false; }
+        }
         public float speed(Object vehicle) {
             try { return ((zombie.vehicles.BaseVehicle) vehicle).getCurrentSpeedKmHour(); }
             catch (Throwable t) { SceneDriver.guard.fail(t); return 0; }
         }
         public float heading(Object vehicle) {
-            try { return ((zombie.vehicles.BaseVehicle) vehicle).getAngleY(); }
-            catch (Throwable t) { SceneDriver.guard.fail(t); return 0; }
+            try {
+                org.joml.Vector3f v = new org.joml.Vector3f();
+                ((zombie.vehicles.BaseVehicle) vehicle).getForwardVector(v);
+                // map the forward vector's world X/Z plane to iso X/Y: isoX = X, isoY = Z; heading = atan2(isoY, isoX)
+                return (float) Math.toDegrees(Math.atan2(v.z, v.x));
+            } catch (Throwable t) { SceneDriver.guard.fail(t); return 0; }
+        }
+        public boolean inWorld(Object vehicle) {
+            try { return ((zombie.vehicles.BaseVehicle) vehicle).getSquare() != null; }
+            catch (Throwable t) { SceneDriver.guard.fail(t); return false; }
         }
         public zombie.iso.Vector2 position(Object vehicle) {
             try {

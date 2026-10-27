@@ -17,6 +17,7 @@ public final class SceneDriver {
 
     /** The action a concrete scene performs; assigned by the scene tasks. */
     public interface Action {
+        default void prepare() { }
         void start();
         void frame(long nowMs);
         void stop();
@@ -47,7 +48,9 @@ public final class SceneDriver {
         }
         public boolean spawn(int x, int y, int z, int count) {
             try {
-                zombie.Lua.LuaManager.GlobalObject.addZombiesInOutfit(x, y, z, count, null, 50);
+                java.util.ArrayList<?> spawned = zombie.Lua.LuaManager.GlobalObject.addZombiesInOutfit(x, y, z, count, null, 50);
+                int n = spawned == null ? count : spawned.size();
+                System.out.println("[PZButter] devPopulation: spawned " + n + " at " + x + "," + y + "," + z);
                 return true;
             } catch (Throwable t) { guard.fail(t); return false; }
         }
@@ -59,6 +62,7 @@ public final class SceneDriver {
 
     private static volatile Phase phase = Phase.IDLE;
     private static volatile boolean worldReady;
+    private static volatile boolean sceneSet;
     private static volatile boolean populationSpawned;
     private static volatile long readyMs;
     private static volatile long quitAtMs;
@@ -69,9 +73,10 @@ public final class SceneDriver {
 
     static void init() {
         guard.on = Settings.enabled && !"off".equalsIgnoreCase(Settings.text("devScene", "off"));
+        sceneSet = guard.on;
         devSceneQuit = Settings.flag("devSceneQuit");
         settleSec = Settings.num("devSceneSettleSec", 20, 0, 86400);
-        sceneSec = Settings.num("devSceneSec", 60, 0, 86400);
+        sceneSec = Math.max(1, Settings.num("devSceneSec", 60, 0, 86400));
         autoContinue = Settings.flag("devAutoContinue");
         if (!guard.on) return;
         System.out.println("[PZButter] devScene: " + Settings.text("devScene", "off") + " settle=" + settleSec + " scene=" + sceneSec);
@@ -81,12 +86,24 @@ public final class SceneDriver {
     }
 
     public static Phase phase() { return phase; }
+    public static boolean sceneSet() { return sceneSet; }
+    public static boolean autoContinue() { return autoContinue; }
+
+    private static final java.lang.invoke.VarHandle FORCE_DONE_VH =
+        Game.field(zombie.gameStates.GameLoadingState.class, "forceDone", boolean.class);
+
+    public static void clickToStart(Object self) {
+        if (!autoContinue) return;
+        if (FORCE_DONE_VH == null) return;
+        try { FORCE_DONE_VH.set(self, true); } catch (Throwable t) { autoGuard.fail(t); }
+    }
 
     public static void resetForTest() {
         guard.on = false;
         autoGuard.on = false;
         phase = Phase.IDLE;
         worldReady = false;
+        sceneSet = false;
         populationSpawned = false;
         readyMs = 0;
         quitAtMs = 0;
@@ -124,10 +141,22 @@ public final class SceneDriver {
         } catch (Throwable t) { guard.fail(t); }
     }
 
+    public static void onWorldExit() {
+        try {
+            if (sceneSet && worldReady && phase != Phase.IDLE && phase != Phase.DONE) end("left world");
+            worldReady = false;
+        } catch (Throwable t) { guard.fail(t); }
+    }
+
     public static void tick(long nowMs) {
-        if (!guard.on) return;
+        if (!sceneSet) return;
         if (!worldReady) return;
         if (Thread.currentThread() != FrameClock.mainThread) return;
+        if (!guard.on) {
+            if (phase == Phase.SETTLE || phase == Phase.WINDOW) end("devScene off after failures", nowMs);
+            fireQuitIfNeeded(nowMs);
+            return;
+        }
         try {
             if (readyMs == 0) readyMs = nowMs;
             long since = nowMs - readyMs;
@@ -148,10 +177,23 @@ public final class SceneDriver {
             if (phase == Phase.IDLE && next == Phase.SETTLE) {
                 phase = Phase.SETTLE;
                 try { spawnPopulationIfNeeded(); } catch (Throwable t) { guard.fail(t); }
+                if (phase == Phase.DONE) { fireQuitIfNeeded(nowMs); return; }
+                if (action != null) {
+                    try { action.prepare(); } catch (Throwable t) { guard.fail(t); end("prepare failed", nowMs); }
+                }
+                if (phase == Phase.DONE) { fireQuitIfNeeded(nowMs); return; }
                 fireQuitIfNeeded(nowMs);
                 return;
             }
             if (next == Phase.WINDOW) {
+                if (phase == Phase.IDLE) {
+                    try { spawnPopulationIfNeeded(); } catch (Throwable t) { guard.fail(t); }
+                    if (phase == Phase.DONE) { fireQuitIfNeeded(nowMs); return; }
+                    if (action != null) {
+                        try { action.prepare(); } catch (Throwable t) { guard.fail(t); end("prepare failed", nowMs); }
+                    }
+                    if (phase == Phase.DONE) { fireQuitIfNeeded(nowMs); return; }
+                }
                 phase = Phase.WINDOW;
                 Path f = marksFileForWrite();
                 DevMarks.write(f, DevMarks.line("scene.start", nowMs, null));
@@ -225,8 +267,8 @@ public final class SceneDriver {
                 populationSpawnCount += pt[2];
             } catch (Throwable t) { guard.fail(t); failed = true; break; }
         }
-        if (failed) return;
-        System.out.println("[PZButter] devPopulation: spawned " + count + " zombies");
+        if (failed) { SceneDriver.end("population spawn failed"); return; }
+        System.out.println("[PZButter] devPopulation: spawned " + populationSpawnCount + " zombies");
     }
 
     public static int[][] ringPoints(int count, int perPoint, int radius, int cx, int cy) {
@@ -271,11 +313,17 @@ public final class SceneDriver {
     public static void autoContinueTick() {
         if (!autoContinue) return;
         if (autoContinued) return;
+        if (!autoGuard.on) return;
         try {
             Object ms = zombie.Lua.LuaManager.env.rawget("MainScreen");
             se.krka.kahlua.vm.KahluaTable t = ms instanceof se.krka.kahlua.vm.KahluaTable k ? k : null;
             boolean menuBuilt = t != null && t.rawget("instance") != null;
             if (!shouldContinue(menuBuilt, autoContinued)) return;
+            Object inst = menuBuilt ? t.rawget("instance") : null;
+            if (inst instanceof se.krka.kahlua.vm.KahluaTable it) {
+                Object d = it.rawget("delay");
+                if (d instanceof Number n && n.doubleValue() > 0) return;
+            }
             Object fn = t.rawget("continueLatestSave");
             Object mode = t.rawget("latestSaveGameMode");
             Object world = t.rawget("latestSaveWorld");
@@ -289,7 +337,9 @@ public final class SceneDriver {
                 autoContinued = true;
                 return;
             }
-            zombie.Lua.LuaManager.caller.pcall(zombie.Lua.LuaManager.thread, fn, mode, world);
+            Object[] r = zombie.Lua.LuaManager.caller.pcall(zombie.Lua.LuaManager.thread, fn, mode, world);
+            if (r == null || r.length == 0 || !Boolean.TRUE.equals(r[0]))
+                System.out.println("[PZButter] devAutoContinue: continueLatestSave failed: " + (r != null && r.length > 1 ? r[1] : "no result"));
             autoContinued = true;
         } catch (Throwable t) { autoGuard.fail(t); }
     }

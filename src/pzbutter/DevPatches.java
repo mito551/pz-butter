@@ -8,8 +8,24 @@ public final class DevPatches {
     public static class IngameEnter {
         @me.zed_0xff.zombie_buddy.Patch.OnEnter
         public static void enter() {
-            if (!SceneDriver.guard.on) return;
+            if (!SceneDriver.guard.on && !SceneDriver.sceneSet()) return;
             try { SceneDriver.onWorldReady(); } catch (Throwable t) { SceneDriver.guard.fail(t); }
+        }
+    }
+
+    @me.zed_0xff.zombie_buddy.Patch(className = "zombie.gameStates.IngameState", methodName = "exit")
+    public static class IngameExit {
+        @me.zed_0xff.zombie_buddy.Patch.OnEnter
+        public static void enter() {
+            try { SceneDriver.onWorldExit(); } catch (Throwable t) { SceneDriver.guard.fail(t); }
+        }
+    }
+
+    @me.zed_0xff.zombie_buddy.Patch(className = "zombie.gameStates.GameLoadingState", methodName = "update")
+    public static class GameLoadingUpdate {
+        @me.zed_0xff.zombie_buddy.Patch.OnEnter
+        public static void enter(@me.zed_0xff.zombie_buddy.Patch.This Object self) {
+            try { SceneDriver.clickToStart(self); } catch (Throwable t) { SceneDriver.autoGuard.fail(t); }
         }
     }
 

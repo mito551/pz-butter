@@ -18,6 +18,7 @@ final class DevTest {
         sceneEndEarly();
         sceneSecondLoadResets();
         sceneQuitTiming();
+        sceneGuardTripEnds();
         autoContinueOnce();
         devKeysDefaults();
         routeParse();
@@ -164,6 +165,36 @@ final class DevTest {
         // no quit from the first scene fires after the reset
         SceneDriver.tick(1000 + 80_000 + 3_000);
         assert quits[0] == 0 : quits[0];
+        Settings.load(SelfTest.write("enabled=true\n"));
+        SceneDriver.resetForTest();
+    }
+
+    static void sceneGuardTripEnds() throws Exception {
+        // I1: the guard switching off mid-scene still ends the scene, releases keys and quits
+        Settings.load(SelfTest.write("enabled=true\ndevScene=stand\ndevSceneQuit=true\n"));
+        SceneDriver.resetForTest();
+        SceneDriver.init();
+        final int[] quits = {0};
+        SceneDriver.quit = () -> quits[0]++;
+        Path f = SelfTest.tmp("scene/trip.out").toPath();
+        SceneDriver.marksFile = f;
+        SceneDriver.onWorldReady();
+        SceneDriver.tick(1_000);
+        SceneDriver.tick(21_000); // window
+        VirtualKeys.hold(30);
+        for (int i = 0; i < 5 && SceneDriver.guard.on; i++) SceneDriver.guard.fail(new RuntimeException("test"));
+        assert !SceneDriver.guard.on;
+        SceneDriver.tick(22_000);
+        java.util.List<String> lines = Files.readAllLines(f);
+        assert lines.size() == 2 : lines;
+        assert lines.get(1).startsWith("mark scene.end 22000 failed: ") : lines.get(1);
+        assert VirtualKeys.heldCount == 0 : VirtualKeys.heldCount;
+        SceneDriver.tick(24_999);
+        assert quits[0] == 0 : quits[0];
+        SceneDriver.tick(25_000);
+        assert quits[0] == 1 : quits[0];
+        SceneDriver.tick(30_000);
+        assert Files.readAllLines(f).size() == 2;
         Settings.load(SelfTest.write("enabled=true\n"));
         SceneDriver.resetForTest();
     }
@@ -343,8 +374,8 @@ final class DevTest {
         SceneDriver.tick(1_000);
         SceneDriver.tick(1_000 + 20_000);
         java.util.List<String> lines = java.nio.file.Files.readAllLines(f);
-        assert lines.size() == 2 : lines;
-        assert lines.get(1).contains("failed: no car") : lines.get(1);
+        assert lines.size() == 1 : lines;
+        assert lines.get(0).startsWith("mark scene.end ") : lines.get(0);
         Settings.load(SelfTest.write("enabled=true\n"));
         SceneDriver.resetForTest();
     }
