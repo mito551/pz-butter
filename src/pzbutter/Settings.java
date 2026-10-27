@@ -91,6 +91,8 @@ public final class Settings {
       + "luaGcNoop=false\n"
       + "# lightingSyncPark: the lighting thread parks to its next update instead of yield-spinning. Off by default.\n"
       + "lightingSyncPark=false\n"
+      + "# corePlacement: latency threads on performance cores on hybrid CPUs. Off by default.\n"
+      + "corePlacement=off\n"
       + "#\n"
       + "# Mod compatibility.\n"
       + "# modProfile: custom uses modCompat and uiRetainedMods as written; performance = modCompat report and uiRetainedMods true; compatibility = modCompat auto and uiRetainedMods false.\n"

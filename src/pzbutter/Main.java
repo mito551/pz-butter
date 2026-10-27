@@ -35,6 +35,7 @@ public class Main {
         LogDedupe.init();
         ZombiePatches.init();
         RuntimePatches.init();
+        Cores.init();
         GpuPatches.init();
         UiTiming.init();
         UiCensus.init();

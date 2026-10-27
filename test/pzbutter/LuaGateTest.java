@@ -1340,7 +1340,7 @@ final class LuaGateTest {
     }
 
     /** Keys of the table that are numbers or modes (not switches); every one needs its stock answer checked below. */
-    static final java.util.Set<String> VALUE_KEYS = java.util.Set.of("aimHoldMs", "bakeMipLevels", "borderlessFullscreen", "cutawayRadius", "gpuMaxFrames",
+    static final java.util.Set<String> VALUE_KEYS = java.util.Set.of("aimHoldMs", "bakeMipLevels", "borderlessFullscreen", "corePlacement", "cutawayRadius", "gpuMaxFrames",
         "gridStackInterval", "lightSwitchCheckFrames", "lightingFps", "presentPacing", "roofHideDebounceFrames", "soundTickHz", "treeBakeMaxChunksPerSec", "vrr", "zoomEaseMs",
         "numberZombiesBlended", "zombieLodFixed3d", "zombieModelAddBudgetUs", "zombieSimLodTiles", "zombieSimLodSteps", "vboBatchKb", "vboSizeClasses");
 

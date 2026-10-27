@@ -40,6 +40,7 @@ public final class FrameClock {
     }
 
     public static void enter() {
+        if (Cores.guard.on) Cores.pinOnce();
         if (!on) return;
         try {
             Thread t = Thread.currentThread();

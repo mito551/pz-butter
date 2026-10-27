@@ -31,6 +31,7 @@ public final class RuntimePatches {
 
     /** Display.sync entry: true skips the body (we park ourselves). */
     public static boolean onSync(int fps) {
+        if (Cores.guard.on) Cores.pinOnce();
         if (!RuntimeFixes.lightGuard.on) return false;
         try {
             RuntimeFixes.lightSync(fps);

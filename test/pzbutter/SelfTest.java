@@ -41,6 +41,7 @@ public final class SelfTest {
         ZombieTest.run();
         WorkerTest.run();
         RuntimeTest.run();
+        CoresTest.run();
         CensusTest.run();
         GpuTest.run();
         delete(DIR);
