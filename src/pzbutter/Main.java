@@ -34,6 +34,7 @@ public class Main {
         LuaFiles.init();
         LogDedupe.init();
         ZombiePatches.init();
+        DevMarks.init();
         RuntimePatches.init();
         Cores.init();
         GpuPatches.init();

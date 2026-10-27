@@ -37,6 +37,7 @@ public final class SelfTest {
         WorldTest.run();
         ChunkTest.run();
         LuaGateTest.run();
+        DevTest.run();
         ChunkShimTest.run();
         ZombieTest.run();
         WorkerTest.run();
