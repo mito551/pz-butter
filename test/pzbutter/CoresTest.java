@@ -25,6 +25,7 @@ final class CoresTest {
         coresWindowsCpuSetParse();
         qosClassValues();
         qosNoopOffMac();
+        qosDefaultsAndTemplate();
     }
 
     static void coresParseList() {
@@ -159,7 +160,25 @@ final class CoresTest {
         int before = Cores.nativeLookups;
         assert !Cores.applyQos(0x19);
         assert Cores.nativeLookups == before;
+        assert Cores.qosClass("off") == -1;
+        int before2 = Cores.nativeLookups;
+        assert !Cores.applyQos(-1);
+        assert Cores.nativeLookups == before2;
         Cores.resetForTest();
+        Settings.load(SelfTest.write("enabled=true\n"));
+    }
+
+    static void qosDefaultsAndTemplate() {
+        Settings.load(SelfTest.write("enabled=true\n"));
+        Cores.resetForTest();
+        Cores.init();
+        assert !Cores.qosGuard.on;
+        String t = Settings.render(new java.util.Properties());
+        assert t.contains("\nworkerQosMac=off\n");
+        Settings.load(SelfTest.write(Settings.render(new java.util.Properties()).replace("\nenabled=false\n", "\nenabled=true\n")));
+        Cores.resetForTest();
+        Cores.init();
+        assert Cores.workerQos == -1;
         Settings.load(SelfTest.write("enabled=true\n"));
     }
 }

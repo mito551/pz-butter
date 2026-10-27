@@ -350,6 +350,7 @@ public final class Cores {
             }
             MethodHandle h = qosHandle;
             if (h == null) {
+                workerQos = -1;
                 qosGuard.on = false;
                 System.out.println("[PZButter] workerQosMac off: native function not found");
                 return false;
@@ -357,6 +358,7 @@ public final class Cores {
             int rc = (int) h.invokeExact(qos, 0);
             return rc == 0;
         } catch (Throwable t) {
+            workerQos = -1;
             qosGuard.on = false;
             System.out.println("[PZButter] workerQosMac off: " + t);
             return false;
