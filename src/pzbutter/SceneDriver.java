@@ -51,7 +51,7 @@ public final class SceneDriver {
         System.out.println("[PZButter] devScene: " + Settings.text("devScene", "off") + " settle=" + settleSec + " scene=" + sceneSec);
         String scene = Settings.text("devScene", "off");
         if ("walk".equalsIgnoreCase(scene)) action = new SceneWalk();
-
+        else if ("drive".equalsIgnoreCase(scene)) action = new SceneDrive();
     }
 
     public static Phase phase() { return phase; }
@@ -86,6 +86,7 @@ public final class SceneDriver {
             if (action != null && phase != Phase.IDLE && phase != Phase.DONE) {
                 try { action.stop(); } catch (Throwable t) { guard.fail(t); }
             }
+            try { VirtualKeys.releaseAll(); } catch (Throwable t) { guard.fail(t); }
             phase = Phase.IDLE;
             worldReady = true;
             readyMs = 0;
@@ -130,6 +131,7 @@ public final class SceneDriver {
             if (next == Phase.DONE) {
                 phase = Phase.DONE;
                 if (action != null) try { action.stop(); } catch (Throwable t) { guard.fail(t); }
+                try { VirtualKeys.releaseAll(); } catch (Throwable t) { guard.fail(t); }
                 Path f = marksFileForWrite();
                 DevMarks.write(f, DevMarks.line("scene.end", nowMs, null));
                 scheduleQuit(nowMs);
@@ -178,6 +180,7 @@ public final class SceneDriver {
         if (phase == Phase.DONE) return;
         try {
             if (action != null && phase == Phase.WINDOW) try { action.stop(); } catch (Throwable t) { guard.fail(t); }
+            try { VirtualKeys.releaseAll(); } catch (Throwable t) { guard.fail(t); }
             phase = Phase.DONE;
             Path f = marksFileForWrite();
             DevMarks.write(f, DevMarks.line("scene.end", nowMs, "failed: " + reason));
@@ -231,6 +234,7 @@ public final class SceneDriver {
         if (quitAtMs == 0) return;
         if (nowMs < quitAtMs) return;
         quitAtMs = 0;
+        try { VirtualKeys.releaseAll(); } catch (Throwable t) { guard.fail(t); }
         Runnable q = resolveQuit();
         try { q.run(); } catch (Throwable t) { guard.fail(t); }
     }

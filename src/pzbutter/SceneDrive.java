@@ -1,0 +1,212 @@
+package pzbutter;
+
+/**
+ * Dev: the scene action that drives a spawned car toward route waypoints.
+ */
+public final class SceneDrive implements SceneDriver.Action {
+    public static final int FORWARD = 1;
+    public static final int LEFT = 2;
+    public static final int RIGHT = 4;
+
+    public SceneDrive() { this.driver = new GameDriver(); }
+
+    public SceneDrive(Driver driver) { this.driver = driver; }
+
+    public interface Driver {
+        // returns spawned vehicle or null
+        Object spawn(zombie.characters.IsoPlayer player, int targetKmh);
+        boolean enter(Object vehicle, zombie.characters.IsoPlayer player);
+        void hotwire(Object vehicle);
+        boolean startEngine(Object vehicle);
+        float speed(Object vehicle);
+        float heading(Object vehicle);
+        zombie.iso.Vector2 position(Object vehicle);
+        void holdForward(boolean on);
+        void holdLeft(boolean on);
+        void holdRight(boolean on);
+        boolean dead(zombie.characters.IsoPlayer player);
+    }
+
+    public static class Fake implements Driver {
+        public Object vehicle = new Object();
+        public boolean enterOk = true;
+        public boolean engineOk = true;
+        public float speedVal = 0;
+        public float headingVal = 0;
+        public zombie.iso.Vector2 pos = new zombie.iso.Vector2(0, 0);
+        public boolean deadVal = false;
+        public boolean heldF, heldL, heldR;
+        public Object spawn(zombie.characters.IsoPlayer player, int targetKmh) { return vehicle; }
+        public boolean enter(Object vehicle, zombie.characters.IsoPlayer player) { return enterOk; }
+        public void hotwire(Object vehicle) { }
+        public boolean startEngine(Object vehicle) { return engineOk; }
+        public float speed(Object vehicle) { return speedVal; }
+        public float heading(Object vehicle) { return headingVal; }
+        public zombie.iso.Vector2 position(Object vehicle) { return pos; }
+        public void holdForward(boolean on) { heldF = on; }
+        public void holdLeft(boolean on) { heldL = on; }
+        public void holdRight(boolean on) { heldR = on; }
+        public boolean dead(zombie.characters.IsoPlayer player) { return deadVal; }
+    }
+
+    // pure steering decision
+    public static int steer(double headingDeg, double targetDeg, double speedKmh, int targetKmh) {
+        double diff = targetDeg - headingDeg;
+        while (diff > 180) diff -= 360;
+        while (diff < -180) diff += 360;
+        int bits = 0;
+        if (speedKmh < targetKmh) bits |= FORWARD;
+        if (diff > 10) bits |= LEFT;
+        else if (diff < -10) bits |= RIGHT;
+        return bits;
+    }
+
+    private final Driver driver;
+    private Object vehicle;
+    private int fwdCode, leftCode, rightCode;
+    private int[][] route;
+    private int originX, originY, originZ;
+    private int index;
+    private boolean hasRoute;
+    private zombie.characters.IsoPlayer player;
+    private int targetKmh;
+    private zombie.iso.IsoGridSquare spawnSquare;
+
+    @Override
+    public void start() {
+        try {
+            player = zombie.characters.IsoPlayer.getInstance();
+            targetKmh = Settings.num("devDriveKmh", 60, 0, 10000);
+            route = SceneDriver.parseRoute(Settings.text("devRoute", ""));
+            hasRoute = route != null && route.length > 0;
+            originX = originY = originZ = 0;
+            if (player != null) {
+                originX = (int) Math.floor(player.getX());
+                originY = (int) Math.floor(player.getY());
+                originZ = (int) Math.floor(player.getZ());
+            }
+            index = 0;
+
+            fwdCode = zombie.core.Core.getInstance().getKeyBinding("Forward").keyValue();
+            leftCode = zombie.core.Core.getInstance().getKeyBinding("Left").keyValue();
+            rightCode = zombie.core.Core.getInstance().getKeyBinding("Right").keyValue();
+
+            if (player == null) { SceneDriver.end("no car"); return; }
+
+            vehicle = driver.spawn(player, targetKmh);
+            // call game-level spawn with car name etc: use direct game sequence if not fake? Driver handles.
+            if (vehicle == null) { SceneDriver.end("no car"); return; }
+            if (!driver.enter(vehicle, player)) { SceneDriver.end("no car"); return; }
+            driver.hotwire(vehicle);
+            if (!driver.startEngine(vehicle)) { SceneDriver.end("no car"); return; }
+        } catch (Throwable t) { SceneDriver.guard.fail(t); SceneDriver.end("no car"); }
+    }
+
+    @Override
+    public void frame(long nowMs) {
+        if (vehicle == null) return;
+        try {
+            if (player != null && driver.dead(player)) { SceneDriver.end("player dead"); return; }
+            // waypoint logic
+            if (hasRoute && route != null && route.length > 0) {
+                zombie.iso.Vector2 p = driver.position(vehicle);
+                int wx = originX + route[index][0];
+                int wy = originY + route[index][1];
+                double ddx = wx - (p == null ? 0 : p.x);
+                double ddy = wy - (p == null ? 0 : p.y);
+                if (Math.sqrt(ddx * ddx + ddy * ddy) <= 4) {
+                    index = SceneWalk.next(index, route.length);
+                }
+                // target degrees from vehicle heading to waypoint
+                double targetDeg = 0;
+                if (p != null) {
+                    zombie.iso.Vector2 delta = new zombie.iso.Vector2((float) (wx - p.x), (float) (wy - p.y));
+                    targetDeg = zombie.iso.IsoDirections.fromAngle(delta).toAngleDegrees();
+                }
+                int bits = steer(driver.heading(vehicle), targetDeg, driver.speed(vehicle), targetKmh);
+                driver.holdForward((bits & FORWARD) != 0);
+                driver.holdLeft((bits & LEFT) != 0);
+                driver.holdRight((bits & RIGHT) != 0);
+                // also VirtualKeys for real driver? Game driver handles internally.
+            } else {
+                // straight ahead: just hold forward by speed
+                int bits = steer(driver.heading(vehicle), driver.heading(vehicle), driver.speed(vehicle), targetKmh);
+                driver.holdForward((bits & FORWARD) != 0);
+                driver.holdLeft(false);
+                driver.holdRight(false);
+            }
+        } catch (Throwable t) { SceneDriver.guard.fail(t); VirtualKeys.releaseAll(); }
+    }
+
+    @Override
+    public void stop() {
+        try { driver.holdForward(false); driver.holdLeft(false); driver.holdRight(false); }
+        catch (Throwable t) { SceneDriver.guard.fail(t); }
+        VirtualKeys.releaseAll();
+    }
+
+    private static final class GameDriver implements Driver {
+        public Object spawn(zombie.characters.IsoPlayer player, int targetKmh) {
+            try {
+                if (player == null) return null;
+                zombie.iso.IsoDirections facing = player.getDir();
+                zombie.iso.IsoCell cell = player.getCell();
+                if (cell == null && zombie.iso.IsoWorld.instance != null) cell = zombie.iso.IsoWorld.instance.getCell();
+                if (cell == null) return null;
+                int sx = (int) Math.floor(player.getX());
+                int sy = (int) Math.floor(player.getY());
+                int sz = (int) Math.floor(player.getZ());
+                zombie.iso.IsoGridSquare sq = cell.getGridSquare(sx + facing.dx() * 3, sy + facing.dy() * 3, sz);
+                if (sq == null) return null;
+                String car = Settings.text("devDriveCar", "Base.CarNormal");
+                return zombie.Lua.LuaManager.GlobalObject.addVehicleDebug(car, facing, null, sq);
+            } catch (Throwable t) { SceneDriver.guard.fail(t); return null; }
+        }
+        public boolean enter(Object vehicle, zombie.characters.IsoPlayer player) {
+            try { return ((zombie.vehicles.BaseVehicle) vehicle).enter(0, player); }
+            catch (Throwable t) { SceneDriver.guard.fail(t); return false; }
+        }
+        public void hotwire(Object vehicle) {
+            try { ((zombie.vehicles.BaseVehicle) vehicle).setHotwired(true); }
+            catch (Throwable t) { SceneDriver.guard.fail(t); }
+        }
+        public boolean startEngine(Object vehicle) {
+            try { ((zombie.vehicles.BaseVehicle) vehicle).tryStartEngine(); return true; }
+            catch (Throwable t) { SceneDriver.guard.fail(t); return false; }
+        }
+        public float speed(Object vehicle) {
+            try { return ((zombie.vehicles.BaseVehicle) vehicle).getCurrentSpeedKmHour(); }
+            catch (Throwable t) { SceneDriver.guard.fail(t); return 0; }
+        }
+        public float heading(Object vehicle) {
+            try { return ((zombie.vehicles.BaseVehicle) vehicle).getAngleY(); }
+            catch (Throwable t) { SceneDriver.guard.fail(t); return 0; }
+        }
+        public zombie.iso.Vector2 position(Object vehicle) {
+            try {
+                zombie.vehicles.BaseVehicle v = (zombie.vehicles.BaseVehicle) vehicle;
+                return new zombie.iso.Vector2(v.getX(), v.getY());
+            } catch (Throwable t) { SceneDriver.guard.fail(t); return new zombie.iso.Vector2(0, 0); }
+        }
+        private int code(String name) {
+            try { return zombie.core.Core.getInstance().getKeyBinding(name).keyValue(); }
+            catch (Throwable t) { SceneDriver.guard.fail(t); return 0; }
+        }
+        public void holdForward(boolean on) {
+            int c = code("Forward");
+            if (on) VirtualKeys.hold(c); else VirtualKeys.release(c);
+        }
+        public void holdLeft(boolean on) {
+            int c = code("Left");
+            if (on) VirtualKeys.hold(c); else VirtualKeys.release(c);
+        }
+        public void holdRight(boolean on) {
+            int c = code("Right");
+            if (on) VirtualKeys.hold(c); else VirtualKeys.release(c);
+        }
+        public boolean dead(zombie.characters.IsoPlayer player) {
+            try { return player == null || player.isDead(); }
+            catch (Throwable t) { SceneDriver.guard.fail(t); return false; }
+        }
+    }
+}

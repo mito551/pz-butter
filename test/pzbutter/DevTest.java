@@ -25,6 +25,11 @@ final class DevTest {
         routeBadIsNull();
         walkNextWaypoint();
         walkFailedEndsScene();
+        virtualKeyHold();
+        virtualKeysReleasedOnEnd();
+        steerChoice();
+        driveNoCarEndsScene();
+        virtualKeysOffStock();
     }
 
     static void markNames() {
@@ -257,4 +262,91 @@ final class DevTest {
         assert lines.get(1).contains("failed: path failed") : lines.get(1);
         Settings.load(SelfTest.write("enabled=true\n"));
         SceneDriver.resetForTest();
-    }}
+    }
+
+    static void virtualKeyHold() {
+        VirtualKeys.releaseAll();
+        assert VirtualKeys.heldCount == 0;
+        VirtualKeys.hold(30);
+        assert VirtualKeys.held(30);
+        assert VirtualKeys.heldCount == 1;
+        VirtualKeys.hold(30); // idempotent
+        assert VirtualKeys.heldCount == 1;
+        VirtualKeys.release(30);
+        assert !VirtualKeys.held(30);
+        assert VirtualKeys.heldCount == 0;
+        VirtualKeys.release(30); // no negative
+        assert VirtualKeys.heldCount == 0;
+        VirtualKeys.hold(1); VirtualKeys.hold(2);
+        VirtualKeys.releaseAll();
+        assert !VirtualKeys.held(1) && !VirtualKeys.held(2);
+        assert VirtualKeys.heldCount == 0;
+    }
+
+    static void virtualKeysReleasedOnEnd() {
+        Settings.load(SelfTest.write("enabled=true\ndevScene=stand\n"));
+        SceneDriver.resetForTest();
+        SceneDriver.init();
+        VirtualKeys.hold(5);
+        SceneDriver.onWorldReady();
+        assert VirtualKeys.heldCount == 0;
+        VirtualKeys.hold(5);
+        Path f = SelfTest.tmp("scene/vk.out").toPath();
+        SceneDriver.marksFile = f;
+        SceneDriver.onWorldReady();
+        SceneDriver.tick(1_000);
+        SceneDriver.tick(1_000 + 20_000); // window
+        VirtualKeys.hold(6);
+        SceneDriver.end("player dead");
+        assert VirtualKeys.heldCount == 0;
+        // quit path
+        VirtualKeys.hold(7);
+        Settings.load(SelfTest.write("enabled=true\ndevScene=stand\ndevSceneQuit=true\n"));
+        SceneDriver.resetForTest();
+        SceneDriver.init();
+        SceneDriver.quit = () -> { };
+        SceneDriver.marksFile = SelfTest.tmp("scene/vk2.out").toPath();
+        SceneDriver.onWorldReady();
+        SceneDriver.tick(1_000);
+        SceneDriver.tick(21_000);
+        SceneDriver.tick(81_000);
+        VirtualKeys.hold(8);
+        SceneDriver.tick(84_000);
+        assert VirtualKeys.heldCount == 0;
+        Settings.load(SelfTest.write("enabled=true\n"));
+        SceneDriver.resetForTest();
+        VirtualKeys.releaseAll();
+    }
+
+    static void steerChoice() {
+        assert SceneDrive.steer(0, 0, 0, 60) == SceneDrive.FORWARD;
+        assert SceneDrive.steer(0, 45, 0, 60) == (SceneDrive.FORWARD | SceneDrive.LEFT);
+        assert SceneDrive.steer(0, -45, 0, 60) == (SceneDrive.FORWARD | SceneDrive.RIGHT);
+        assert SceneDrive.steer(0, 5, 0, 60) == SceneDrive.FORWARD;
+        assert SceneDrive.steer(0, 0, 100, 60) == 0;
+    }
+
+    static void driveNoCarEndsScene() throws Exception {
+        Settings.load(SelfTest.write("enabled=true\ndevScene=drive\ndevRoute=1,0\n"));
+        SceneDriver.resetForTest();
+        SceneDriver.init();
+        SceneDrive.Fake fake = new SceneDrive.Fake();
+        fake.vehicle = null;
+        SceneDriver.action = new SceneDrive(fake);
+        Path f = SelfTest.tmp("scene/drivenocar.out").toPath();
+        SceneDriver.marksFile = f;
+        SceneDriver.onWorldReady();
+        SceneDriver.tick(1_000);
+        SceneDriver.tick(1_000 + 20_000);
+        java.util.List<String> lines = java.nio.file.Files.readAllLines(f);
+        assert lines.size() == 2 : lines;
+        assert lines.get(1).contains("failed: no car") : lines.get(1);
+        Settings.load(SelfTest.write("enabled=true\n"));
+        SceneDriver.resetForTest();
+    }
+
+    static void virtualKeysOffStock() {
+        VirtualKeys.releaseAll();
+        assert VirtualKeys.heldCount == 0;
+    }
+}
