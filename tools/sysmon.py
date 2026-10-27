@@ -36,12 +36,13 @@ def cpu_busy(prev, cur):
     for key in keys:
         p = prev.get(key)
         c = cur.get(key)
-        if not p or not c or sum(c) - sum(p) <= 0:
+        if not p or not c or sum(c[:8]) - sum(p[:8]) <= 0:
             result[key] = 0.0
             continue
         idle_p = p[3] + (p[4] if len(p) > 4 else 0)
         idle_c = c[3] + (c[4] if len(c) > 4 else 0)
-        delta_total = sum(c) - sum(p)
+        # guest/guest_nice (fields 9-10) are already counted in user/nice
+        delta_total = sum(c[:8]) - sum(p[:8])
         delta_idle = idle_c - idle_p
         busy = 100.0 * (delta_total - delta_idle) / delta_total
         result[key] = busy
