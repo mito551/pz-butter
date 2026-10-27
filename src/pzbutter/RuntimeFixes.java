@@ -13,7 +13,11 @@ public final class RuntimeFixes {
     /** lightingSyncPark: the lighting thread parks to its next update instead of yield-spinning. */
     public static final Guard lightGuard = new Guard("lightingSyncPark");
 
-    /** Stored deadline of the lighting sync (nextFrame). Reset on init/resetForTest. */
+    /** Stored deadline of the lighting sync (nextFrame). Reset on init/resetForTest.
+     *  Clock base note: stock's Sync.getTime() is org.lwjglx.Sys.getTime()*1e9/1000 and Sys.getTime()
+     *  is (long)(GLFW.glfwGetTime()*1000) (millisecond resolution). Our own deadline state lives only in
+     *  our code and is always derived from/compared to System.nanoTime(), so it never mixes with stock's
+     *  GLFW-based clock. The two clocks are never combined. */
     static volatile long lightDeadlineNs;
     static volatile boolean lightDeadlineStarted;
 
@@ -59,7 +63,7 @@ public final class RuntimeFixes {
 
     /** Stock Sync.sync's catch-up rule: advance by 1e9/fps, never behind now. */
     public static long nextDeadline(long prevDeadline, long now, int fps) {
-        if (fps <= 0) return prevDeadline > now ? prevDeadline : now;
+        if (fps <= 0) return prevDeadline;
         long step = 1_000_000_000L / fps;
         long cand = prevDeadline + step;
         return cand > now ? cand : now;
@@ -67,11 +71,35 @@ public final class RuntimeFixes {
 
     /** Parks (re-parking on spurious wakeups) until the deadline (nanoseconds, System.nanoTime scale). */
     public static void parkUntil(long deadlineNs) {
-        while (System.nanoTime() < deadlineNs) {
-            long rem = deadlineNs - System.nanoTime();
-            if (rem <= 0) break;
-            java.util.concurrent.locks.LockSupport.parkNanos(rem);
+        boolean interrupted = Thread.interrupted();
+        try {
+            while (System.nanoTime() < deadlineNs) {
+                long rem = deadlineNs - System.nanoTime();
+                if (rem <= 0) break;
+                java.util.concurrent.locks.LockSupport.parkNanos(rem);
+            }
+        } finally {
+            if (interrupted) Thread.currentThread().interrupt();
         }
+    }
+
+    /** Lighting sync core: seed deadline on first call, park until it, then advance it.
+     *  Holder (RuntimePatches.LightSync) calls only this. fps <= 0 leaves state untouched. */
+    public static long lightSync(int fps) {
+        if (fps <= 0) return 0L;
+        long now = System.nanoTime();
+        long prev = lightDeadlineNs;
+        boolean started = lightDeadlineStarted;
+        if (!started) {
+            prev = now;
+            lightDeadlineNs = now;
+            lightDeadlineStarted = true;
+        }
+        parkUntil(prev);
+        long after = System.nanoTime();
+        long nd = nextDeadline(prev, after, fps);
+        lightDeadlineNs = nd;
+        return nd;
     }
 
     public static void resetForTest() {

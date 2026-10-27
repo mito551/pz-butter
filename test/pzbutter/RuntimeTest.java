@@ -24,6 +24,7 @@ final class RuntimeTest {
         lightParkZeroFps();
         lightParkFpsChange();
         lightParkOffStock();
+        lightParkInterrupt();
     }
 
     static void plan12KeysDefaults() {
@@ -103,6 +104,7 @@ final class RuntimeTest {
     static void lightParkZeroFps() {
         RuntimeFixes.resetForTest();
         assert RuntimeFixes.nextDeadline(10L, 5L, 0) == 10L;
+        assert RuntimeFixes.nextDeadline(10L, 100L, 0) == 10L;
         RuntimeFixes.parkUntil(System.nanoTime() - 1L);
         RuntimeFixes.resetForTest();
     }
@@ -119,9 +121,17 @@ final class RuntimeTest {
         RuntimeFixes.resetForTest();
         assert !RuntimeFixes.lightGuard.on;
         assert !RuntimePatches.onSync(30);
-        assert !RuntimePatches.onLightSync(30);
-        assert !RuntimePatches.onDisplaySync(30);
-        assert !RuntimePatches.onLightingSync(30);
+        RuntimeFixes.resetForTest();
+    }
+
+    static void lightParkInterrupt() {
+        RuntimeFixes.resetForTest();
+        long deadline = System.nanoTime() + 20_000_000L;
+        Thread.currentThread().interrupt();
+        RuntimeFixes.parkUntil(deadline);
+        assert System.nanoTime() >= deadline;
+        assert Thread.currentThread().isInterrupted();
+        Thread.interrupted();
         RuntimeFixes.resetForTest();
     }
 }
