@@ -131,6 +131,9 @@ final class ModCompat {
         Map.entry("ZombiePatches.SchedStart", k("entityTiming")),
         Map.entry("ZombiePatches.SchedUpdate", k("entityTiming")),
         Map.entry("ZombiePatches.SchedPost", k("entityTiming")),
+        // dev (Plan 13)
+        Map.entry("DevPatches.IngameEnter", k("devScene")),
+        Map.entry("DevPatches.MainScreenUpdate", k("devAutoContinue")),
         // census (Plan 8b)
         Map.entry("CensusPatches.PreUpdate", k("devCensus")),
         Map.entry("CensusPatches.FrameStep", k("devCensus")),

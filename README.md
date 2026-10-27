@@ -138,6 +138,12 @@ The mod creates `~/Zomboid/PZButter.properties` on first start and reads it once
 |---|---|
 | `devCensus` | Diagnostic. Counts, in play, which game calls a calm zombie's update reaches, and writes `Zomboid/pzbutter/census.out` once a minute. Needs the preload (one restart). Off by default. |
 | `devMark` | Diagnostic. A key writes window marks (`mark <name> <epoch ms>`) to `Zomboid/pzbutter/marks.out` next to `frames.out`, for use with the frame log. Key: `devMarkKey` (default `F9`). Off by default. |
+| `devAutoContinue` | Dev. On the main menu, presses Continue once per process. Off by default. |
+| `devScene` | Dev. `off`/`stand`/`walk`/`drive` scene driver with settle window marks and optional quit. Off by default. |
+| `devSceneSettleSec` | Dev. Seconds after world ready before `scene.start` (default 20). |
+| `devSceneSec` | Dev. Seconds from `scene.start` to `scene.end` (default 60). |
+| `devSceneQuit` | Dev. Quit to desktop 3 s after `scene.end`. Off by default. |
+| `devPopulation` | Dev. Zombies spawned once at settle start. Off by default. |
 
 PZ Butter is a ZombieBuddy preload mod. On the first start, ZombieBuddy asks you to approve it; approve it and also choose to trust its author, since ZombieBuddy registers a preload only for a signed jar whose author is trusted. The first start after installing or updating PZ Butter runs without the preload, so workers are off until one restart. A game update switches workers off (status `revision X != list Y`) until PZ Butter is updated. Unticking PZ Butter in the mod list makes it print `[PZButter] not in the active mod list; nothing is switched on` and turn nothing on; ZombieBuddy still keeps it as a preload, so its jar keeps loading at start with every feature off, and to remove it completely you delete or unsubscribe the mod, which lets ZombieBuddy drop a preload whose jar is gone. The console status lines are: `[PZButter] workers: active (...)` means the transform and pool are on; `... needs a restart` means the settings ask for workers but the preload did not run this start; `... off (<reason>)` means workers are off for that reason.
 

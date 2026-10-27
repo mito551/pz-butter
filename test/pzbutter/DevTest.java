@@ -12,6 +12,12 @@ final class DevTest {
         markWriteAppends();
         devOffNothing();
         defaultsHaveKeys();
+        scenePhases();
+        sceneMarksOnce();
+        sceneUnsetIdle();
+        sceneEndEarly();
+        sceneSecondLoadResets();
+        devKeysDefaults();
     }
 
     static void markNames() {
@@ -51,5 +57,110 @@ final class DevTest {
         String t = Settings.render(new java.util.Properties());
         assert t.contains("\ndevMark=false\n") : t;
         assert t.contains("\ndevMarkKey=F9\n") : t;
+        assert t.contains("\ndevAutoContinue=false\n") : t;
+        assert t.contains("\ndevScene=off\n") : t;
+        assert t.contains("\ndevSceneSettleSec=20\n") : t;
+        assert t.contains("\ndevSceneSec=60\n") : t;
+        assert t.contains("\ndevSceneQuit=false\n") : t;
+        assert t.contains("\ndevPopulation=0\n") : t;
+    }
+
+    static void scenePhases() {
+        assert SceneDriver.phaseAt(0, 20, 60) == SceneDriver.Phase.SETTLE;
+        assert SceneDriver.phaseAt(19_999, 20, 60) == SceneDriver.Phase.SETTLE;
+        assert SceneDriver.phaseAt(20_000, 20, 60) == SceneDriver.Phase.WINDOW;
+        assert SceneDriver.phaseAt(79_999, 20, 60) == SceneDriver.Phase.WINDOW;
+        assert SceneDriver.phaseAt(80_000, 20, 60) == SceneDriver.Phase.DONE;
+    }
+
+    static void sceneMarksOnce() throws Exception {
+        Settings.load(SelfTest.write("enabled=true\ndevScene=stand\n"));
+        SceneDriver.resetForTest();
+        SceneDriver.init();
+        Path f = SelfTest.tmp("scene/marks.out").toPath();
+        SceneDriver.marksFile = f;
+        SceneDriver.onWorldReady();
+        SceneDriver.tick(1_000); // settle
+        SceneDriver.tick(1_000 + 20_000); // window -> start
+        SceneDriver.tick(1_000 + 80_000); // done -> end
+        java.util.List<String> lines = java.nio.file.Files.readAllLines(f);
+        assert lines.size() == 2 : lines;
+        assert lines.get(0).startsWith("mark scene.start ") : lines.get(0);
+        assert lines.get(1).startsWith("mark scene.end ") : lines.get(1);
+        Settings.load(SelfTest.write("enabled=true\n"));
+        SceneDriver.resetForTest();
+    }
+
+    static void sceneUnsetIdle() {
+        Settings.load(SelfTest.write("enabled=true\ndevScene=off\n"));
+        SceneDriver.resetForTest();
+        SceneDriver.init();
+        SceneDriver.onWorldReady();
+        SceneDriver.tick(0);
+        SceneDriver.tick(100_000);
+        assert SceneDriver.phase() == SceneDriver.Phase.IDLE;
+        Settings.load(SelfTest.write("enabled=true\n"));
+        SceneDriver.resetForTest();
+    }
+
+    static void sceneEndEarly() throws Exception {
+        Settings.load(SelfTest.write("enabled=true\ndevScene=stand\n"));
+        SceneDriver.resetForTest();
+        SceneDriver.init();
+        Path f = SelfTest.tmp("scene/early.out").toPath();
+        SceneDriver.marksFile = f;
+        SceneDriver.onWorldReady();
+        SceneDriver.tick(1_000);
+        SceneDriver.tick(1_000 + 20_000); // window
+        SceneDriver.end("player dead");
+        int before = java.nio.file.Files.exists(f) ? java.nio.file.Files.readAllLines(f).size() : 0;
+        assert before == 2 : before;
+        SceneDriver.tick(1_000 + 80_000); // DONE now writes nothing
+        int after = java.nio.file.Files.readAllLines(f).size();
+        assert after == before : after;
+        Settings.load(SelfTest.write("enabled=true\n"));
+        SceneDriver.resetForTest();
+    }
+
+    static void sceneSecondLoadResets() throws Exception {
+        Settings.load(SelfTest.write("enabled=true\ndevScene=stand\ndevSceneQuit=true\n"));
+        SceneDriver.resetForTest();
+        SceneDriver.init();
+        final int[] quits = {0};
+        SceneDriver.quit = () -> quits[0]++;
+        Path f = SelfTest.tmp("scene/second.out").toPath();
+        SceneDriver.marksFile = f;
+        SceneDriver.onWorldReady();
+        SceneDriver.tick(1000);
+        SceneDriver.tick(1000 + 20_000);
+        SceneDriver.tick(1000 + 80_000);
+        SceneDriver.onWorldReady();
+        SceneDriver.tick(2000);
+        SceneDriver.tick(2000 + 20_000);
+        SceneDriver.tick(2000 + 80_000);
+        java.util.List<String> lines = java.nio.file.Files.readAllLines(f);
+        assert lines.size() == 4 : lines;
+        assert lines.get(0).startsWith("mark scene.start ") : lines.get(0);
+        assert lines.get(1).startsWith("mark scene.end ") : lines.get(1);
+        assert lines.get(2).startsWith("mark scene.start ") : lines.get(2);
+        assert lines.get(3).startsWith("mark scene.end ") : lines.get(3);
+        // no quit from the first scene fires after the reset
+        SceneDriver.tick(1000 + 80_000 + 3_000);
+        assert quits[0] == 0 : quits[0];
+        Settings.load(SelfTest.write("enabled=true\n"));
+        SceneDriver.resetForTest();
+    }
+
+    static void autoContinueOnce() {
+        assert SceneDriver.shouldContinue(true, false);
+        assert !SceneDriver.shouldContinue(true, true);
+        assert !SceneDriver.shouldContinue(false, false);
+        assert !SceneDriver.shouldContinue(false, true);
+    }
+
+    static void devKeysDefaults() {
+        Settings.load(SelfTest.write("enabled=true\n"));
+        SceneDriver.init();
+        assert !SceneDriver.guard.on;
     }
 }

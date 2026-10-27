@@ -35,6 +35,7 @@ public class Main {
         LogDedupe.init();
         ZombiePatches.init();
         DevMarks.init();
+        SceneDriver.init();
         RuntimePatches.init();
         Cores.init();
         GpuPatches.init();

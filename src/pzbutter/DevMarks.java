@@ -50,6 +50,11 @@ public final class DevMarks {
         write(marks, line(name, System.currentTimeMillis(), note));
     }
 
+    /** The marks file the scene driver writes to when no seam is set, in one place. */
+    public static Path defaultMarksFile() {
+        return new File(System.getProperty("user.home"), "Zomboid/pzbutter/marks.out").toPath();
+    }
+
     /** Package-private seam: appends one line to {@code file}. */
     static void write(Path file, String text) {
         try {
