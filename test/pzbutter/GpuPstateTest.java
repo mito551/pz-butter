@@ -17,6 +17,8 @@ final class GpuPstateTest {
         gpuPstateNoCard();
         defaultsAndTemplate();
         findCardTest();
+        gpuPstateStepsDownAfterFourLowPolls();
+        gpuPstateMeasuresButBakeIgnores();
     }
 
     static void gpuPstateUpOnLoad() {
@@ -64,6 +66,7 @@ final class GpuPstateTest {
         GpuPstate.resetForTest();
         GpuPstate.init(root);
         assert GpuPstate.guard.on;
+        Thread.sleep(100);
         assert Files.readString(dev.resolve("power_dpm_force_performance_level")).trim().equals("manual");
         // idempotent restore
         GpuPstate.restore();
@@ -83,6 +86,39 @@ final class GpuPstateTest {
         assert !GpuPstate.guard.on;
         GpuPstate.resetForTest();
         delete(root.toFile());
+    }
+
+    static void gpuPstateStepsDownAfterFourLowPolls() {
+        int cur = 3, max = 6;
+        int low = 0;
+        for (int i = 0; i < 3; i++) {
+            int[] r = GpuPstate.step(cur, max, 6, 16.67, low);
+            cur = r[0]; low = r[1];
+            assert cur == 3 : "no step before 120 low frames";
+        }
+        int[] r = GpuPstate.step(cur, max, 6, 16.67, low);
+        assert r[0] == 2 : "one step down on the 4th low poll";
+        cur = r[0]; low = r[1];
+        assert low == 0;
+        for (int i = 0; i < 3; i++) {
+            r = GpuPstate.step(cur, max, 6, 16.67, low);
+            cur = r[0]; low = r[1];
+            assert cur == 2 : "no second step before 120 more low frames";
+        }
+        r = GpuPstate.step(cur, max, 6, 16.67, low);
+        assert r[0] == 1 : "second step down on the 4th more low poll";
+    }
+
+    static void gpuPstateMeasuresButBakeIgnores() {
+        Settings.load(SelfTest.write("enabled=true\ngpuPstate=true\nbakeBudgetGpu=false\nbakeBudgetAdaptive=false\n"));
+        GpuTimer.resetForTest();
+        GpuTimer.init();
+        assert GpuTimer.guard.on;
+        assert !GpuTimer.bakeMode;
+        GpuTimer.lastGpuMs = 12.5;
+        assert GpuTimer.loadMs(5.0) == 5.0;
+        GpuTimer.resetForTest();
+        Settings.load(SelfTest.write("enabled=true\\n"));
     }
 
     static void defaultsAndTemplate() {

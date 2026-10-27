@@ -89,12 +89,7 @@ public final class GpuPstate {
         try { orig = Files.readString(power).trim(); } catch (Throwable t) { orig = null; }
         originalLevel = orig;
         restored.set(false);
-        try { Files.writeString(power, "manual"); } catch (Throwable t) {
-            guard.on = false;
-            System.out.println("[PZButter] gpuPstate off: cannot write manual: " + t);
-            restored.set(false);
-            return;
-        }
+        // manual is written by the daemon thread as its first action, not here
         // read current applied level
         try { currentLevel = currentLevel(Files.readString(sclk)); } catch (Throwable t) { currentLevel = 1; }
         if (currentLevel < 0) currentLevel = 1;
@@ -135,16 +130,10 @@ public final class GpuPstate {
         } catch (IOException e) { return null; }
         candidates.sort(Comparator.comparing(p -> p.getFileName().toString()));
         for (Path card : candidates) {
-            // support both card*/device and card* directly
-            List<Path> devs = new ArrayList<>();
             Path dev = card.resolve("device");
-            if (Files.exists(dev)) devs.add(dev);
-            devs.add(card);
-            for (Path d : devs) {
-                Path sclk = d.resolve("pp_dpm_sclk");
-                Path power = d.resolve("power_dpm_force_performance_level");
-                if (Files.exists(sclk) && Files.exists(power)) return d;
-            }
+            Path sclk = dev.resolve("pp_dpm_sclk");
+            Path power = dev.resolve("power_dpm_force_performance_level");
+            if (Files.exists(dev) && Files.exists(sclk) && Files.exists(power)) return dev;
         }
         // also scan nested one level just in case
         return null;
@@ -199,7 +188,41 @@ public final class GpuPstate {
         return result;
     }
 
+    /** Per-poll decision: returns {newLevel, newLowFrames}. */
+    public static int[] step(int cur, int max, double gpuMs, double periodMs, int lowFrames) {
+        if (periodMs <= 0) periodMs = 16.67;
+        double upThreshold = 0.85 * periodMs;
+        double downThreshold = 0.50 * periodMs;
+        int newLow = lowFrames;
+        int newLevel = cur;
+        if (gpuMs >= 0 && gpuMs < downThreshold) {
+            newLow = lowFrames + 30;
+        } else {
+            newLow = 0;
+        }
+        if (gpuMs > upThreshold) {
+            newLevel = Math.min(cur + 1, max);
+            newLow = 0;
+        } else if (gpuMs >= 0 && gpuMs < downThreshold && newLow >= 120) {
+            newLevel = Math.max(cur - 1, 1);
+            newLow = 0;
+        }
+        if (max > 0 && newLevel > max) newLevel = max;
+        if (newLevel < 1) newLevel = 1;
+        return new int[] { newLevel, newLow };
+    }
+
+    // aliases
+    public static int[] poll(int cur, int max, double gpuMs, double periodMs, int lowFrames) { return step(cur, max, gpuMs, periodMs, lowFrames); }
+    public static int[] advance(int cur, int max, double gpuMs, double periodMs, int lowFrames) { return step(cur, max, gpuMs, periodMs, lowFrames); }
+
     private static void run() {
+        // first action of the daemon thread: switch to manual, then poll
+        Path p0 = powerPath;
+        if (p0 != null) {
+            try { Files.writeString(p0, "manual"); }
+            catch (Throwable t) { try { guard.fail(t); } catch (Throwable ignored) { } restore(); return; }
+        }
         while (!Thread.currentThread().isInterrupted() && guard.on) {
             try {
                 Thread.sleep(500);
@@ -212,24 +235,20 @@ public final class GpuPstate {
                 double gpu = GpuTimer.lastGpuMs;
                 if (gpu < 0) continue; // no sample yet: do nothing
                 double period = periodMs();
-                if (gpu < 0.50 * period) {
-                    lowFrames += 30;
-                } else {
-                    lowFrames = 0;
-                }
                 Path sp = sclkPath;
-                Path pp = powerPath;
-                if (sp == null || pp == null) continue;
+                if (sp == null) continue;
                 String text = Files.readString(sp);
                 int cur = currentLevel(text);
                 if (cur < 0) cur = currentLevel;
                 int max = maxLevel(text);
                 if (max <= 0) continue;
-                int next = nextLevel(cur, max, gpu, period, lowFrames);
+                int[] r = step(cur, max, gpu, period, lowFrames);
+                lowFrames = r[1];
+                int next = r[0];
                 if (next != cur) {
-                    // writing level index
                     Files.writeString(sp, String.valueOf(next));
                     currentLevel = next;
+                    lowFrames = 0;
                 } else {
                     currentLevel = cur;
                 }
@@ -253,11 +272,11 @@ public final class GpuPstate {
     }
 
     public static void restore() {
-        if (restored.getAndSet(true)) return; // second restore writes nothing
-        // But idempotent requirement: only write once. If first restore impossible, still mark? yes.
-        Path pp = powerPath;
         String orig = originalLevel;
-        if (pp != null && orig != null) {
+        if (orig == null) return; // never read an original level: nothing to restore
+        if (restored.getAndSet(true)) return; // second restore writes nothing
+        Path pp = powerPath;
+        if (pp != null) {
             try {
                 if (Files.isWritable(pp)) Files.writeString(pp, orig);
             } catch (Throwable ignored) { }
