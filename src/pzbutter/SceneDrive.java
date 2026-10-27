@@ -70,7 +70,6 @@ public final class SceneDrive implements SceneDriver.Action {
     private boolean hasRoute;
     private zombie.characters.IsoPlayer player;
     private int targetKmh;
-    private zombie.iso.IsoGridSquare spawnSquare;
 
     @Override
     public void start() {
@@ -94,11 +93,13 @@ public final class SceneDrive implements SceneDriver.Action {
             if (player == null) { SceneDriver.end("no car"); return; }
 
             vehicle = driver.spawn(player, targetKmh);
-            // call game-level spawn with car name etc: use direct game sequence if not fake? Driver handles.
             if (vehicle == null) { SceneDriver.end("no car"); return; }
             if (!driver.enter(vehicle, player)) { SceneDriver.end("no car"); return; }
             driver.hotwire(vehicle);
             if (!driver.startEngine(vehicle)) { SceneDriver.end("no car"); return; }
+            zombie.iso.Vector2 at = driver.position(vehicle); // route origin = the spawn square
+            originX = (int) Math.floor(at.x);
+            originY = (int) Math.floor(at.y);
         } catch (Throwable t) { SceneDriver.guard.fail(t); SceneDriver.end("no car"); }
     }
 

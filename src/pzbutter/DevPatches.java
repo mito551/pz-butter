@@ -21,13 +21,14 @@ public final class DevPatches {
         }
     }
 
-    @me.zed_0xff.zombie_buddy.Patch(className = "zombie.input.GameKeyboard", methodName = "isKeyDown")
+    /** isKeyDown(int) only: strictMatch makes ZombieBuddy match the advice's argument list exactly (as GpuPatches.GenTextures relies on). */
+    @me.zed_0xff.zombie_buddy.Patch(className = "zombie.input.GameKeyboard", methodName = "isKeyDown", strictMatch = true)
     public static class KeyDown {
         @me.zed_0xff.zombie_buddy.Patch.OnExit
         public static void exit(@me.zed_0xff.zombie_buddy.Patch.Argument(0) int key,
                                 @me.zed_0xff.zombie_buddy.Patch.Return(readOnly = false) boolean ret) {
             if (VirtualKeys.heldCount == 0) return;
-            if (VirtualKeys.held(key)) ret = true;
+            try { if (VirtualKeys.held(key)) ret = true; } catch (Throwable t) { SceneDriver.guard.fail(t); }
         }
     }
 }
