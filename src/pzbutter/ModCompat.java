@@ -43,7 +43,7 @@ final class ModCompat {
     /** The classes whose nested classes are PZ Butter's holders. */
     static final Class<?>[] OUTERS = {Patches.class, DeliveryPatches.class, LuaPatches.class, UiPatches.class, MapPatches.class,
         SoundPatches.class, WorldPatches.class, ChunkPatches.class, LogPatches.class, ZombiePatches.class, GpuPatches.class, CensusPatches.class,
-        VehiclePatches.class, StreamPatches.class, LoadPatches.class};
+        VehiclePatches.class, StreamPatches.class, LoadPatches.class, RuntimePatches.class};
 
     private static final String PATCH = "Lme/zed_0xff/zombie_buddy/Patch;";
     private static final String ON_ENTER = "Lme/zed_0xff/zombie_buddy/Patch$OnEnter;";
@@ -90,7 +90,7 @@ final class ModCompat {
         Map.entry("DeliveryPatches.KeyboardPolled", INPUT),
         Map.entry("DeliveryPatches.CursorRecord", k("cursorLatch")),
         Map.entry("DeliveryPatches.RightDelay", k("aimHoldMs")),
-        Map.entry("DeliveryPatches.PostRender", k("cursorLatch", "bakeBudgetGpu")),
+        Map.entry("DeliveryPatches.PostRender", k("cursorLatch", "bakeBudgetGpu", "gpuPstate")),
         Map.entry("DeliveryPatches.SpriteNotify", k("renderIdleWait")),
         Map.entry("DeliveryPatches.RenderNotify", k("renderIdleWait")),
         Map.entry("DeliveryPatches.ContextWake", k("renderIdleWait")),
@@ -103,7 +103,7 @@ final class ModCompat {
         Map.entry("DeliveryPatches.DisplayModeSet", k("borderlessFullscreen")),
         Map.entry("DeliveryPatches.IsFullscreen", k("borderlessFullscreen")),
         Map.entry("DeliveryPatches.Swap", k("gpuMaxFrames", "presentPacing", "vblankLock", "frameStartGate", "reflexSleep", "vrrCap",
-            "vsyncAdaptive", "vrr", "borderlessFullscreen", "persistentVbo", "bakeNoSync", "bakeBudgetGpu")),
+            "vsyncAdaptive", "vrr", "borderlessFullscreen", "persistentVbo", "bakeNoSync", "bakeBudgetGpu", "gpuPstate")),
         // Lua
         Map.entry("LuaPatches.Rawget", k("luaRawgetFast", "uiCensus", "uiRetained", "uiRetainCheck")),
         Map.entry("LuaPatches.Rawset", UI_RETAIN),
@@ -166,6 +166,9 @@ final class ModCompat {
         // log
         Map.entry("LogPatches.Writeln", k("logDedupe")),
         Map.entry("LogPatches.PrefixLine", k("logDedupe")),
+        // runtime
+        Map.entry("RuntimePatches.CollectGarbage", k("luaGcNoop")),
+        Map.entry("RuntimePatches.LightSync", k("lightingSyncPark", "corePlacement")),
         // UI
         Map.entry("UiPatches.MeasureX", k("textWidthCache")),
         Map.entry("UiPatches.FontsInit", k("textWidthCache", "uiRetained", "uiRetainCheck", "mapStreetMemo", "mapStreetCache")),

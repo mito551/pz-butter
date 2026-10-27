@@ -332,6 +332,12 @@ public final class ZombiePatches {
      * its minute; the zombies line (ZombieStats) rolls its own. Game thread only.
      */
     public static void onFrameEnd() {
+        if (RuntimeFixes.gcGuard.on) {
+            if (Thread.currentThread() == FrameClock.mainThread) {
+                try { RuntimeFixes.tick(System.nanoTime()); }
+                catch (Throwable t) { RuntimeFixes.gcGuard.fail(t); }
+            }
+        }
         boolean timing = EntityTiming.guard.on;
         if (!timing && !ZombieStats.guard.on) return;
         if (Thread.currentThread() != FrameClock.mainThread) return;
