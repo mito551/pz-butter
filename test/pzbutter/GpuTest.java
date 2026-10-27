@@ -858,7 +858,7 @@ final class GpuTest {
     static void gpuLoadFeedsBudget() {
         GpuTimer.resetForTest();
         assert GpuTimer.loadMs(5.0) == 5.0;
-        GpuTimer.guard.on = true; GpuTimer.lastGpuMs = 12.5;
+        GpuTimer.guard.on = true; GpuTimer.bakeMode = true; GpuTimer.lastGpuMs = 12.5;
         assert GpuTimer.loadMs(5.0) == 12.5 && GpuTimer.loadMs(20.0) == 20.0;
         assert BakeHold.adaptive(8, 8, GpuTimer.loadMs(5.0), 1000.0 / 120) == 4;   // a GPU-bound frame halves the bake budget
         GpuTimer.guard.on = false;

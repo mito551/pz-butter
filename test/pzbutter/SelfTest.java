@@ -44,6 +44,7 @@ public final class SelfTest {
         CoresTest.run();
         CensusTest.run();
         GpuTest.run();
+        GpuPstateTest.run();
         delete(DIR);
         System.out.println("ok");
     }

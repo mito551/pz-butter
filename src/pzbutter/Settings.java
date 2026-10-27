@@ -93,6 +93,8 @@ public final class Settings {
       + "lightingSyncPark=false\n"
       + "# corePlacement: latency threads on performance cores on hybrid CPUs. Off by default.\n"
       + "corePlacement=off\n"
+      + "# gpuPstate: AMD on Linux: a steady GPU clock level from each frame's GPU time. Off by default.\n"
+      + "gpuPstate=false\n"
       + "#\n"
       + "# Mod compatibility.\n"
       + "# modProfile: custom uses modCompat and uiRetainedMods as written; performance = modCompat report and uiRetainedMods true; compatibility = modCompat auto and uiRetainedMods false.\n"

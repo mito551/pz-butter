@@ -11,6 +11,9 @@ final class GpuTimer {
 
     static final Guard guard = new Guard("bakeBudgetGpu");
 
+    /** True when the bake budget itself reads lastGpuMs (bakeBudgetGpu + bakeBudgetAdaptive). */
+    static volatile boolean bakeMode = false;
+
     /** The last complete sample in ms, -1 before the first. */
     static volatile double lastGpuMs = -1;
 
@@ -56,7 +59,8 @@ final class GpuTimer {
     static double sumMs;
 
     static void init() {
-        guard.on = Settings.flag("bakeBudgetGpu") && Settings.flag("bakeBudgetAdaptive");
+        bakeMode = Settings.flag("bakeBudgetGpu") && Settings.flag("bakeBudgetAdaptive");
+        guard.on = bakeMode || Settings.flag("gpuPstate");
         ids = null;
         frameNo = 0;
         inFrame = false;
@@ -117,7 +121,7 @@ final class GpuTimer {
     /** The load the bake budget reacts to: the larger of the game thread's step and the GPU's frame time, once there is one. */
     static double loadMs(double stepMs) {
         double g = lastGpuMs;
-        return guard.on && g >= 0 ? Math.max(stepMs, g) : stepMs;
+        return (bakeMode && guard.on && g >= 0) ? Math.max(stepMs, g) : stepMs;
     }
 
     static void resetForTest() {
@@ -127,6 +131,7 @@ final class GpuTimer {
 
     static void resetForTestKeepQueries() {
         guard.on = false;
+        bakeMode = false;
         ids = null;
         frameNo = 0;
         inFrame = false;

@@ -71,6 +71,7 @@ The mod creates `~/Zomboid/PZButter.properties` on first start and reads it once
 | `lightingFps` | `0` leaves the game's lighting rate. `1` to `120` sets the lighting thread's rate; it changes lighting smoothness, not main-frame time. |
 | `lightingSyncPark` | `false` is stock. `true` parks the lighting thread to its next update instead of yield-spinning. |
 | `corePlacement` | `off` by default. When on and the CPU is hybrid, the game, render and lighting threads and PZ Butter's frame workers restrict themselves to the performance cores. `off (not hybrid)` when the CPU is not hybrid. Linux and Windows only; untested on hybrid hardware. |
+| `gpuPstate` | `false` by default. AMD GPUs on Linux only. When the sysfs files are writable, a daemon thread keeps the GPU clock at a steady level from each frame's GPU time. Needs a udev rule making `pp_dpm_sclk` and `power_dpm_force_performance_level` writable (e.g. `KERNEL=="card0", SUBSYSTEM=="drm", GROUP="video", MODE="0660"`). Restores the original level on shutdown. Untested here (NVIDIA machine). |
 | `gridStackInterval` | `0` is stock. `8` runs the buildings-in-front scan every 8 frames while you stay put. |
 | `roofHideDebounceFrames` | `0` is stock. `8` holds a carport roof's hide or show for 8 frames, so it doesn't flicker. |
 | `cutawayInvalidateChanged` | Only chunks where a wall's cutaway actually changed are redrawn. |

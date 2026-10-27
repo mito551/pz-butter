@@ -37,6 +37,7 @@ public class Main {
         RuntimePatches.init();
         Cores.init();
         GpuPatches.init();
+        GpuPstate.init();
         UiTiming.init();
         UiCensus.init();
         UiRetain.init();
