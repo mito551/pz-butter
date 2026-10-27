@@ -69,6 +69,7 @@ The mod creates `~/Zomboid/PZButter.properties` on first start and reads it once
 | `lightInfoOncePerFrame` | A clean square's light is read once per lighting update, so the light lookups cost less. |
 | `lightSwitchCheckFrames` | `0` is stock. `15` lets a light switch reuse its power answer for 15 frames (0.25 s at 60 fps). |
 | `lightingFps` | `0` leaves the game's lighting rate. `1` to `120` sets the lighting thread's rate; it changes lighting smoothness, not main-frame time. |
+| `lightingSyncPark` | `false` is stock. `true` parks the lighting thread to its next update instead of yield-spinning. |
 | `gridStackInterval` | `0` is stock. `8` runs the buildings-in-front scan every 8 frames while you stay put. |
 | `roofHideDebounceFrames` | `0` is stock. `8` holds a carport roof's hide or show for 8 frames, so it doesn't flicker. |
 | `cutawayInvalidateChanged` | Only chunks where a wall's cutaway actually changed are redrawn. |

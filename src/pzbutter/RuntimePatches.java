@@ -28,4 +28,36 @@ public final class RuntimePatches {
             return RuntimePatches.onCollect(frame, nArguments);
         }
     }
+
+    /** Display.sync entry: true skips the body (we park ourselves). */
+    public static boolean onSync(int fps) {
+        if (!RuntimeFixes.lightGuard.on) return false;
+        try {
+            long now = System.nanoTime();
+            long prev = RuntimeFixes.lightDeadlineNs;
+            boolean started = RuntimeFixes.lightDeadlineStarted;
+            if (!started) { prev = now; RuntimeFixes.lightDeadlineNs = now; RuntimeFixes.lightDeadlineStarted = true; }
+            if (fps <= 0) return true;
+            RuntimeFixes.parkUntil(prev);
+            long after = System.nanoTime();
+            long nd = RuntimeFixes.nextDeadline(prev, after, fps);
+            RuntimeFixes.lightDeadlineNs = nd;
+            return true;
+        } catch (Throwable t) {
+            RuntimeFixes.lightGuard.fail(t);
+            return false;
+        }
+    }
+
+    public static boolean onLightSync(int fps) { return onSync(fps); }
+    public static boolean onDisplaySync(int fps) { return onSync(fps); }
+    public static boolean onLightingSync(int fps) { return onSync(fps); }
+
+    @Patch(className = "org.lwjglx.opengl.Display", methodName = "sync")
+    public static class LightSync {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.Argument(0) int fps) {
+            return RuntimePatches.onSync(fps);
+        }
+    }
 }

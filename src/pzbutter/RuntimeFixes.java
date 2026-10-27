@@ -10,6 +10,13 @@ public final class RuntimeFixes {
     /** luaGcNoop: mods' collectgarbage no longer forces a full collection. */
     public static final Guard gcGuard = new Guard("luaGcNoop");
 
+    /** lightingSyncPark: the lighting thread parks to its next update instead of yield-spinning. */
+    public static final Guard lightGuard = new Guard("lightingSyncPark");
+
+    /** Stored deadline of the lighting sync (nextFrame). Reset on init/resetForTest. */
+    static volatile long lightDeadlineNs;
+    static volatile boolean lightDeadlineStarted;
+
     /** Forced collections skipped since start (or the last resetForTest). */
     public static volatile long gcSkipped;
 
@@ -20,9 +27,12 @@ public final class RuntimeFixes {
 
     static void init() {
         gcGuard.on = Settings.flag("luaGcNoop");
+        lightGuard.on = Settings.flag("lightingSyncPark");
         gcSkipped = 0;
         minuteStarted = false;
         minuteBaseline = 0;
+        lightDeadlineNs = 0;
+        lightDeadlineStarted = false;
     }
 
     /** True for the options stock answers with {@code System.gc()} (null, "step", "collect"). */
@@ -47,11 +57,31 @@ public final class RuntimeFixes {
         return delta > 0 ? delta : 0;
     }
 
+    /** Stock Sync.sync's catch-up rule: advance by 1e9/fps, never behind now. */
+    public static long nextDeadline(long prevDeadline, long now, int fps) {
+        if (fps <= 0) return prevDeadline > now ? prevDeadline : now;
+        long step = 1_000_000_000L / fps;
+        long cand = prevDeadline + step;
+        return cand > now ? cand : now;
+    }
+
+    /** Parks (re-parking on spurious wakeups) until the deadline (nanoseconds, System.nanoTime scale). */
+    public static void parkUntil(long deadlineNs) {
+        while (System.nanoTime() < deadlineNs) {
+            long rem = deadlineNs - System.nanoTime();
+            if (rem <= 0) break;
+            java.util.concurrent.locks.LockSupport.parkNanos(rem);
+        }
+    }
+
     public static void resetForTest() {
         gcGuard.on = false;
+        lightGuard.on = false;
         gcSkipped = 0;
         minuteStarted = false;
         minuteStartNs = 0;
         minuteBaseline = 0;
+        lightDeadlineNs = 0;
+        lightDeadlineStarted = false;
     }
 }

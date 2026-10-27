@@ -19,16 +19,23 @@ final class RuntimeTest {
         luaGcCountUntouched();
         luaGcOffStock();
         luaGcMinuteLine();
+        lightParkDeadlineAdvances();
+        lightParkCatchesUp();
+        lightParkZeroFps();
+        lightParkFpsChange();
+        lightParkOffStock();
     }
 
     static void plan12KeysDefaults() {
         Settings.load(SelfTest.write(Settings.render(new java.util.Properties()).replace("\nenabled=false\n", "\nenabled=true\n")));
         assert !Settings.flag("luaGcNoop");
+        assert !Settings.flag("lightingSyncPark");
     }
 
     static void settingsTemplateHasPlan12Keys() {
         String t = Settings.render(new java.util.Properties());
         assert t.contains("\nluaGcNoop=false\n");
+        assert t.contains("\nlightingSyncPark=false\n");
     }
 
     static void luaGcSkipsCollectStepNil() {
@@ -76,6 +83,45 @@ final class RuntimeTest {
             assert RuntimeFixes.tick(2 * min) == 0;        // quiet minute: nothing
             assert baos.toString().isEmpty();
         } finally { System.setOut(old); }
+        RuntimeFixes.resetForTest();
+    }
+
+    static void lightParkDeadlineAdvances() {
+        RuntimeFixes.resetForTest();
+        assert RuntimeFixes.nextDeadline(0L, 0L, 30) == 33_333_333L;
+        assert RuntimeFixes.nextDeadline(33_333_333L, 33_333_333L, 30) == 66_666_666L;
+        RuntimeFixes.resetForTest();
+    }
+
+    static void lightParkCatchesUp() {
+        RuntimeFixes.resetForTest();
+        long now = 100_000_000L;
+        assert RuntimeFixes.nextDeadline(0L, now, 30) == now;
+        RuntimeFixes.resetForTest();
+    }
+
+    static void lightParkZeroFps() {
+        RuntimeFixes.resetForTest();
+        assert RuntimeFixes.nextDeadline(10L, 5L, 0) == 10L;
+        RuntimeFixes.parkUntil(System.nanoTime() - 1L);
+        RuntimeFixes.resetForTest();
+    }
+
+    static void lightParkFpsChange() {
+        RuntimeFixes.resetForTest();
+        long d30 = RuntimeFixes.nextDeadline(0L, 0L, 30);
+        long d60 = RuntimeFixes.nextDeadline(d30, d30, 60);
+        assert d60 == d30 + 16_666_666L;
+        RuntimeFixes.resetForTest();
+    }
+
+    static void lightParkOffStock() {
+        RuntimeFixes.resetForTest();
+        assert !RuntimeFixes.lightGuard.on;
+        assert !RuntimePatches.onSync(30);
+        assert !RuntimePatches.onLightSync(30);
+        assert !RuntimePatches.onDisplaySync(30);
+        assert !RuntimePatches.onLightingSync(30);
         RuntimeFixes.resetForTest();
     }
 }

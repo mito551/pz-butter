@@ -89,6 +89,8 @@ public final class Settings {
       + "# Runtime.\n"
       + "# luaGcNoop: a mod's collectgarbage no longer forces a full collection. Off by default.\n"
       + "luaGcNoop=false\n"
+      + "# lightingSyncPark: the lighting thread parks to its next update instead of yield-spinning. Off by default.\n"
+      + "lightingSyncPark=false\n"
       + "#\n"
       + "# Mod compatibility.\n"
       + "# modProfile: custom uses modCompat and uiRetainedMods as written; performance = modCompat report and uiRetainedMods true; compatibility = modCompat auto and uiRetainedMods false.\n"

@@ -157,6 +157,7 @@ final class ModCompat {
         Map.entry("LogPatches.PrefixLine", k("logDedupe")),
         // runtime
         Map.entry("RuntimePatches.CollectGarbage", k("luaGcNoop")),
+        Map.entry("RuntimePatches.LightSync", k("lightingSyncPark")),
         // UI
         Map.entry("UiPatches.MeasureX", k("textWidthCache")),
         Map.entry("UiPatches.FontsInit", k("textWidthCache", "uiRetained", "uiRetainCheck", "mapStreetMemo", "mapStreetCache")),
