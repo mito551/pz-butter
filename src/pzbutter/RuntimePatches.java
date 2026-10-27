@@ -11,6 +11,7 @@ public final class RuntimePatches {
 
     /** BaseLib.collectgarbage entry: true skips the body (stock's System.gc() path). */
     public static boolean onCollect(Object frame, int nArguments) {
+        if (!RuntimeFixes.gcGuard.on) return false;
         try {
             Object option = nArguments > 0 ? ((se.krka.kahlua.vm.LuaCallFrame) frame).get(0) : null;
             return RuntimeFixes.skipCollect(option);

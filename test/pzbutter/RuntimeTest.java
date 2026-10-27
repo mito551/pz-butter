@@ -18,6 +18,7 @@ final class RuntimeTest {
         luaGcSkipsCollectStepNil();
         luaGcCountUntouched();
         luaGcOffStock();
+        luaGcMinuteLine();
     }
 
     static void plan12KeysDefaults() {
@@ -52,6 +53,29 @@ final class RuntimeTest {
         assert !RuntimeFixes.gcGuard.on;
         assert !RuntimeFixes.skipCollect(null);
         assert !RuntimePatches.onCollect(null, 0);
+        RuntimeFixes.resetForTest();
+    }
+
+    static void luaGcMinuteLine() {
+        RuntimeFixes.resetForTest();
+        RuntimeFixes.gcGuard.on = true;
+        RuntimeFixes.gcSkipped = 5;
+        java.io.PrintStream old = System.out;
+        java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+        System.setOut(new java.io.PrintStream(baos));
+        try {
+            long min = 60_000_000_000L;
+            assert RuntimeFixes.tick(0L) == 0;             // first call: baseline only, nothing printed
+            assert baos.toString().isEmpty();
+            assert RuntimeFixes.tick(min - 1) == 0;        // not yet a minute
+            assert baos.toString().isEmpty();
+            RuntimeFixes.gcSkipped = 7;                    // count rose
+            assert RuntimeFixes.tick(min) == 2;            // minute elapsed, line printed
+            assert baos.toString().equals("[PZButter] luaGcNoop: 2 forced collections skipped\n");
+            baos.reset();
+            assert RuntimeFixes.tick(2 * min) == 0;        // quiet minute: nothing
+            assert baos.toString().isEmpty();
+        } finally { System.setOut(old); }
         RuntimeFixes.resetForTest();
     }
 }

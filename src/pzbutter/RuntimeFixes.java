@@ -36,14 +36,15 @@ public final class RuntimeFixes {
         return skip;
     }
 
-    /** Called each frame; prints the minute line (only when the count rose) once a minute. */
-    public static void tick(long nowNs) {
-        if (!minuteStarted) { minuteStarted = true; minuteStartNs = nowNs; minuteBaseline = gcSkipped; return; }
-        if (nowNs - minuteStartNs < 60_000_000_000L) return;
+    /** Called each frame; prints the minute line (only when the count rose) once a minute. Returns the delta printed (0 if none). */
+    public static long tick(long nowNs) {
+        if (!minuteStarted) { minuteStarted = true; minuteStartNs = nowNs; minuteBaseline = gcSkipped; return 0; }
+        if (nowNs - minuteStartNs < 60_000_000_000L) return 0;
         minuteStartNs = nowNs;
         long delta = gcSkipped - minuteBaseline;
         minuteBaseline = gcSkipped;
         if (delta > 0) System.out.printf("[PZButter] luaGcNoop: %d forced collections skipped%n", delta);
+        return delta > 0 ? delta : 0;
     }
 
     public static void resetForTest() {
