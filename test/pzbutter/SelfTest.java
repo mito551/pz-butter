@@ -40,6 +40,7 @@ public final class SelfTest {
         ChunkShimTest.run();
         ZombieTest.run();
         WorkerTest.run();
+        RuntimeTest.run();
         CensusTest.run();
         GpuTest.run();
         delete(DIR);
