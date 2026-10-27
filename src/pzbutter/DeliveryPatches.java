@@ -135,6 +135,7 @@ public final class DeliveryPatches {
 
     /** RenderThread.flushInvokeQueue entry (render thread, every loop pass and every wake while waiting). */
     public static void onRenderFlush() {
+        if (Cores.guard.on) Cores.pinOnce();
         if (!InputLatch.guard.on || !InputLatch.latch || !InputLatch.pending()) return;
         serveInputRequest();
     }

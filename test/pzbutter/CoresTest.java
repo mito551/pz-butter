@@ -1,8 +1,13 @@
 package pzbutter;
 
+import java.lang.foreign.Arena;
+import java.lang.foreign.MemorySegment;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.BitSet;
+
+import static java.lang.foreign.ValueLayout.JAVA_BYTE;
+import static java.lang.foreign.ValueLayout.JAVA_INT;
 
 final class CoresTest {
     private CoresTest() {}
@@ -17,6 +22,7 @@ final class CoresTest {
         coresOffStock();
         coresNativeLookupsOff();
         coresPinSelfFullSet();
+        coresWindowsCpuSetParse();
     }
 
     static void coresParseList() {
@@ -103,4 +109,33 @@ final class CoresTest {
     }
 
     static void coresCapacity() {}
+
+    static void coresWindowsCpuSetParse() {
+        try (Arena arena = Arena.ofConfined()) {
+            int entrySize = 32;
+            MemorySegment buf = arena.allocate(entrySize * 4L);
+            int[] ids = new int[]{256, 257, 258, 259};
+            int[] eff = new int[]{1, 1, 0, 0};
+            for (int i = 0; i < 4; i++) {
+                long off = (long) i * entrySize;
+                buf.set(JAVA_INT, off + 0, entrySize);
+                buf.set(JAVA_INT, off + 4, 0);
+                buf.set(JAVA_INT, off + 8, ids[i]);
+                buf.set(JAVA_BYTE, off + 18, (byte) eff[i]);
+            }
+            int[] r = Cores.performanceIdsWindows(buf, entrySize * 4L);
+            assert r != null && r.length == 2 : "expected 2 perf ids";
+            assert r[0] == 256 && r[1] == 257 : "wrong ids";
+            // all efficiency class 0 -> null
+            MemorySegment buf2 = arena.allocate(entrySize * 4L);
+            for (int i = 0; i < 4; i++) {
+                long off = (long) i * entrySize;
+                buf2.set(JAVA_INT, off + 0, entrySize);
+                buf2.set(JAVA_INT, off + 4, 0);
+                buf2.set(JAVA_INT, off + 8, 256 + i);
+                buf2.set(JAVA_BYTE, off + 18, (byte) 0);
+            }
+            assert Cores.performanceIdsWindows(buf2, entrySize * 4L) == null;
+        }
+    }
 }
