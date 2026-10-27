@@ -35,9 +35,16 @@ public final class SceneDriver {
     /** Spawn seam for devPopulation (tests override). */
     public interface Spawner {
         boolean spawn(int x, int y, int z, int count);
+        /** The ring's centre {x, y, z}, or null with no player. Tests keep the default. */
+        default int[] centre() { return new int[] {0, 0, 0}; }
     }
 
     public static final class GameSpawner implements Spawner {
+        public int[] centre() {
+            zombie.characters.IsoPlayer p = zombie.characters.IsoPlayer.getInstance();
+            if (p == null) return null;
+            return new int[] {(int) Math.floor(p.getX()), (int) Math.floor(p.getY()), (int) Math.floor(p.getZ())};
+        }
         public boolean spawn(int x, int y, int z, int count) {
             try {
                 zombie.Lua.LuaManager.GlobalObject.addZombiesInOutfit(x, y, z, count, null, 50);
@@ -48,11 +55,6 @@ public final class SceneDriver {
 
     /** Replaceable spawn seams (tests override any one of them). */
     public static volatile Spawner spawner;
-    public static volatile Spawner zombies;
-    public static volatile Spawner populator;
-    public static volatile Spawner population;
-    public static volatile Spawner horde;
-    public static volatile Spawner zombieSpawner;
     public static volatile int populationSpawnCount;
 
     private static volatile Phase phase = Phase.IDLE;
@@ -92,11 +94,6 @@ public final class SceneDriver {
         action = null;
         marksFile = null;
         spawner = null;
-        zombies = null;
-        populator = null;
-        population = null;
-        horde = null;
-        zombieSpawner = null;
         populationSpawnCount = 0;
         quit = null;
         settleSec = 20;
@@ -206,11 +203,6 @@ public final class SceneDriver {
 
     private static Spawner resolveSpawner() {
         if (spawner != null) return spawner;
-        if (zombies != null) return zombies;
-        if (populator != null) return populator;
-        if (population != null) return population;
-        if (horde != null) return horde;
-        if (zombieSpawner != null) return zombieSpawner;
         return new GameSpawner();
     }
 
@@ -219,18 +211,12 @@ public final class SceneDriver {
         populationSpawned = true;
         int count = Settings.num("devPopulation", 0, 0, 1000000);
         if (count <= 0) return;
-        // player centre
-        int cx = 0, cy = 0, cz = 0;
-        try {
-            zombie.characters.IsoPlayer p = zombie.characters.IsoPlayer.getInstance();
-            if (p != null) {
-                cx = (int) Math.floor(p.getX());
-                cy = (int) Math.floor(p.getY());
-                cz = (int) Math.floor(p.getZ());
-            }
-        } catch (Throwable t) { guard.fail(t); }
-        int[][] pts = ringPoints(count, 10, 16, cx, cy);
         Spawner s = resolveSpawner();
+        int[] c; // centre = the player's square
+        try { c = s.centre(); } catch (Throwable t) { guard.fail(t); return; }
+        if (c == null) { System.out.println("[PZButter] devPopulation: no player, nothing spawned"); return; }
+        int cz = c[2];
+        int[][] pts = ringPoints(count, 10, 16, c[0], c[1]);
         boolean failed = false;
         for (int[] pt : pts) {
             try {

@@ -382,12 +382,13 @@ final class DevTest {
         SceneDriver.onWorldReady();
         SceneDriver.tick(1_000); // settle start -> spawn
         int afterFirst = calls[0];
+        assert afterFirst == 3 : afterFirst; // 25 → batches 10, 10, 5
         SceneDriver.tick(1_010);
         assert calls[0] == afterFirst : calls[0];
         SceneDriver.tick(1_000 + 20_000); // window
         SceneDriver.onWorldReady(); // new world load
         SceneDriver.tick(2_000);
-        assert calls[0] > afterFirst : calls[0];
+        assert calls[0] == 6 : calls[0];
         Settings.load(SelfTest.write("enabled=true\n"));
         SceneDriver.resetForTest();
     }
