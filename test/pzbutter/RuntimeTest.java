@@ -26,6 +26,7 @@ final class RuntimeTest {
         lightParkSyncZero();
         lightParkTwoCallsTakeTime();
         lightParkStockFirstOnSync();
+        lightParkStockFirstAfterZeroFps();
         lightParkOffStock();
         lightParkInterrupt();
     }
@@ -130,6 +131,16 @@ final class RuntimeTest {
         RuntimeFixes.lightSync(60);
         long dt = System.nanoTime() - t0;
         assert dt >= 15_000_000L : dt;
+        RuntimeFixes.resetForTest();
+    }
+
+    static void lightParkStockFirstAfterZeroFps() {
+        RuntimeFixes.resetForTest(); RuntimeFixes.lightGuard.on = true;
+        assert !RuntimePatches.onSync(0);
+        assert !RuntimeFixes.lightStockSeen;
+        assert !RuntimePatches.onSync(60);
+        assert RuntimeFixes.lightStockSeen;
+        assert RuntimePatches.onSync(60);
         RuntimeFixes.resetForTest();
     }
 

@@ -34,6 +34,7 @@ public final class RuntimePatches {
         if (Cores.guard.on) Cores.pinOnce();
         if (!RuntimeFixes.lightGuard.on) return false;
         if (!RuntimeFixes.lightStockSeen) {
+            if (fps <= 0) return false;
             RuntimeFixes.lightStockSeen = true;
             return false;
         }
