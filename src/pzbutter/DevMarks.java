@@ -66,9 +66,13 @@ public final class DevMarks {
     public static void poll() {
         if (!guard.on) return;
         if (Thread.currentThread() != FrameClock.mainThread) return;
-        keyboardReads++;
-        if (zombie.input.GameKeyboard.isKeyPressed(key)) {
-            write(nextName(++presses), null);
+        try {
+            keyboardReads++;
+            if (zombie.input.GameKeyboard.isKeyPressed(key)) {
+                write(nextName(++presses), null);
+            }
+        } catch (Throwable t) {
+            guard.fail(t);
         }
     }
 

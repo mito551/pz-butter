@@ -120,8 +120,6 @@ The mod creates `~/Zomboid/PZButter.properties` on first start and reads it once
 | `luaGcNoop` | A mod's `collectgarbage()` no longer forces a full collection. Off by default. |
 | `entityTiming` | Diagnostic. Once a minute the console gets the time per frame of the zombie update phases (sorting into update tiers, update, movement and animation, 3D model picking, the player's sight pass) and the zombie count (the phases overlap: the sight pass runs inside the update and movement phases, so do not add the columns up); with `frameLog`, one line per frame in `Zomboid/pzbutter/entity.out`. Off by default. |
 | `frameThreads` | Width of PZ Butter's frame worker pool for the zombie update on workers. Needs `luaWorkerGate`, and one restart after it changes. `0` or `1`: no pool, no class changes. Max `32`. Nothing uses the pool yet in this version. Off by default (`0`). |
-| `devCensus` | Diagnostic. Counts, in play, which game calls a calm zombie's update reaches, and writes `Zomboid/pzbutter/census.out` once a minute. Needs the preload (one restart). Off by default. |
-| `devMark` | Diagnostic. A key writes window marks (`mark <name> <epoch ms>`) to `Zomboid/pzbutter/marks.out` next to `frames.out`, for use with the frame log. Key: `devMarkKey` (default `F9`). Off by default. |
 | `persistentVbo` | The sprite and puddle buffers keep storage that stays mapped (OpenGL 4.4 or `GL_ARB_buffer_storage`) instead of asking the driver for new storage and a mapping every 64 KB of sprites. Off by default; stays off by itself on older drivers. |
 | `persistentVboSlots` | With `persistentVbo`: storages per buffer, used in turn (`1` to `8`, default `4`; fewer when the buffers would pass 64 MB). |
 | `persistentVboFrameSync` | With `persistentVbo`: one fence per frame decides when a storage may be written again, and a storage from 8 frames ago is reused without asking. `false`: one fence per batch. Default `true`. |
@@ -133,6 +131,13 @@ The mod creates `~/Zomboid/PZButter.properties` on first start and reads it once
 | `bakeNoSyncCheck` | Diagnostic for `bakeNoSync`: every 256th answer is checked against the driver and up to five mismatches go to the console. Off by default. |
 | `bakeBudgetGpu` | With `bakeBudgetAdaptive`: the bake budget also counts the GPU's time for the frame, from GPU timestamps read three frames later. It never waits for the GPU. Off by default. |
 | `gpuStats` | Diagnostic. Once a minute the console gets what the Plan 9 keys did: mappings saved, storage waits, uploads and storage changes, textures given back, names from the pool, answers from the records, GPU time per frame. With `frameLog`, the same as one line a minute in `Zomboid/pzbutter/gpu.out`. Off by default. |
+
+### Dev keys
+
+| Key | What it does |
+|---|---|
+| `devCensus` | Diagnostic. Counts, in play, which game calls a calm zombie's update reaches, and writes `Zomboid/pzbutter/census.out` once a minute. Needs the preload (one restart). Off by default. |
+| `devMark` | Diagnostic. A key writes window marks (`mark <name> <epoch ms>`) to `Zomboid/pzbutter/marks.out` next to `frames.out`, for use with the frame log. Key: `devMarkKey` (default `F9`). Off by default. |
 
 PZ Butter is a ZombieBuddy preload mod. On the first start, ZombieBuddy asks you to approve it; approve it and also choose to trust its author, since ZombieBuddy registers a preload only for a signed jar whose author is trusted. The first start after installing or updating PZ Butter runs without the preload, so workers are off until one restart. A game update switches workers off (status `revision X != list Y`) until PZ Butter is updated. Unticking PZ Butter in the mod list makes it print `[PZButter] not in the active mod list; nothing is switched on` and turn nothing on; ZombieBuddy still keeps it as a preload, so its jar keeps loading at start with every feature off, and to remove it completely you delete or unsubscribe the mod, which lets ZombieBuddy drop a preload whose jar is gone. The console status lines are: `[PZButter] workers: active (...)` means the transform and pool are on; `... needs a restart` means the settings ask for workers but the preload did not run this start; `... off (<reason>)` means workers are off for that reason.
 
