@@ -91,7 +91,7 @@ public final class Settings {
       + "luaGcNoop=false\n"
       + "# lightingSyncPark: the lighting thread parks to its next update instead of yield-spinning. Off by default.\n"
       + "lightingSyncPark=false\n"
-      + "# corePlacement: latency threads on performance cores on hybrid CPUs. Off by default.\n"
+      + "# corePlacement: latency threads on performance cores on hybrid CPUs. Values: off | on. Off by default.\n"
       + "corePlacement=off\n"
       + "# gpuPstate: AMD on Linux: a steady GPU clock level from each frame's GPU time. Off by default.\n"
       + "gpuPstate=false\n"

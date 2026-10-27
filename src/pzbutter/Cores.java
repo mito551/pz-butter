@@ -58,7 +58,10 @@ public final class Cores {
     /** Per-thread pin flag. */
     private static final ThreadLocal<Boolean> pinned = ThreadLocal.withInitial(() -> Boolean.FALSE);
 
-    static void init() {
+    static void init() { init(null); }
+
+    static void init(Path sysRoot) {
+        if (sysRoot == null) sysRoot = Paths.get("/sys");
         guard.on = Settings.flag("corePlacement");
         BitSet cpus = null;
         String reason = "disabled";
@@ -66,7 +69,7 @@ public final class Cores {
         if (guard.on) {
             try {
                 if (os.contains("linux")) {
-                    cpus = performanceLinux(Paths.get("/"));
+                    cpus = performanceLinux(sysRoot);
                     if (cpus == null) { reason = "not hybrid"; guard.on = false; }
                 } else if (os.contains("windows")) {
                     int[] ids = windowsPerformanceIdsNative();
@@ -83,8 +86,9 @@ public final class Cores {
             } catch (Throwable t) { reason = t.toString(); guard.on = false; }
         }
         performanceCores = cpus;
+        boolean asked = Settings.raw("corePlacement") != null && !Settings.raw("corePlacement").trim().equalsIgnoreCase("off");
         if (guard.on) System.out.println("[PZButter] corePlacement: on (performance cores " + format(cpus) + ")");
-        else System.out.println("[PZButter] corePlacement: off (" + (cpus == null && reason.equals("disabled") ? "disabled" : reason) + ")");
+        else if (!(reason.equals("disabled") && !asked)) System.out.println("[PZButter] corePlacement: off (" + (cpus == null && reason.equals("disabled") ? "disabled" : reason) + ")");
 
         // workerQosMac
         workerQos = -1;
@@ -174,9 +178,6 @@ public final class Cores {
             stream.filter(p -> p.getFileName() != null && p.getFileName().toString().matches("cpu\\d+"))
                   .sorted().forEach(cpus::add);
         } catch (IOException e) { return null; }
-        if (cpus.isEmpty()) {
-            // maybe cpu dirs directly under sysRoot/system? try
-        }
         int[] caps = new int[cpus.size()];
         boolean any = false;
         for (int i = 0; i < cpus.size(); i++) {
@@ -189,9 +190,10 @@ public final class Cores {
         int minCap = Integer.MAX_VALUE;
         for (int c : caps) if (c >= 0 && c < minCap) minCap = c;
         if (maxCap <= 0 || maxCap == minCap) return null;
+        int threshold = (int) (maxCap * 0.8);
         BitSet r = new BitSet();
         for (int i = 0; i < cpus.size(); i++) {
-            if (caps[i] != maxCap) continue;
+            if (caps[i] < threshold) continue;
             String name = cpus.get(i).getFileName().toString();
             int idx = Integer.parseInt(name.substring(3));
             r.set(idx);
@@ -339,12 +341,12 @@ public final class Cores {
                         SymbolLookup lookup = linker.defaultLookup();
                         nativeLookups++;
                         var opt = lookup.find("pthread_set_qos_class_self_np");
-                        qosLooked = true;
                         if (opt.isPresent()) {
                             qosHandle = linker.downcallHandle(opt.get(), FunctionDescriptor.of(JAVA_INT, JAVA_INT, JAVA_INT));
                         } else {
                             qosHandle = null;
                         }
+                        qosLooked = true;
                     }
                 }
             }

@@ -77,7 +77,7 @@ public final class GpuPstate {
         if (!Files.isWritable(sclk) || !Files.isWritable(power)) {
             guard.on = false;
             writable = false;
-            System.out.println("[PZButter] gpuPstate off: sysfs files not writable (udev rule: KERNEL==\"card0\", SUBSYSTEM==\"drm\", GROUP=\"video\", MODE=\"0660\")");
+            System.out.println("[PZButter] gpuPstate off: sysfs files not writable at " + dev + " (udev rule untested here: ACTION==\"add\", SUBSYSTEM==\"drm\", KERNEL==\"card[0-9]\", DRIVERS==\"amdgpu\", RUN+=\"/bin/chgrp video ...\")");
             restored.set(false);
             return;
         }
@@ -87,6 +87,13 @@ public final class GpuPstate {
         writable = true;
         String orig = null;
         try { orig = Files.readString(power).trim(); } catch (Throwable t) { orig = null; }
+        if (orig == null || !orig.trim().equalsIgnoreCase("auto")) {
+            guard.on = false;
+            originalLevel = orig;
+            System.out.println("[PZButter] gpuPstate off: power level is not auto (" + (orig == null ? "unreadable" : orig) + ")");
+            restored.set(false);
+            return;
+        }
         originalLevel = orig;
         restored.set(false);
         // manual is written by the daemon thread as its first action, not here
@@ -152,9 +159,6 @@ public final class GpuPstate {
             try { idx = Integer.parseInt(first); } catch (NumberFormatException e) { continue; }
             if (star) cur = idx;
         }
-        if (cur < 0) {
-            // fall back to highest? no; keep -1 caller handles
-        }
         return cur;
     }
 
@@ -170,22 +174,6 @@ public final class GpuPstate {
             if (idx > max) max = idx;
         }
         return max;
-    }
-
-    public static int nextLevel(int cur, int max, double gpuMs, double periodMs, int lowFrames) {
-        if (periodMs <= 0) periodMs = 16.67;
-        double upThreshold = 0.85 * periodMs;
-        double downThreshold = 0.50 * periodMs;
-        int result = cur;
-        if (gpuMs > upThreshold) {
-            result = Math.min(cur + 1, max);
-        } else if (gpuMs >= 0 && gpuMs < downThreshold && lowFrames >= 120) {
-            result = Math.max(cur - 1, 1);
-        }
-        // clamp bounds reasonably
-        if (max > 0 && result > max) result = max;
-        if (result < 1) result = 1;
-        return result;
     }
 
     /** Per-poll decision: returns {newLevel, newLowFrames}. */
@@ -212,17 +200,21 @@ public final class GpuPstate {
         return new int[] { newLevel, newLow };
     }
 
-    // aliases
-    public static int[] poll(int cur, int max, double gpuMs, double periodMs, int lowFrames) { return step(cur, max, gpuMs, periodMs, lowFrames); }
-    public static int[] advance(int cur, int max, double gpuMs, double periodMs, int lowFrames) { return step(cur, max, gpuMs, periodMs, lowFrames); }
+    /** Pure seam: whether the daemon should stop this poll given sample counters. */
+    public static boolean stopOnStale(boolean timerGuardOn, long samplesBefore, long samplesNow, int consecutiveStale) {
+        if (!timerGuardOn) return true;
+        if (samplesNow == samplesBefore && consecutiveStale + 1 >= 4) return true;
+        return false;
+    }
 
     private static void run() {
-        // first action of the daemon thread: switch to manual, then poll
         Path p0 = powerPath;
         if (p0 != null) {
             try { Files.writeString(p0, "manual"); }
-            catch (Throwable t) { try { guard.fail(t); } catch (Throwable ignored) { } restore(); return; }
+            catch (Throwable t) { guard.on = false; System.out.println("[PZButter] gpuPstate off: " + t); restore(); return; }
         }
+        long lastSamples = GpuTimer.samples;
+        int stale = 0;
         while (!Thread.currentThread().isInterrupted() && guard.on) {
             try {
                 Thread.sleep(500);
@@ -231,9 +223,21 @@ public final class GpuPstate {
                 break;
             }
             if (!guard.on) break;
+            if (Thread.interrupted()) { Thread.currentThread().interrupt(); break; }
             try {
+                if (!GpuTimer.guard.on) {
+                    restore(); guard.on = false; System.out.println("[PZButter] gpuPstate off: no GPU time samples"); break;
+                }
+                long sc = GpuTimer.samples;
+                if (sc == lastSamples) stale++; else { stale = 0; lastSamples = sc; }
+                if (stale >= 4) {
+                    restore(); guard.on = false; System.out.println("[PZButter] gpuPstate off: no GPU time samples"); break;
+                }
                 double gpu = GpuTimer.lastGpuMs;
-                if (gpu < 0) continue; // no sample yet: do nothing
+                if (gpu < 0) {
+                    // no sample yet: count as stale already? continue
+                    continue;
+                }
                 double period = periodMs();
                 Path sp = sclkPath;
                 if (sp == null) continue;
@@ -253,12 +257,12 @@ public final class GpuPstate {
                     currentLevel = cur;
                 }
             } catch (Throwable t) {
-                try { guard.fail(t); } catch (Throwable ignored) { }
+                guard.on = false;
+                System.out.println("[PZButter] gpuPstate off: " + t);
                 restore();
                 break;
             }
         }
-        // thread exit
     }
 
     static double periodMs() {
@@ -272,6 +276,9 @@ public final class GpuPstate {
     }
 
     public static void restore() {
+        Thread t = thread;
+        thread = null;
+        if (t != null) try { t.interrupt(); } catch (Throwable ignored) { }
         String orig = originalLevel;
         if (orig == null) return; // never read an original level: nothing to restore
         if (restored.getAndSet(true)) return; // second restore writes nothing
@@ -282,9 +289,6 @@ public final class GpuPstate {
             } catch (Throwable ignored) { }
         }
     }
-
-    // test seam: allow restoring level under guard failure explicit
-    public static void gpuPstateRestoresLevel() { restore(); }
 
     public static void resetForTest() {
         Thread t = thread;

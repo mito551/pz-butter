@@ -22,6 +22,9 @@ final class CoresTest {
         coresOffStock();
         coresNativeLookupsOff();
         coresPinSelfFullSet();
+        coresInitIntelHybrid();
+        coresInitNotHybrid();
+        coresCapacityScaled();
         coresWindowsCpuSetParse();
         qosClassValues();
         qosNoopOffMac();
@@ -68,6 +71,64 @@ final class CoresTest {
         for (int i = 4; i < 8; i++) assert !b.get(i);
     }
 
+    static void coresCapacityScaled() throws Exception {
+        Path root = fixture("capscaled");
+        Path cpu = root.resolve("devices/system/cpu");
+        Files.createDirectories(cpu);
+        int[] caps = new int[]{1024,1024,1000,980,512,512,512,512};
+        for (int i = 0; i < caps.length; i++) {
+            Path d = cpu.resolve("cpu" + i);
+            Files.createDirectories(d);
+            Files.writeString(d.resolve("cpu_capacity"), caps[i] + "\n");
+        }
+        BitSet b = Cores.performanceLinux(root);
+        for (int i = 0; i < 4; i++) assert b.get(i) : i;
+        for (int i = 4; i < caps.length; i++) assert !b.get(i) : i;
+    }
+
+    static void coresInitIntelHybrid() throws Exception {
+        Path root = fixture("intinit");
+        Files.createDirectories(root.resolve("devices/cpu_core"));
+        Files.writeString(root.resolve("devices/cpu_core/cpus"), "0-15\n");
+        Files.createDirectories(root.resolve("devices/cpu_atom"));
+        Files.writeString(root.resolve("devices/cpu_atom/cpus"), "16-23\n");
+        Settings.load(SelfTest.write("enabled=true\ncorePlacement=on\n"));
+        Cores.resetForTest();
+        java.io.PrintStream old = System.out;
+        java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+        System.setOut(new java.io.PrintStream(baos));
+        try {
+            Cores.init(root);
+            assert Cores.guard.on;
+            assert baos.toString().equals("[PZButter] corePlacement: on (performance cores 0-15)\n");
+        } finally { System.setOut(old); }
+        Cores.resetForTest();
+        Settings.load(SelfTest.write("enabled=true\n"));
+    }
+
+    static void coresInitNotHybrid() throws Exception {
+        Path root = fixture("nothinit");
+        Path cpu = root.resolve("devices/system/cpu");
+        Files.createDirectories(cpu);
+        for (int i = 0; i < 12; i++) {
+            Path d = cpu.resolve("cpu" + i);
+            Files.createDirectories(d);
+            Files.writeString(d.resolve("cpu_capacity"), "1024\n");
+        }
+        Settings.load(SelfTest.write("enabled=true\ncorePlacement=on\n"));
+        Cores.resetForTest();
+        java.io.PrintStream old = System.out;
+        java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+        System.setOut(new java.io.PrintStream(baos));
+        try {
+            Cores.init(root);
+            assert !Cores.guard.on;
+            assert baos.toString().equals("[PZButter] corePlacement: off (not hybrid)\n");
+        } finally { System.setOut(old); }
+        Cores.resetForTest();
+        Settings.load(SelfTest.write("enabled=true\n"));
+    }
+
     static void coresNotHybridPlacesNothing() throws Exception {
         Path root = fixture("noth");
         Path cpu = root.resolve("devices/system/cpu");
@@ -105,13 +166,10 @@ final class CoresTest {
     }
 
     static void coresPinSelfFullSet() throws Exception {
-        int n = Runtime.getRuntime().availableProcessors();
-        BitSet all = new BitSet();
-        for (int i = 0; i < n; i++) all.set(i);
+        String line = Files.lines(Path.of("/proc/self/status")).filter(l -> l.startsWith("Cpus_allowed_list:")).findFirst().orElseThrow().substring("Cpus_allowed_list:".length()).trim();
+        BitSet all = Cores.parseList(line);
         assert Cores.pinSelf(all);
     }
-
-    static void coresCapacity() {}
 
     static void coresWindowsCpuSetParse() {
         try (Arena arena = Arena.ofConfined()) {

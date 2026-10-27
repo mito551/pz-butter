@@ -1370,7 +1370,7 @@ final class LuaGateTest {
         Settings.forcedOff.add("bakeBudgetGpu");
         Settings.forcedOff.add("persistentVbo");                                   // a switch, forced like the table's others (load cleared them)
         AimHold.init(); Cutaways.init(); GridGate.init(); ZoomEase.init(); BakeMisc.init(); ChunkTrees.init(); SoundTick.init();
-        LightChecks.init(); SwapHold.init(); Vrr.init(); ZombieLod.init(); BatchSize.init(); UploadSizer.init(); PersistentVbo.init(); NoSync.init(); GpuTimer.init();
+        LightChecks.init(); SwapHold.init(); Vrr.init(); ZombieLod.init(); BatchSize.init(); UploadSizer.init(); PersistentVbo.init(); NoSync.init(); GpuTimer.init(); Cores.init();
         try {
             assert AimHold.holdMs == 150 && Cutaways.radius == 0 && GridGate.interval == 0 && GridGate.roofFrames == 0 && ZoomEase.ms == 0;
             assert BakeMisc.mipLevels == 0 && ChunkTrees.maxPerSec == 0 && !SoundPatches.tickGuard.on && LightChecks.switchTtl == 0 && LightChecks.lightingFps == 0;
@@ -1382,6 +1382,7 @@ final class LuaGateTest {
             assert !PersistentVbo.guard.on;                                         // persistentVbo: the game's map and unmap
             assert !NoSync.guard.on && !NoSync.check;                               // bakeNoSync: the driver answers
             assert !GpuTimer.guard.on && GpuTimer.loadMs(5.0) == 5.0;               // bakeBudgetGpu: the game thread's step alone
+            assert !Cores.guard.on;                                                 // corePlacement: forced off
             // gpuMaxFrames (stock-off means a different number) has its own test below
         } finally {
             Settings.load(SelfTest.write("enabled=true\n"));                         // back to the shipped values for the features that follow

@@ -68,7 +68,10 @@ final class GpuTimer {
         java.util.Arrays.fill(slotFrame, -1);
         java.util.Arrays.fill(begun, false);
         java.util.Arrays.fill(ended, false);
-        if (guard.on) System.out.println("[PZButter] bakeBudgetGpu on: GPU frame time from timestamp queries feeds the adaptive bake budget");
+        if (guard.on) {
+            String why = bakeMode ? (Settings.flag("gpuPstate") ? "bakeBudgetGpu and gpuPstate" : "bakeBudgetGpu") : "gpuPstate";
+            System.out.println("[PZButter] " + why + " on: GPU frame time from timestamp queries");
+        }
     }
 
     static int slot(long frame) { return (int) (frame & 3); }

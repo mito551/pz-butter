@@ -23,6 +23,9 @@ final class RuntimeTest {
         lightParkCatchesUp();
         lightParkZeroFps();
         lightParkFpsChange();
+        lightParkSyncZero();
+        lightParkTwoCallsTakeTime();
+        lightParkStockFirstOnSync();
         lightParkOffStock();
         lightParkInterrupt();
     }
@@ -106,6 +109,35 @@ final class RuntimeTest {
         assert RuntimeFixes.nextDeadline(10L, 5L, 0) == 10L;
         assert RuntimeFixes.nextDeadline(10L, 100L, 0) == 10L;
         RuntimeFixes.parkUntil(System.nanoTime() - 1L);
+        RuntimeFixes.resetForTest();
+    }
+
+    static void lightParkSyncZero() {
+        RuntimeFixes.resetForTest(); RuntimeFixes.lightGuard.on = true;
+        long before = RuntimeFixes.lightDeadlineNs;
+        boolean startedBefore = RuntimeFixes.lightDeadlineStarted;
+        long ret = RuntimeFixes.lightSync(0);
+        assert ret == 0;
+        assert RuntimeFixes.lightDeadlineNs == before;
+        assert RuntimeFixes.lightDeadlineStarted == startedBefore;
+        RuntimeFixes.resetForTest();
+    }
+
+    static void lightParkTwoCallsTakeTime() throws Exception {
+        RuntimeFixes.resetForTest(); RuntimeFixes.lightGuard.on = true;
+        RuntimeFixes.lightSync(60);
+        long t0 = System.nanoTime();
+        RuntimeFixes.lightSync(60);
+        long dt = System.nanoTime() - t0;
+        assert dt >= 15_000_000L : dt;
+        RuntimeFixes.resetForTest();
+    }
+
+    static void lightParkStockFirstOnSync() {
+        RuntimeFixes.resetForTest(); RuntimeFixes.lightGuard.on = true;
+        assert !RuntimePatches.onSync(60);
+        assert RuntimeFixes.lightStockSeen;
+        assert RuntimePatches.onSync(60);
         RuntimeFixes.resetForTest();
     }
 

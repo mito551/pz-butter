@@ -20,6 +20,8 @@ public final class RuntimeFixes {
      *  GLFW-based clock. The two clocks are never combined. */
     static volatile long lightDeadlineNs;
     static volatile boolean lightDeadlineStarted;
+    /** First Display.sync per JVM goes to stock so LWJGL's Windows timer thread starts (I1). */
+    public static volatile boolean lightStockSeen;
 
     /** Forced collections skipped since start (or the last resetForTest). */
     public static volatile long gcSkipped;
@@ -37,6 +39,7 @@ public final class RuntimeFixes {
         minuteBaseline = 0;
         lightDeadlineNs = 0;
         lightDeadlineStarted = false;
+        lightStockSeen = false;
     }
 
     /** True for the options stock answers with {@code System.gc()} (null, "step", "collect"). */
@@ -74,9 +77,11 @@ public final class RuntimeFixes {
         boolean interrupted = Thread.interrupted();
         try {
             while (System.nanoTime() < deadlineNs) {
+                if (Thread.interrupted()) { interrupted = true; break; }
                 long rem = deadlineNs - System.nanoTime();
                 if (rem <= 0) break;
                 java.util.concurrent.locks.LockSupport.parkNanos(rem);
+                if (Thread.interrupted()) interrupted = true;
             }
         } finally {
             if (interrupted) Thread.currentThread().interrupt();
@@ -111,5 +116,6 @@ public final class RuntimeFixes {
         minuteBaseline = 0;
         lightDeadlineNs = 0;
         lightDeadlineStarted = false;
+        lightStockSeen = false;
     }
 }

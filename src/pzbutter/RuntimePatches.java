@@ -33,6 +33,10 @@ public final class RuntimePatches {
     public static boolean onSync(int fps) {
         if (Cores.guard.on) Cores.pinOnce();
         if (!RuntimeFixes.lightGuard.on) return false;
+        if (!RuntimeFixes.lightStockSeen) {
+            RuntimeFixes.lightStockSeen = true;
+            return false;
+        }
         try {
             RuntimeFixes.lightSync(fps);
             return true;
