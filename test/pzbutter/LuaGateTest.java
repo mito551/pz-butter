@@ -1340,7 +1340,7 @@ final class LuaGateTest {
     }
 
     /** Keys of the table that are numbers or modes (not switches); every one needs its stock answer checked below. */
-    static final java.util.Set<String> VALUE_KEYS = java.util.Set.of("aimHoldMs", "bakeMipLevels", "borderlessFullscreen", "corePlacement", "cutawayRadius", "gpuMaxFrames",
+    static final java.util.Set<String> VALUE_KEYS = java.util.Set.of("aimHoldMs", "bakeMipLevels", "borderlessFullscreen", "corePlacement", "cutawayRadius", "devScene", "gpuMaxFrames",
         "gridStackInterval", "lightSwitchCheckFrames", "lightingFps", "presentPacing", "roofHideDebounceFrames", "soundTickHz", "treeBakeMaxChunksPerSec", "vrr", "zoomEaseMs",
         "numberZombiesBlended", "zombieLodFixed3d", "zombieModelAddBudgetUs", "zombieSimLodTiles", "zombieSimLodSteps", "vboBatchKb", "vboSizeClasses",
         "hotsaveIntervalSec", "chunkHandoffDivisor", "chunkHandoffFrameBudgetUs");
@@ -1372,7 +1372,7 @@ final class LuaGateTest {
         Settings.forcedOff.add("persistentVbo");                                   // a switch, forced like the table's others (load cleared them)
         AimHold.init(); Cutaways.init(); GridGate.init(); ZoomEase.init(); BakeMisc.init(); ChunkTrees.init(); SoundTick.init();
         LightChecks.init(); SwapHold.init(); Vrr.init(); ZombieLod.init(); BatchSize.init(); UploadSizer.init(); PersistentVbo.init(); NoSync.init(); GpuTimer.init();
-        StreamPatches.init(); ChunkPacer.init(); Cores.init();
+        StreamPatches.init(); ChunkPacer.init(); Cores.init(); SceneDriver.init();
         try {
             assert AimHold.holdMs == 150 && Cutaways.radius == 0 && GridGate.interval == 0 && GridGate.roofFrames == 0 && ZoomEase.ms == 0;
             assert BakeMisc.mipLevels == 0 && ChunkTrees.maxPerSec == 0 && !SoundPatches.tickGuard.on && LightChecks.switchTtl == 0 && LightChecks.lightingFps == 0;
@@ -1387,11 +1387,12 @@ final class LuaGateTest {
             assert !ChunkPacer.guard.on;                                            // chunk pacing off when both keys 0
             assert !GpuTimer.guard.on && GpuTimer.loadMs(5.0) == 5.0;               // bakeBudgetGpu: the game thread's step alone
             assert !Cores.guard.on;                                                 // corePlacement: forced off
+            assert !SceneDriver.guard.on;                                           // devScene: forced off
             // gpuMaxFrames (stock-off means a different number) has its own test below
         } finally {
             Settings.load(SelfTest.write("enabled=true\n"));                         // back to the shipped values for the features that follow
             AimHold.init(); Cutaways.init(); GridGate.init(); ZoomEase.init(); BakeMisc.init(); ChunkTrees.init(); SoundTick.init();
-            LightChecks.init(); SwapHold.init(); Vrr.init(); ZombieLod.init(); BatchSize.init(); UploadSizer.init(); PersistentVbo.init(); NoSync.init(); GpuTimer.init();
+            LightChecks.init(); SwapHold.init(); Vrr.init(); ZombieLod.init(); BatchSize.init(); UploadSizer.init(); PersistentVbo.init(); NoSync.init(); GpuTimer.init(); SceneDriver.init();
         }
     }
 

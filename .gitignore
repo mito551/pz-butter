@@ -8,3 +8,4 @@ docs/
 ANALYSIS-SPEC.md
 SPEC.md
 tempo-spec/
+__pycache__/

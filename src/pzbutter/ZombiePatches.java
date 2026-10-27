@@ -332,6 +332,8 @@ public final class ZombiePatches {
      * its minute; the zombies line (ZombieStats) rolls its own. Game thread only.
      */
     public static void onFrameEnd() {
+        DevMarks.poll();
+        if (SceneDriver.sceneSet()) SceneDriver.tick(System.currentTimeMillis());
         if (RuntimeFixes.gcGuard.on) {
             if (Thread.currentThread() == FrameClock.mainThread) {
                 try { RuntimeFixes.tick(System.nanoTime()); }

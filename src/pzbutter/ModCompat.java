@@ -43,7 +43,7 @@ final class ModCompat {
     /** The classes whose nested classes are PZ Butter's holders. */
     static final Class<?>[] OUTERS = {Patches.class, DeliveryPatches.class, LuaPatches.class, UiPatches.class, MapPatches.class,
         SoundPatches.class, WorldPatches.class, ChunkPatches.class, LogPatches.class, ZombiePatches.class, GpuPatches.class, CensusPatches.class,
-        VehiclePatches.class, StreamPatches.class, LoadPatches.class, RuntimePatches.class};
+        VehiclePatches.class, StreamPatches.class, LoadPatches.class, RuntimePatches.class, DevPatches.class};
 
     private static final String PATCH = "Lme/zed_0xff/zombie_buddy/Patch;";
     private static final String ON_ENTER = "Lme/zed_0xff/zombie_buddy/Patch$OnEnter;";
@@ -142,6 +142,12 @@ final class ModCompat {
         Map.entry("ZombiePatches.SchedStart", k("entityTiming")),
         Map.entry("ZombiePatches.SchedUpdate", k("entityTiming")),
         Map.entry("ZombiePatches.SchedPost", k("entityTiming")),
+        // dev (Plan 13)
+        Map.entry("DevPatches.IngameEnter", k("devScene")),
+        Map.entry("DevPatches.IngameExit", k("devScene")),
+        Map.entry("DevPatches.MainScreenUpdate", k("devAutoContinue")),
+        Map.entry("DevPatches.GameLoadingUpdate", k("devAutoContinue")),
+        Map.entry("DevPatches.KeyDown", k("devScene")),
         // census (Plan 8b)
         Map.entry("CensusPatches.PreUpdate", k("devCensus")),
         Map.entry("CensusPatches.FrameStep", k("devCensus")),
