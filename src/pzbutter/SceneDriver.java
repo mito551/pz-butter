@@ -32,8 +32,32 @@ public final class SceneDriver {
 
     public static volatile boolean devSceneQuit;
 
+    /** Spawn seam for devPopulation (tests override). */
+    public interface Spawner {
+        boolean spawn(int x, int y, int z, int count);
+    }
+
+    public static final class GameSpawner implements Spawner {
+        public boolean spawn(int x, int y, int z, int count) {
+            try {
+                zombie.Lua.LuaManager.GlobalObject.addZombiesInOutfit(x, y, z, count, null, 50);
+                return true;
+            } catch (Throwable t) { guard.fail(t); return false; }
+        }
+    }
+
+    /** Replaceable spawn seams (tests override any one of them). */
+    public static volatile Spawner spawner;
+    public static volatile Spawner zombies;
+    public static volatile Spawner populator;
+    public static volatile Spawner population;
+    public static volatile Spawner horde;
+    public static volatile Spawner zombieSpawner;
+    public static volatile int populationSpawnCount;
+
     private static volatile Phase phase = Phase.IDLE;
     private static volatile boolean worldReady;
+    private static volatile boolean populationSpawned;
     private static volatile long readyMs;
     private static volatile long quitAtMs;
     private static int settleSec = 20;
@@ -61,11 +85,19 @@ public final class SceneDriver {
         autoGuard.on = false;
         phase = Phase.IDLE;
         worldReady = false;
+        populationSpawned = false;
         readyMs = 0;
         quitAtMs = 0;
         autoContinued = false;
         action = null;
         marksFile = null;
+        spawner = null;
+        zombies = null;
+        populator = null;
+        population = null;
+        horde = null;
+        zombieSpawner = null;
+        populationSpawnCount = 0;
         quit = null;
         settleSec = 20;
         sceneSec = 60;
@@ -89,6 +121,7 @@ public final class SceneDriver {
             try { VirtualKeys.releaseAll(); } catch (Throwable t) { guard.fail(t); }
             phase = Phase.IDLE;
             worldReady = true;
+            populationSpawned = false;
             readyMs = 0;
             quitAtMs = 0;
         } catch (Throwable t) { guard.fail(t); }
@@ -117,6 +150,7 @@ public final class SceneDriver {
             }
             if (phase == Phase.IDLE && next == Phase.SETTLE) {
                 phase = Phase.SETTLE;
+                try { spawnPopulationIfNeeded(); } catch (Throwable t) { guard.fail(t); }
                 fireQuitIfNeeded(nowMs);
                 return;
             }
@@ -168,6 +202,61 @@ public final class SceneDriver {
         }
         if (out.isEmpty()) return new int[0][];
         return out.toArray(new int[0][]);
+    }
+
+    private static Spawner resolveSpawner() {
+        if (spawner != null) return spawner;
+        if (zombies != null) return zombies;
+        if (populator != null) return populator;
+        if (population != null) return population;
+        if (horde != null) return horde;
+        if (zombieSpawner != null) return zombieSpawner;
+        return new GameSpawner();
+    }
+
+    static void spawnPopulationIfNeeded() {
+        if (populationSpawned) return;
+        populationSpawned = true;
+        int count = Settings.num("devPopulation", 0, 0, 1000000);
+        if (count <= 0) return;
+        // player centre
+        int cx = 0, cy = 0, cz = 0;
+        try {
+            zombie.characters.IsoPlayer p = zombie.characters.IsoPlayer.getInstance();
+            if (p != null) {
+                cx = (int) Math.floor(p.getX());
+                cy = (int) Math.floor(p.getY());
+                cz = (int) Math.floor(p.getZ());
+            }
+        } catch (Throwable t) { guard.fail(t); }
+        int[][] pts = ringPoints(count, 10, 16, cx, cy);
+        Spawner s = resolveSpawner();
+        boolean failed = false;
+        for (int[] pt : pts) {
+            try {
+                boolean ok = s.spawn(pt[0], pt[1], cz, pt[2]);
+                if (!ok) { guard.fail(new RuntimeException("devPopulation spawn failed")); failed = true; break; }
+                populationSpawnCount += pt[2];
+            } catch (Throwable t) { guard.fail(t); failed = true; break; }
+        }
+        if (failed) return;
+        System.out.println("[PZButter] devPopulation: spawned " + count + " zombies");
+    }
+
+    public static int[][] ringPoints(int count, int perPoint, int radius, int cx, int cy) {
+        if (count <= 0 || perPoint <= 0) return new int[0][];
+        int n = (count + perPoint - 1) / perPoint;
+        int[][] out = new int[n][3];
+        for (int i = 0; i < n; i++) {
+            double angle = (Math.PI * 2.0 * i) / n;
+            int x = cx + (int) Math.round((double) radius * Math.cos(angle));
+            int y = cy + (int) Math.round((double) radius * Math.sin(angle));
+            int batch = (i == n - 1) ? (count - i * perPoint) : perPoint;
+            out[i][0] = x;
+            out[i][1] = y;
+            out[i][2] = batch;
+        }
+        return out;
     }
 
     public static void end(String reason) {

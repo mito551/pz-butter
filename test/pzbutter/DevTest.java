@@ -30,6 +30,10 @@ final class DevTest {
         steerChoice();
         driveNoCarEndsScene();
         virtualKeysOffStock();
+        ringBatches();
+        ringOnCircle();
+        populationOnce();
+        populationOffNoSpawn();
     }
 
     static void markNames() {
@@ -348,5 +352,57 @@ final class DevTest {
     static void virtualKeysOffStock() {
         VirtualKeys.releaseAll();
         assert VirtualKeys.heldCount == 0;
+    }
+
+    static void ringBatches() {
+        int[][] rp = SceneDriver.ringPoints(25, 10, 16, 0, 0);
+        assert rp.length == 3 : rp.length;
+        assert rp[0][2] == 10 : rp[0][2];
+        assert rp[1][2] == 10 : rp[1][2];
+        assert rp[2][2] == 5 : rp[2][2];
+    }
+
+    static void ringOnCircle() {
+        int[][] rp = SceneDriver.ringPoints(25, 10, 16, 100, 200);
+        for (int[] p : rp) {
+            double d = Math.sqrt((p[0] - 100.0) * (p[0] - 100.0) + (p[1] - 200.0) * (p[1] - 200.0));
+            assert Math.abs(d - 16.0) <= 1.0 : d;
+        }
+    }
+
+    static void populationOnce() {
+        Settings.load(SelfTest.write("enabled=true\ndevScene=stand\ndevPopulation=25\n"));
+        SceneDriver.resetForTest();
+        SceneDriver.init();
+        final int[] calls = {0};
+        SceneDriver.Spawner fake = (x, y, z, c) -> { calls[0]++; return true; };
+        SceneDriver.spawner = fake;
+        Path f = SelfTest.tmp("pop/once.out").toPath();
+        SceneDriver.marksFile = f;
+        SceneDriver.onWorldReady();
+        SceneDriver.tick(1_000); // settle start -> spawn
+        int afterFirst = calls[0];
+        SceneDriver.tick(1_010);
+        assert calls[0] == afterFirst : calls[0];
+        SceneDriver.tick(1_000 + 20_000); // window
+        SceneDriver.onWorldReady(); // new world load
+        SceneDriver.tick(2_000);
+        assert calls[0] > afterFirst : calls[0];
+        Settings.load(SelfTest.write("enabled=true\n"));
+        SceneDriver.resetForTest();
+    }
+
+    static void populationOffNoSpawn() {
+        Settings.load(SelfTest.write("enabled=true\ndevScene=stand\ndevPopulation=0\n"));
+        SceneDriver.resetForTest();
+        SceneDriver.init();
+        final int[] calls = {0};
+        SceneDriver.Spawner fake = (x, y, z, c) -> { calls[0]++; return true; };
+        SceneDriver.spawner = fake;
+        SceneDriver.onWorldReady();
+        SceneDriver.tick(1_000);
+        assert calls[0] == 0 : calls[0];
+        Settings.load(SelfTest.write("enabled=true\n"));
+        SceneDriver.resetForTest();
     }
 }
