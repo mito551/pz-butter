@@ -32,6 +32,13 @@ class TestFrames(unittest.TestCase):
         self.assertEqual(start, 1000)
         self.assertIsNone(end)
 
+    def test_stale_marks_window_incomplete(self):
+        text = "mark scene.start 1000\nmark scene.end 2000\nmark scene.start 5000\n"
+        marks = frames.read_marks(text.splitlines())
+        start, end = frames.window_bounds(marks, "scene")
+        self.assertEqual(start, 5000)
+        self.assertIsNone(end)
+
     def test_missing_start_exits_2(self):
         with self.assertRaises(SystemExit) as cm:
             frames.main(["/tmp/no-such-frames.out", "--window", "scene", "--marks",

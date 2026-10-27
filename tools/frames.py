@@ -65,15 +65,21 @@ def window_bounds(marks, name):
         base = name
     start_key = base + ".start"
     end_key = base + ".end"
-    start = None
-    end = None
-    for m in marks:
+    # last start, then first end after it
+    last_start_idx = None
+    for i, m in enumerate(marks):
         if m[0] == start_key:
-            start = m[1]
-        elif m[0] == end_key:
-            end = m[1]
-    if start is None:
+            last_start_idx = i
+    if last_start_idx is None:
         raise SystemExit(2)
+    start = marks[last_start_idx][1]
+    end = None
+    for i in range(last_start_idx + 1, len(marks)):
+        if marks[i][0] == end_key:
+            end = marks[i][1]
+            break
+    if end is not None and end < start:
+        end = None
     return (start, end)
 
 
