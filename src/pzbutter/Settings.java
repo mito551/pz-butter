@@ -273,6 +273,8 @@ public final class Settings {
       + "devSceneQuit=false\n"
       + "# devPopulation: zombies spawned once at settle start.\n"
       + "devPopulation=0\n"
+      + "# devRoute: square offsets for devScene=walk, \"dx,dy;dx,dy;...\" (default empty = stand).\n"
+      + "devRoute=\n"
       + "#\n"
       + "# Sprite buffers and GPU (Plan 9). Every key is off or at the game's value until its in-game check.\n"
       + "# persistentVbo: the sprite and puddle ring buffers keep persistently mapped storage (OpenGL 4.4) instead of new storage and a map per 64 KB batch.\n"

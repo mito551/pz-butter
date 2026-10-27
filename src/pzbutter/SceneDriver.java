@@ -49,6 +49,9 @@ public final class SceneDriver {
         autoContinue = Settings.flag("devAutoContinue");
         if (!guard.on) return;
         System.out.println("[PZButter] devScene: " + Settings.text("devScene", "off") + " settle=" + settleSec + " scene=" + sceneSec);
+        String scene = Settings.text("devScene", "off");
+        if ("walk".equalsIgnoreCase(scene)) action = new SceneWalk();
+
     }
 
     public static Phase phase() { return phase; }
@@ -138,9 +141,37 @@ public final class SceneDriver {
         } catch (Throwable t) { guard.fail(t); }
     }
 
+    public static int[][] parseRoute(String s) {
+        if (s == null) s = "";
+        String t = s.trim();
+        if (t.isEmpty()) return new int[0][];
+        String[] parts = t.split(";", -1);
+        java.util.List<int[]> out = new java.util.ArrayList<>();
+        for (String part : parts) {
+            String p = part.trim();
+            if (p.isEmpty()) continue;
+            String[] nums = p.split(",", -1);
+            if (nums.length != 2) {
+                System.out.println("[PZButter] devScene walk: bad devRoute: " + s);
+                return null;
+            }
+            try {
+                int x = Integer.parseInt(nums[0].trim());
+                int y = Integer.parseInt(nums[1].trim());
+                out.add(new int[] {x, y});
+            } catch (NumberFormatException e) {
+                System.out.println("[PZButter] devScene walk: bad devRoute: " + s);
+                return null;
+            }
+        }
+        if (out.isEmpty()) return new int[0][];
+        return out.toArray(new int[0][]);
+    }
+
     public static void end(String reason) {
         end(reason, System.currentTimeMillis());
     }
+
 
     /** Package-private seam: one timestamp drives both the scene.end mark and the quit base. */
     static void end(String reason, long nowMs) {

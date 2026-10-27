@@ -20,6 +20,11 @@ final class DevTest {
         sceneQuitTiming();
         autoContinueOnce();
         devKeysDefaults();
+        routeParse();
+        routeBlankIsEmpty();
+        routeBadIsNull();
+        walkNextWaypoint();
+        walkFailedEndsScene();
     }
 
     static void markNames() {
@@ -65,6 +70,7 @@ final class DevTest {
         assert t.contains("\ndevSceneSec=60\n") : t;
         assert t.contains("\ndevSceneQuit=false\n") : t;
         assert t.contains("\ndevPopulation=0\n") : t;
+        assert t.contains("\ndevRoute=\n") : t;
     }
 
     static void scenePhases() {
@@ -207,4 +213,48 @@ final class DevTest {
         SceneDriver.init();
         assert !SceneDriver.guard.on;
     }
-}
+
+    static void routeParse() {
+        int[][] r = SceneDriver.parseRoute("10,0;10,10;0,10");
+        assert r != null && r.length == 3;
+        assert r[0][0] == 10 && r[0][1] == 0;
+        assert r[1][0] == 10 && r[1][1] == 10;
+        assert r[2][0] == 0 && r[2][1] == 10;
+    }
+
+    static void routeBlankIsEmpty() {
+        int[][] r = SceneDriver.parseRoute("");
+        assert r != null && r.length == 0;
+        int[][] r2 = SceneDriver.parseRoute("   ;  ");
+        assert r2 != null && r2.length == 0;
+    }
+
+    static void routeBadIsNull() {
+        assert SceneDriver.parseRoute("10,0;bad") == null;
+        assert SceneDriver.parseRoute("1,2,3") == null;
+    }
+
+    static void walkNextWaypoint() {
+        assert SceneWalk.next(0, 3) == 1;
+        assert SceneWalk.next(2, 3) == 0;
+        assert SceneWalk.next(0, 1) == 0;
+    }
+
+    static void walkFailedEndsScene() throws Exception {
+        Settings.load(SelfTest.write("enabled=true\ndevScene=walk\ndevRoute=1,0\n"));
+        SceneDriver.resetForTest();
+        SceneDriver.init();
+        SceneWalk.Fake fake = new SceneWalk.Fake(SceneWalk.Result.FAILED);
+        SceneDriver.action = new SceneWalk(fake);
+        Path f = SelfTest.tmp("scene/walkfail.out").toPath();
+        SceneDriver.marksFile = f;
+        SceneDriver.onWorldReady();
+        SceneDriver.tick(1_000);
+        SceneDriver.tick(1_000 + 20_000);
+        SceneDriver.tick(1_000 + 20_016);
+        java.util.List<String> lines = java.nio.file.Files.readAllLines(f);
+        assert lines.size() == 2 : lines;
+        assert lines.get(1).contains("failed: path failed") : lines.get(1);
+        Settings.load(SelfTest.write("enabled=true\n"));
+        SceneDriver.resetForTest();
+    }}
