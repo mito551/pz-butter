@@ -23,6 +23,8 @@ final class CoresTest {
         coresNativeLookupsOff();
         coresPinSelfFullSet();
         coresWindowsCpuSetParse();
+        qosClassValues();
+        qosNoopOffMac();
     }
 
     static void coresParseList() {
@@ -137,5 +139,27 @@ final class CoresTest {
             }
             assert Cores.performanceIdsWindows(buf2, entrySize * 4L) == null;
         }
+    }
+
+    static void qosClassValues() {
+        assert Cores.qosClass("off") == -1;
+        assert Cores.qosClass("user-interactive") == 0x21;
+        assert Cores.qosClass("user-initiated") == 0x19;
+        assert Cores.qosClass("utility") == 0x11;
+        assert Cores.qosClass("bogus") == -1;
+        assert Cores.qosClass(null) == -1;
+    }
+
+    static void qosNoopOffMac() {
+        Settings.load(SelfTest.write("enabled=true\nworkerQosMac=user-initiated\n"));
+        Cores.resetForTest();
+        Cores.init();
+        assert Cores.workerQos == -1;
+        assert Cores.nativeLookups == 0;
+        int before = Cores.nativeLookups;
+        assert !Cores.applyQos(0x19);
+        assert Cores.nativeLookups == before;
+        Cores.resetForTest();
+        Settings.load(SelfTest.write("enabled=true\n"));
     }
 }

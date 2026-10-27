@@ -39,11 +39,21 @@ import static java.lang.foreign.ValueLayout.JAVA_LONG;
 public final class Cores {
     public static final Guard guard = new Guard("corePlacement");
 
+    /** Guard for workerQosMac. */
+    public static final Guard qosGuard = new Guard("workerQosMac");
+
+    /** Resolved macOS QoS class for the frame workers; -1 when off. */
+    public static volatile int workerQos = -1;
+
     /** Native symbol lookups performed by this class (R5); stays 0 when the key is off. */
     public static volatile int nativeLookups;
 
     /** Mask of performance cores detected at init (null when not hybrid). */
     static volatile BitSet performanceCores;
+
+    /** Cached native handle for pthread_set_qos_class_self_np (macOS). */
+    private static volatile MethodHandle qosHandle;
+    private static volatile boolean qosLooked;
 
     /** Per-thread pin flag. */
     private static final ThreadLocal<Boolean> pinned = ThreadLocal.withInitial(() -> Boolean.FALSE);
@@ -75,6 +85,28 @@ public final class Cores {
         performanceCores = cpus;
         if (guard.on) System.out.println("[PZButter] corePlacement: on (performance cores " + format(cpus) + ")");
         else System.out.println("[PZButter] corePlacement: off (" + (cpus == null && reason.equals("disabled") ? "disabled" : reason) + ")");
+
+        // workerQosMac
+        workerQos = -1;
+        qosLooked = false;
+        qosHandle = null;
+        String qosVal = Settings.enabled ? Settings.text("workerQosMac", "off") : "off";
+        int q = qosClass(qosVal);
+        String osName = System.getProperty("os.name", "");
+        boolean mac = osName.startsWith("Mac");
+        if (q >= 0) {
+            if (mac) {
+                workerQos = q;
+                qosGuard.on = true;
+                System.out.println("[PZButter] workerQosMac: " + qosVal.trim());
+            } else {
+                qosGuard.on = false;
+                if (!qosVal.trim().equalsIgnoreCase("off"))
+                    System.out.println("[PZButter] workerQosMac off: not macOS");
+            }
+        } else {
+            qosGuard.on = false;
+        }
     }
 
     public static void pinOnce() {
@@ -285,11 +317,61 @@ public final class Cores {
         return false;
     }
 
+    public static int qosClass(String value) {
+        if (value == null) return -1;
+        String v = value.trim().toLowerCase(java.util.Locale.ROOT);
+        return switch (v) {
+            case "user-interactive" -> 0x21;
+            case "user-initiated" -> 0x19;
+            case "utility" -> 0x11;
+            default -> -1;
+        };
+    }
+
+    public static boolean applyQos(int qos) {
+        if (!System.getProperty("os.name", "").startsWith("Mac")) return false;
+        if (qos < 0) return false;
+        try {
+            if (!qosLooked) {
+                synchronized (Cores.class) {
+                    if (!qosLooked) {
+                        Linker linker = Linker.nativeLinker();
+                        SymbolLookup lookup = linker.defaultLookup();
+                        nativeLookups++;
+                        var opt = lookup.find("pthread_set_qos_class_self_np");
+                        qosLooked = true;
+                        if (opt.isPresent()) {
+                            qosHandle = linker.downcallHandle(opt.get(), FunctionDescriptor.of(JAVA_INT, JAVA_INT, JAVA_INT));
+                        } else {
+                            qosHandle = null;
+                        }
+                    }
+                }
+            }
+            MethodHandle h = qosHandle;
+            if (h == null) {
+                qosGuard.on = false;
+                System.out.println("[PZButter] workerQosMac off: native function not found");
+                return false;
+            }
+            int rc = (int) h.invokeExact(qos, 0);
+            return rc == 0;
+        } catch (Throwable t) {
+            qosGuard.on = false;
+            System.out.println("[PZButter] workerQosMac off: " + t);
+            return false;
+        }
+    }
+
     public static void resetForTest() {
         guard.on = false;
         performanceCores = null;
         pinned.remove();
         nativeLookups = 0;
+        qosGuard.on = false;
+        workerQos = -1;
+        qosHandle = null;
+        qosLooked = false;
     }
 
     private Cores() {}

@@ -51,6 +51,7 @@ final class LuaGate {
         /** However the body ends, a hold it still has is given back: the game thread must never wait for a dead owner. */
         @Override public void run() {
             if (Cores.guard.on) Cores.pinOnce();
+            if (Cores.workerQos >= 0) Cores.applyQos(Cores.workerQos);
             try { super.run(); }
             finally { abandon(this); }
         }

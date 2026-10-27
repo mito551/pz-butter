@@ -95,6 +95,8 @@ public final class Settings {
       + "corePlacement=off\n"
       + "# gpuPstate: AMD on Linux: a steady GPU clock level from each frame's GPU time. Off by default.\n"
       + "gpuPstate=false\n"
+      + "# workerQosMac: macOS QoS class for the frame workers. Off by default.\n"
+      + "workerQosMac=off\n"
       + "#\n"
       + "# Mod compatibility.\n"
       + "# modProfile: custom uses modCompat and uiRetainedMods as written; performance = modCompat report and uiRetainedMods true; compatibility = modCompat auto and uiRetainedMods false.\n"
