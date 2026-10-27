@@ -17,6 +17,8 @@ final class DevTest {
         sceneUnsetIdle();
         sceneEndEarly();
         sceneSecondLoadResets();
+        sceneQuitTiming();
+        autoContinueOnce();
         devKeysDefaults();
     }
 
@@ -147,6 +149,48 @@ final class DevTest {
         // no quit from the first scene fires after the reset
         SceneDriver.tick(1000 + 80_000 + 3_000);
         assert quits[0] == 0 : quits[0];
+        Settings.load(SelfTest.write("enabled=true\n"));
+        SceneDriver.resetForTest();
+    }
+
+    static void sceneQuitTiming() throws Exception {
+        final int[] quits = {0};
+        // normal end: quit 3 s after scene.end, once, on the main thread's tick
+        Settings.load(SelfTest.write("enabled=true\ndevScene=stand\ndevSceneQuit=true\n"));
+        SceneDriver.resetForTest();
+        SceneDriver.init();
+        SceneDriver.quit = () -> quits[0]++;
+        SceneDriver.marksFile = SelfTest.tmp("scene/quit.out").toPath();
+        SceneDriver.onWorldReady();
+        SceneDriver.tick(1000);
+        SceneDriver.tick(21_000);
+        SceneDriver.tick(81_000); // scene.end
+        SceneDriver.tick(83_999);
+        assert quits[0] == 0 : quits[0];
+        SceneDriver.tick(84_000);
+        SceneDriver.tick(90_000);
+        assert quits[0] == 1 : quits[0];
+        // early end (R2): quit 3 s after end(reason)
+        SceneDriver.onWorldReady();
+        SceneDriver.tick(100_000);
+        SceneDriver.tick(120_000);
+        SceneDriver.end("player dead", 130_000);
+        SceneDriver.tick(132_999);
+        assert quits[0] == 1 : quits[0];
+        SceneDriver.tick(133_000);
+        assert quits[0] == 2 : quits[0];
+        // devSceneQuit=false: never
+        Settings.load(SelfTest.write("enabled=true\ndevScene=stand\n"));
+        SceneDriver.resetForTest();
+        SceneDriver.init();
+        SceneDriver.quit = () -> quits[0]++;
+        SceneDriver.marksFile = SelfTest.tmp("scene/quit2.out").toPath();
+        SceneDriver.onWorldReady();
+        SceneDriver.tick(1000);
+        SceneDriver.tick(21_000);
+        SceneDriver.tick(81_000);
+        SceneDriver.tick(200_000);
+        assert quits[0] == 2 : quits[0];
         Settings.load(SelfTest.write("enabled=true\n"));
         SceneDriver.resetForTest();
     }

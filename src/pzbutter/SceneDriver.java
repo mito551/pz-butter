@@ -35,7 +35,6 @@ public final class SceneDriver {
     private static volatile Phase phase = Phase.IDLE;
     private static volatile boolean worldReady;
     private static volatile long readyMs;
-    private static volatile long lastTickNow;
     private static volatile long quitAtMs;
     private static int settleSec = 20;
     private static int sceneSec = 60;
@@ -60,7 +59,6 @@ public final class SceneDriver {
         phase = Phase.IDLE;
         worldReady = false;
         readyMs = 0;
-        lastTickNow = 0;
         quitAtMs = 0;
         autoContinued = false;
         action = null;
@@ -88,7 +86,6 @@ public final class SceneDriver {
             phase = Phase.IDLE;
             worldReady = true;
             readyMs = 0;
-            lastTickNow = 0;
             quitAtMs = 0;
         } catch (Throwable t) { guard.fail(t); }
     }
@@ -98,7 +95,6 @@ public final class SceneDriver {
         if (!worldReady) return;
         if (Thread.currentThread() != FrameClock.mainThread) return;
         try {
-            lastTickNow = nowMs;
             if (readyMs == 0) readyMs = nowMs;
             long since = nowMs - readyMs;
             if (since < 0) since = 0;
@@ -143,14 +139,18 @@ public final class SceneDriver {
     }
 
     public static void end(String reason) {
+        end(reason, System.currentTimeMillis());
+    }
+
+    /** Package-private seam: one timestamp drives both the scene.end mark and the quit base. */
+    static void end(String reason, long nowMs) {
         if (phase == Phase.DONE) return;
         try {
             if (action != null && phase == Phase.WINDOW) try { action.stop(); } catch (Throwable t) { guard.fail(t); }
             phase = Phase.DONE;
             Path f = marksFileForWrite();
-            DevMarks.write(f, DevMarks.line("scene.end", System.currentTimeMillis(), "failed: " + reason));
-            long base = (lastTickNow != 0) ? lastTickNow : 0L;
-            scheduleQuit(base);
+            DevMarks.write(f, DevMarks.line("scene.end", nowMs, "failed: " + reason));
+            scheduleQuit(nowMs);
         } catch (Throwable t) { guard.fail(t); }
     }
 
@@ -164,16 +164,19 @@ public final class SceneDriver {
         if (autoContinued) return;
         try {
             Object ms = zombie.Lua.LuaManager.env.rawget("MainScreen");
-            if (!(ms instanceof se.krka.kahlua.vm.KahluaTable)) return;
-            se.krka.kahlua.vm.KahluaTable t = (se.krka.kahlua.vm.KahluaTable) ms;
-            Object inst = t.rawget("instance");
-            boolean menuBuilt = (inst != null);
+            se.krka.kahlua.vm.KahluaTable t = ms instanceof se.krka.kahlua.vm.KahluaTable k ? k : null;
+            boolean menuBuilt = t != null && t.rawget("instance") != null;
             if (!shouldContinue(menuBuilt, autoContinued)) return;
             Object fn = t.rawget("continueLatestSave");
             Object mode = t.rawget("latestSaveGameMode");
             Object world = t.rawget("latestSaveWorld");
-            if (fn == null || mode == null || world == null) {
+            if (mode == null || world == null) {
                 System.out.println("[PZButter] devAutoContinue: no latest save");
+                autoContinued = true;
+                return;
+            }
+            if (fn == null) {
+                System.out.println("[PZButter] devAutoContinue off: MainScreen.continueLatestSave not found");
                 autoContinued = true;
                 return;
             }

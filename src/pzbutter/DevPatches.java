@@ -8,6 +8,7 @@ public final class DevPatches {
     public static class IngameEnter {
         @me.zed_0xff.zombie_buddy.Patch.OnEnter
         public static void enter() {
+            if (!SceneDriver.guard.on) return;
             try { SceneDriver.onWorldReady(); } catch (Throwable t) { SceneDriver.guard.fail(t); }
         }
     }
