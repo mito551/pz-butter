@@ -2,6 +2,8 @@
 # PZ Butter: one measurement run.
 set -u
 
+die() { echo "run.sh: aborting: $*" >&2; exit 1; }
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TOOLS="$SCRIPT_DIR"
@@ -55,6 +57,7 @@ MODE="${SAVE%%/*}"
 SAVE_NAME="${SAVE#*/}"
 if [[ -z "$MODE" || -z "$SAVE_NAME" || "$MODE" == "$SAVE" ]]; then echo "save must be MODE/SAVE"; exit 2; fi
 SRC_SAVE="$Z/Saves/$MODE/$SAVE_NAME"
+[[ -n $MODE && -n $SAVE_NAME && -d $SRC_SAVE ]] || die "no save at $SRC_SAVE (--save MODE/SAVE)"
 
 # step 1
 echo "[step1] checking game process"
@@ -69,14 +72,24 @@ fi
 echo "[step1] ok"
 
 RUN_STAMP="$(date +%Y-%m-%d_%H%M%S)"
-RUN_DIR="${OUT%/}/${RUN_STAMP}-${SCENE}-${LIST}"
+RUN_BASE="${OUT%/}/${RUN_STAMP}-${SCENE}-${LIST}"
+RUN_DIR="$RUN_BASE"
+_run_n=2
+while [[ -e "$RUN_DIR" ]]; do
+    RUN_DIR="${RUN_BASE}-${_run_n}"
+    _run_n=$((_run_n + 1))
+done
 BAK="$RUN_DIR/.backup"
-mkdir -p "$RUN_DIR" "$BAK"
+mkdir -p "$RUN_DIR" "$BAK" || die "cannot create run dir $RUN_DIR"
 SYSMON_PID=""
 PERF_PID=""
+_RESTORED=0
+_CLEANED=0
 
 restore_files() {
     [[ -f "$BAK/done" ]] || return 0
+    [[ "$_RESTORED" -eq 0 ]] || return 0
+    _RESTORED=1
     for f in default.txt options.ini PZButter.properties latestSave.ini; do
         if [[ -f "$BAK/$f" ]]; then
             if [[ "$f" == "default.txt" ]]; then
@@ -93,25 +106,46 @@ restore_files() {
     echo "[trap] restored backed-up files"
 }
 cleanup() {
+    [[ "$_CLEANED" -eq 0 ]] || return 0
+    _CLEANED=1
     if [[ -n "$SYSMON_PID" ]] && kill -0 "$SYSMON_PID" 2>/dev/null; then kill "$SYSMON_PID" 2>/dev/null; wait "$SYSMON_PID" 2>/dev/null; fi
     if [[ -n "$PERF_PID" ]] && kill -0 "$PERF_PID" 2>/dev/null; then kill "$PERF_PID" 2>/dev/null; wait "$PERF_PID" 2>/dev/null; fi
     restore_files
 }
 trap cleanup EXIT INT TERM
 
+# properties array
+PROPS_ENTRIES=()
+add_prop_entry() {
+    if [[ "$1" != *=* ]]; then
+        echo "invalid property entry '$1' (expected key=value)" >&2
+        exit 1
+    fi
+    PROPS_ENTRIES+=("$1")
+}
+parse_props_string() {
+    local s="$1" e
+    for e in $s; do
+        [[ -n "$e" ]] || continue
+        add_prop_entry "$e"
+    done
+}
+parse_props_string "enabled=true frameLog=true devAutoContinue=true devSceneQuit=true"
+parse_props_string "$SCENE_PROPS"
+if [[ -n "$PROPS" ]]; then parse_props_string "$PROPS"; fi
+PROPS_LINE="${PROPS_ENTRIES[*]}"
+
 # step 3 backup
 echo "[step3] backing up files to $BAK"
-cp -p "$Z/mods/default.txt" "$BAK/default.txt" 2>/dev/null || true
-cp -p "$Z/options.ini" "$BAK/options.ini" 2>/dev/null || true
-cp -p "$Z/PZButter.properties" "$BAK/PZButter.properties" 2>/dev/null || true
-cp -p "$Z/latestSave.ini" "$BAK/latestSave.ini" 2>/dev/null || true
-if [[ -d "$Z/mods/PZButter" ]]; then cp -a "$Z/mods/PZButter" "$BAK/PZButter"; fi
-touch "$BAK/done"
+if [[ -f "$Z/mods/default.txt" ]]; then cp -p "$Z/mods/default.txt" "$BAK/default.txt" || die "backup default.txt failed"; fi
+if [[ -f "$Z/options.ini" ]]; then cp -p "$Z/options.ini" "$BAK/options.ini" || die "backup options.ini failed"; fi
+if [[ -f "$Z/PZButter.properties" ]]; then cp -p "$Z/PZButter.properties" "$BAK/PZButter.properties" || die "backup PZButter.properties failed"; fi
+if [[ -f "$Z/latestSave.ini" ]]; then cp -p "$Z/latestSave.ini" "$BAK/latestSave.ini" || die "backup latestSave.ini failed"; fi
+if [[ -d "$Z/mods/PZButter" ]]; then cp -a "$Z/mods/PZButter" "$BAK/PZButter" || die "backup PZButter dir failed"; fi
+touch "$BAK/done" || die "backup marker failed"
 echo "[step3] backup done"
 
 START_TIME="$(date -Iseconds)"
-
-PROPS_ALL="enabled=true frameLog=true devAutoContinue=true devSceneQuit=true $SCENE_PROPS $PROPS"
 
 # step 4 source save manifest + copy
 BENCH_NAME="pzbutter-bench-${RUN_STAMP}"
@@ -120,9 +154,9 @@ echo "[step4] manifest write $SRC_SAVE"
 if (( DRY )); then
     echo "+ python3 $TOOLS/manifest.py write $SRC_SAVE $RUN_DIR/source.manifest.json (dry-run: skipped)"
 else
-    python3 "$TOOLS/manifest.py" write "$SRC_SAVE" "$RUN_DIR/source.manifest.json" || { echo "manifest write failed; aborting"; exit 1; }
-    cp -a "$SRC_SAVE" "$BENCH_SAVE" || { echo "save copy failed; aborting"; exit 1; }
-    printf '%s\n%s\n' "$BENCH_NAME" "$MODE" > "$Z/latestSave.ini"
+    python3 "$TOOLS/manifest.py" write "$SRC_SAVE" "$RUN_DIR/source.manifest.json" || die "manifest write failed"
+    cp -a "$SRC_SAVE" "$BENCH_SAVE" || die "save copy failed"
+    printf '%s\n%s\n' "$BENCH_NAME" "$MODE" > "$Z/latestSave.ini" || die "latestSave update failed"
 fi
 
 # step 5 mod list
@@ -131,13 +165,13 @@ if [[ "$LIST" == "bare" ]]; then
     if (( DRY )); then
         echo "+ write bare default.txt (dry-run: skipped)"
     else
-        printf 'VERSION = 1,\n\nmods\n{\n    mod = ZombieBuddy,\n    mod = PZButter,\n}\n\nmaps\n{\n}\n' > "$Z/mods/default.txt"
+        printf 'VERSION = 1,\n\nmods\n{\n    mod = ZombieBuddy,\n    mod = PZButter,\n}\n\nmaps\n{\n}\n' > "$Z/mods/default.txt" || die "mod list write failed"
     fi
 else
     echo "[step5] leaving default.txt as the user has it"
 fi
 if (( ! DRY )); then
-    cp "$Z/mods/default.txt" "$RUN_DIR/modlist.used.txt" 2>/dev/null || true
+    cp "$Z/mods/default.txt" "$RUN_DIR/modlist.used.txt" || die "mod list copy failed"
 fi
 
 # step 6 install build + properties
@@ -153,13 +187,13 @@ else
     if (( DRY )); then
         echo "+ would remove+copy build and write properties (dry-run: skipped)"
     else
-        rm -rf "$Z/mods/PZButter"
-        cp -a "$BUILD_MOD" "$Z/mods/PZButter"
-        printf '%s\n' $PROPS_ALL | tr ' ' '\n' | grep . > "$Z/PZButter.properties"
+        rm -rf "$Z/mods/PZButter" || die "remove old PZButter failed"
+        cp -a "$BUILD_MOD" "$Z/mods/PZButter" || die "install build failed"
+        printf '%s\n' "${PROPS_ENTRIES[@]}" > "$Z/PZButter.properties" || die "properties write failed"
     fi
 fi
 if (( ! DRY )); then
-    cp "$Z/PZButter.properties" "$RUN_DIR/PZButter.properties" 2>/dev/null || true
+    cp "$Z/PZButter.properties" "$RUN_DIR/PZButter.properties" || die "properties copy failed"
 fi
 
 # step 7 jvm options
@@ -186,6 +220,7 @@ PY
 else
     echo "[step7] profile.jfc not found; jfr binary at $PZ_DIR/projectzomboid/jre64/bin/jfr (jfr configure fallback documented)"
 fi
+# We copy profile.jfc and edit the period directly; `jfr configure --help` prints "jfr configure: unknown option --help" (no in-place patch mode).
 
 JVM_STR="-XX:StartFlightRecording=settings=$JFC,filename=$RUN_DIR/game.jfr,dumponexit=true -Xlog:gc*,safepoint:file=$RUN_DIR/gc.log:uptime,tags -XX:+UnlockDiagnosticVMOptions -XX:+DumpPerfMapAtExit"
 LAUNCH_ENV=""
@@ -196,6 +231,19 @@ LAUNCH_LINE="${LAUNCH_ENV}$PZ_DIR/projectzomboid.sh -javaagent:ZombieBuddy.jar $
 
 echo "[step7] jvm: $JVM_STR"
 
+# ZombieBuddy jar (game folder) hash target
+ZB_GAME_JAR="$PZ_DIR/projectzomboid/ZombieBuddy.jar"
+if [[ ! -f "$ZB_GAME_JAR" ]]; then
+    if (( DRY )); then
+        echo "[step7] warning: ZombieBuddy.jar not found at $ZB_GAME_JAR"
+    else
+        die "ZombieBuddy.jar not found at $ZB_GAME_JAR"
+    fi
+fi
+PZ_REV="$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+ZB_SHA=""
+[[ -f "$ZB_GAME_JAR" ]] && ZB_SHA="$(sha256sum "$ZB_GAME_JAR" | awk '{print $1}')"
+
 if (( DRY )); then
     echo "[step8] (dry-run) launch line:"
     echo "  $LAUNCH_LINE"
@@ -205,9 +253,11 @@ if (( DRY )); then
 scene=$SCENE
 list=$LIST
 save=$SAVE
-props=$PROPS_ALL
+props=$PROPS_LINE
 jvm=$JVM_STR
 launch=$LAUNCH_LINE
+pz_rev=$PZ_REV
+zombiebuddy_sha256=$ZB_SHA
 start=$START_TIME
 end=(dry-run)
 EOF
@@ -255,7 +305,6 @@ if [[ -n "$SYSMON_PID" ]]; then kill "$SYSMON_PID" 2>/dev/null; wait "$SYSMON_PI
 cp "$Z/console.txt" "$RUN_DIR/" 2>/dev/null || true
 cp "$Z"/pzbutter/*.out* "$RUN_DIR/" 2>/dev/null || true
 if [[ -f "/tmp/perf-${GAME_PID_ACTUAL}.map" ]]; then cp "/tmp/perf-${GAME_PID_ACTUAL}.map" "$RUN_DIR/" 2>/dev/null || true; fi
-# save copy's mods.txt if present in bench save
 [[ -f "$BENCH_SAVE/mods.txt" ]] && cp "$BENCH_SAVE/mods.txt" "$RUN_DIR/save-mods.txt" 2>/dev/null || true
 
 END_TIME="$(date -Iseconds)"
@@ -263,23 +312,22 @@ END_TIME="$(date -Iseconds)"
 # step 10 manifest check + delete bench copy
 echo "[step10] checking source save against manifest"
 python3 "$TOOLS/manifest.py" check "$SRC_SAVE" "$RUN_DIR/source.manifest.json"; rc=$?
-if (( rc == 0 )); then echo "source save unchanged"; else echo "source save differs (listed above)"; fi
+if (( rc != 0 )); then echo "source save differs (listed above)"; fi
 rm -rf "$BENCH_SAVE"
 
 # step 11 run.opts
-ZB_JAR="$Z/mods/PZButter/ZombieBuddy.jar"
-ZB_SHA=""
-[[ -f "$ZB_JAR" ]] && ZB_SHA="$(sha256sum "$ZB_JAR" | awk '{print $1}')"
-PZ_REV="$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+ZB_JAR="$ZB_GAME_JAR"
+ZB_SHA2="$ZB_SHA"
+[[ -f "$ZB_JAR" ]] && ZB_SHA2="$(sha256sum "$ZB_JAR" | awk '{print $1}')"
 cat > "$RUN_DIR/run.opts" <<EOF
 scene=$SCENE
 list=$LIST
 save=$SAVE
-props=$PROPS_ALL
+props=$PROPS_LINE
 jvm=$JVM_STR
 launch=$LAUNCH_LINE
 pz_rev=$PZ_REV
-zombiebuddy_sha256=$ZB_SHA
+zombiebuddy_sha256=$ZB_SHA2
 start=$START_TIME
 end=$END_TIME
 EOF
