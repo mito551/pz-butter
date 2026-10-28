@@ -191,7 +191,10 @@ public final class SceneDrive implements SceneDriver.Action {
                 zombie.iso.IsoGridSquare sq = cell.getGridSquare(sx + facing.dx() * 3, sy + facing.dy() * 3, sz);
                 if (sq == null) { System.out.println("[PZButter] devScene drive: no square at " + (sx + facing.dx() * 3) + "," + (sy + facing.dy() * 3) + "," + sz + " (facing " + facing + ")"); return null; }
                 String car = Settings.text("devDriveCar", "Base.CarNormal");
-                return zombie.Lua.LuaManager.GlobalObject.addVehicleDebug(car, facing, null, sq);
+                zombie.vehicles.BaseVehicle v = zombie.Lua.LuaManager.GlobalObject.addVehicleDebug(car, facing, null, sq);
+                // a debug spawn has random missing parts (the seat, the battery...); the game's Trailer3 scenarios repair() it
+                if (v != null) v.repair();
+                return v;
             } catch (Throwable t) { System.out.println("[PZButter] devScene drive: spawn: " + t); SceneDriver.guard.fail(t); return null; }
         }
         public boolean enter(Object vehicle, zombie.characters.IsoPlayer player) {
