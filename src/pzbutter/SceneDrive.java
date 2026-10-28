@@ -160,7 +160,14 @@ public final class SceneDrive implements SceneDriver.Action {
         if (!windowChecked && nowMs - windowStartMs >= 5000L) {
             windowChecked = true;
             try {
-                if (!driver.engineRunning(vehicle) || driver.speed(vehicle) <= 1f) { SceneDriver.end("car not moving"); return; }
+                if (!driver.engineRunning(vehicle) || driver.speed(vehicle) <= 1f) {
+                    if (vehicle instanceof zombie.vehicles.BaseVehicle v)
+                        System.out.println("[PZButter] devScene drive: car not moving: engine " + v.getEngineState() + " running " + v.isEngineRunning()
+                            + ", hotwired " + v.isHotwired() + ", speed " + v.getCurrentSpeedKmHour() + ", player's vehicle is it " + (player != null && player.getVehicle() == v)
+                            + ", driver " + (player != null && v.isDriver(player)) + ", keyboard " + v.isKeyboardControlled() + ", keys held " + VirtualKeys.heldCount
+                            + " (forward code " + fwdCode + " held " + VirtualKeys.held(fwdCode) + ")");
+                    SceneDriver.end("car not moving"); return;
+                }
             } catch (Throwable t) { SceneDriver.guard.fail(t); SceneDriver.end("car not moving"); return; }
         }
         try {
@@ -244,6 +251,8 @@ public final class SceneDrive implements SceneDriver.Action {
         public boolean enter(Object vehicle, zombie.characters.IsoPlayer player) {
             try {
                 boolean ok = ((zombie.vehicles.BaseVehicle) vehicle).enter(0, player);
+                // as ISEnterVehicle.perform: the driver sits "inside", so the car controller reads the keys
+                if (ok) ((zombie.vehicles.BaseVehicle) vehicle).setCharacterPosition(player, 0, "inside");
                 if (!ok) {
                     zombie.vehicles.BaseVehicle v = (zombie.vehicles.BaseVehicle) vehicle;
                     zombie.vehicles.VehiclePart seat = v.getPartForSeatContainer(0);
