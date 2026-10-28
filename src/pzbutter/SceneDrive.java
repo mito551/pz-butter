@@ -118,6 +118,25 @@ public final class SceneDrive implements SceneDriver.Action {
         } catch (Throwable t) { SceneDriver.guard.fail(t); SceneDriver.end("no car: " + t); }
     }
 
+    private long spawnedMs = -1;
+    private boolean goneReported;
+    private static final java.lang.invoke.VarHandle REMOVED =
+        Game.field(zombie.vehicles.BaseVehicle.class, "removedFromWorld", boolean.class);
+
+    /** Diagnostic: the first settle frame the spawned car is no longer one of the cell's vehicles, log its state. */
+    @Override
+    public void settleFrame(long nowMs) {
+        if (vehicle == null || goneReported) return;
+        if (spawnedMs < 0) spawnedMs = nowMs;
+        if (nowMs - spawnedMs < 500 || driver.alive(vehicle)) return; // a new car joins the cell at the end of its first frame
+        goneReported = true;
+        if (!(vehicle instanceof zombie.vehicles.BaseVehicle v)) return;
+        System.out.println("[PZButter] devScene drive: car gone " + (nowMs - spawnedMs) + " ms after spawn: square " + v.getSquare()
+            + ", chunk " + v.getChunk() + ", in cell " + (v.getCell() != null && v.getCell().getVehicles().contains(v))
+            + ", removedFromWorld " + (REMOVED == null ? "?" : (boolean) REMOVED.get(v)) + ", at " + v.getX() + "," + v.getY() + "," + v.getZ()
+            + ", player at " + (player == null ? null : player.getX() + "," + player.getY()));
+    }
+
     @Override
     public void start() {
         windowStartMs = -1;
