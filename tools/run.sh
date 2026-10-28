@@ -296,16 +296,14 @@ if (( ! DRY )); then
 import re, sys
 p, ms = sys.argv[1], sys.argv[2]
 s = open(p).read()
-def repl_event(m):
-    ev = m.group(1)
-    ev2 = re.sub(r'(<setting name="period"[^>]*>).*?(</setting>)',
-                r'\g<1>' + ms + ' ms\g<2>', ev, count=1, flags=re.S)
-    return ev2
-s2 = re.sub(r'(<event name="jdk\.ExecutionSample".*?</event>)', repl_event, s, count=1, flags=re.S)
-if s2 == s:
-    print("profile.jfc unchanged", file=sys.stderr)
+ev = re.search(r'<event name="jdk\.ExecutionSample">.*?</event>', s, flags=re.S)
+st = ev and re.search(r'(<setting name="period"[^>]*>)(.*?)(</setting>)', ev.group(0), flags=re.S)
+if not st:
+    print("profile.jfc: no jdk.ExecutionSample period setting", file=sys.stderr)
     sys.exit(1)
-open(p, "w").write(s2)
+# a period that already equals the wanted one is fine: write the file either way
+block = ev.group(0)[:st.start(2)] + ms + " ms" + ev.group(0)[st.end(2):]
+open(p, "w").write(s[:ev.start()] + block + s[ev.end():])
 PY
     if [[ $? -ne 0 ]]; then die "jfc period patch failed"; fi
 else
