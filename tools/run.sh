@@ -370,6 +370,15 @@ if [[ -f "$Z/pzbutter/marks.out" ]]; then
 fi
 
 # step 8 launch
+# A shell outside the desktop session (ssh, an agent) has no display: use the session's Xwayland :0.
+if [[ -z ${DISPLAY:-} ]]; then
+    export DISPLAY=:0
+    for a in /run/user/$(id -u)/.mutter-Xwaylandauth.*; do [[ -f $a ]] && export XAUTHORITY=$a; done
+fi
+[[ -z ${WAYLAND_DISPLAY:-} && -S /run/user/$(id -u)/wayland-0 ]] && export WAYLAND_DISPLAY=wayland-0
+# The game reads the clipboard at start (and ImGui later); a remote-desktop clipboard owner never answers
+# and the game hangs. A local owner answers at once. This empties the clipboard.
+command -v wl-copy >/dev/null 2>&1 && printf ' ' | timeout 5 wl-copy 2>/dev/null
 echo "[step8] launching: $LAUNCH_LINE"
 if (( MANGO )); then
     export MANGOHUD=1
