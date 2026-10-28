@@ -106,9 +106,6 @@ public final class SceneDrive implements SceneDriver.Action {
             vehicle = driver.spawn(player, targetKmh);
             if (vehicle == null) { SceneDriver.end("no car: spawn"); return; }
             if (!driver.inWorld(vehicle)) { SceneDriver.end("no car: invalid spot"); return; }
-            if (!driver.enter(vehicle, player)) { SceneDriver.end("no car: enter"); return; }
-            driver.hotwire(vehicle);
-            if (!driver.startEngine(vehicle)) { SceneDriver.end("no car: engine"); return; }
             zombie.iso.Vector2 at = driver.position(vehicle); // route origin = the spawn square
             originX = (int) Math.floor(at.x);
             originY = (int) Math.floor(at.y);
@@ -119,6 +116,13 @@ public final class SceneDrive implements SceneDriver.Action {
     public void start() {
         windowStartMs = -1;
         windowChecked = false;
+        // enter and start here, a settle phase after the spawn: a car spawned this frame refuses enter()
+        try {
+            if (vehicle == null) return;
+            if (!driver.enter(vehicle, player)) { SceneDriver.end("no car: enter"); return; }
+            driver.hotwire(vehicle);
+            if (!driver.startEngine(vehicle)) { SceneDriver.end("no car: engine"); return; }
+        } catch (Throwable t) { SceneDriver.guard.fail(t); SceneDriver.end("no car: " + t); }
     }
 
     @Override
@@ -193,7 +197,14 @@ public final class SceneDrive implements SceneDriver.Action {
         public boolean enter(Object vehicle, zombie.characters.IsoPlayer player) {
             try {
                 boolean ok = ((zombie.vehicles.BaseVehicle) vehicle).enter(0, player);
-                if (!ok) System.out.println("[PZButter] devScene drive: enter(0, player) returned false");
+                if (!ok) {
+                    zombie.vehicles.BaseVehicle v = (zombie.vehicles.BaseVehicle) vehicle;
+                    zombie.vehicles.VehiclePart seat = v.getPartForSeatContainer(0);
+                    System.out.println("[PZButter] devScene drive: enter(0, player) returned false; seat part " + seat
+                        + ", seat item " + (seat == null ? null : seat.getInventoryItem())
+                        + ", outside position " + v.getPassengerPosition(0, "outside")
+                        + ", player in vehicle " + player.getVehicle() + ", seats " + v.getMaxPassengers());
+                }
                 return ok;
             } catch (Throwable t) { System.out.println("[PZButter] devScene drive: enter: " + t); SceneDriver.guard.fail(t); return false; }
         }
