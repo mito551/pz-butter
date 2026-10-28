@@ -73,6 +73,9 @@ public final class SceneDrive implements SceneDriver.Action {
         return bits;
     }
 
+    /** The spawned car, for the removeFromWorld diagnostic in DevPatches. */
+    public static volatile Object watched;
+
     private final Driver driver;
     private Object vehicle;
     private int fwdCode, leftCode, rightCode;
@@ -197,7 +200,7 @@ public final class SceneDrive implements SceneDriver.Action {
                 String car = Settings.text("devDriveCar", "Base.CarNormal");
                 zombie.vehicles.BaseVehicle v = zombie.Lua.LuaManager.GlobalObject.addVehicleDebug(car, facing, null, sq);
                 // a debug spawn has random missing parts (the seat, the battery...); the game's Trailer3 scenarios repair() it
-                if (v != null) v.repair();
+                if (v != null) { v.repair(); watched = v; }
                 return v;
             } catch (Throwable t) { System.out.println("[PZButter] devScene drive: spawn: " + t); SceneDriver.guard.fail(t); return null; }
         }
