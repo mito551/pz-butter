@@ -119,6 +119,9 @@ public final class SceneDrive implements SceneDriver.Action {
     }
 
     private long spawnedMs = -1;
+    private long speedN;
+    private double speedSum;
+    private float speedMin = Float.MAX_VALUE, speedMax;
     private boolean goneReported;
     /** BaseVehicle.chunk: set only when addVehicleDebug really placed the car. */
     static final java.lang.invoke.VarHandle CHUNK = Game.field(zombie.vehicles.BaseVehicle.class, "chunk", zombie.iso.IsoChunk.class);
@@ -172,6 +175,10 @@ public final class SceneDrive implements SceneDriver.Action {
         }
         try {
             if (player != null && driver.dead(player)) { SceneDriver.end("player dead"); return; }
+            if (windowChecked) { // speed over the window after the 5 s start-up, for the scene's summary line
+                float v = driver.speed(vehicle);
+                speedN++; speedSum += v; speedMin = Math.min(speedMin, v); speedMax = Math.max(speedMax, v);
+            }
             // waypoint logic
             if (hasRoute && route != null && route.length > 0) {
                 zombie.iso.Vector2 p = driver.position(vehicle);
@@ -206,6 +213,8 @@ public final class SceneDrive implements SceneDriver.Action {
 
     @Override
     public void stop() {
+        if (speedN > 0) System.out.printf("[PZButter] devScene drive: speed after 5 s: min %.1f mean %.1f max %.1f km/h over %d frames (target %d)%n",
+            speedMin, speedSum / speedN, speedMax, speedN, targetKmh);
         try { driver.holdForward(false); driver.holdLeft(false); driver.holdRight(false); }
         catch (Throwable t) { SceneDriver.guard.fail(t); }
         VirtualKeys.releaseAll();
