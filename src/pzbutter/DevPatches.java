@@ -21,6 +21,20 @@ public final class DevPatches {
         }
     }
 
+    /** Diagnostic: who removes the drive scene's car from the world (prints one stack trace for that car only). */
+    @me.zed_0xff.zombie_buddy.Patch(className = "zombie.vehicles.BaseVehicle", methodName = "removeFromWorld")
+    public static class VehicleRemoved {
+        @me.zed_0xff.zombie_buddy.Patch.OnEnter
+        public static void enter(@me.zed_0xff.zombie_buddy.Patch.This Object self) {
+            if (SceneDrive.watched == null || SceneDrive.watched != self) return;
+            try {
+                SceneDrive.watched = null;
+                System.out.println("[PZButter] devScene drive: car removed from world by:");
+                new Throwable().printStackTrace(System.out);
+            } catch (Throwable t) { SceneDriver.guard.fail(t); }
+        }
+    }
+
     @me.zed_0xff.zombie_buddy.Patch(className = "zombie.gameStates.GameLoadingState", methodName = "update")
     public static class GameLoadingUpdate {
         @me.zed_0xff.zombie_buddy.Patch.OnEnter

@@ -135,6 +135,7 @@ final class ModCompat {
         Map.entry("DevPatches.IngameEnter", k("devScene")),
         Map.entry("DevPatches.IngameExit", k("devScene")),
         Map.entry("DevPatches.GameLoadingUpdate", k("devAutoContinue")),
+        Map.entry("DevPatches.VehicleRemoved", k("devScene")),
         Map.entry("DevPatches.KeyDown", k("devScene")),
         // census (Plan 8b)
         Map.entry("CensusPatches.PreUpdate", k("devCensus")),
