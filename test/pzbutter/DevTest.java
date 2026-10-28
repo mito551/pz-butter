@@ -242,6 +242,12 @@ final class DevTest {
     }
 
     static void autoContinueOnce() {
+        Settings.load(SelfTest.write("enabled=true\ndevAutoContinue=true\n"));
+        SceneDriver.init();
+        assert SceneDriver.autoContinue() && SceneDriver.autoGuard.on; // the tick returns at once while the guard is off
+        Settings.load(SelfTest.write("enabled=true\n"));
+        SceneDriver.init();
+        assert !SceneDriver.autoContinue() && !SceneDriver.autoGuard.on;
         assert SceneDriver.shouldContinue(true, false);
         assert !SceneDriver.shouldContinue(true, true);
         assert !SceneDriver.shouldContinue(false, false);
