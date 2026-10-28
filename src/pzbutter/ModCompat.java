@@ -134,7 +134,6 @@ final class ModCompat {
         // dev (Plan 13)
         Map.entry("DevPatches.IngameEnter", k("devScene")),
         Map.entry("DevPatches.IngameExit", k("devScene")),
-        Map.entry("DevPatches.MainScreenUpdate", k("devAutoContinue")),
         Map.entry("DevPatches.GameLoadingUpdate", k("devAutoContinue")),
         Map.entry("DevPatches.KeyDown", k("devScene")),
         // census (Plan 8b)

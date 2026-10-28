@@ -29,13 +29,6 @@ public final class DevPatches {
         }
     }
 
-    @me.zed_0xff.zombie_buddy.Patch(className = "zombie.gameStates.MainScreenState", methodName = "update")
-    public static class MainScreenUpdate {
-        @me.zed_0xff.zombie_buddy.Patch.OnEnter
-        public static void enter() {
-            try { SceneDriver.autoContinueTick(); } catch (Throwable t) { SceneDriver.autoGuard.fail(t); }
-        }
-    }
 
     /** isKeyDown(int) only: strictMatch makes ZombieBuddy match the advice's argument list exactly (as GpuPatches.GenTextures relies on). */
     @me.zed_0xff.zombie_buddy.Patch(className = "zombie.input.GameKeyboard", methodName = "isKeyDown", strictMatch = true)
