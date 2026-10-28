@@ -64,6 +64,7 @@ public final class SceneDriver {
     private static volatile boolean worldReady;
     private static volatile boolean sceneSet;
     private static volatile boolean populationSpawned;
+    private static volatile boolean prepared;
     private static volatile long readyMs;
     private static volatile long quitAtMs;
     private static int settleSec = 20;
@@ -107,6 +108,7 @@ public final class SceneDriver {
         worldReady = false;
         sceneSet = false;
         populationSpawned = false;
+        prepared = false;
         readyMs = 0;
         quitAtMs = 0;
         autoContinued = false;
@@ -138,6 +140,7 @@ public final class SceneDriver {
             phase = Phase.IDLE;
             worldReady = true;
             populationSpawned = false;
+            prepared = false;
             readyMs = 0;
             quitAtMs = 0;
         } catch (Throwable t) { guard.fail(t); }
@@ -148,6 +151,12 @@ public final class SceneDriver {
             if (sceneSet && worldReady && phase != Phase.IDLE && phase != Phase.DONE) end("left world");
             worldReady = false;
         } catch (Throwable t) { guard.fail(t); }
+    }
+
+    private static void prepareAction(long nowMs) {
+        prepared = true;
+        if (action == null) return;
+        try { action.prepare(); } catch (Throwable t) { guard.fail(t); end("prepare failed", nowMs); }
     }
 
     public static void tick(long nowMs) {
@@ -165,6 +174,12 @@ public final class SceneDriver {
             if (since < 0) since = 0;
             Phase next = phaseAt(since, settleSec, sceneSec);
             if (next == phase) {
+                // the action prepares halfway through the settle: a car spawned on the first in-game frame
+                // lands in a chunk the game drops a moment later (BaseVehicle.update: chunk.refs empty)
+                if (phase == Phase.SETTLE && !prepared && since >= (long) settleSec * 500L) {
+                    prepareAction(nowMs);
+                    if (phase == Phase.DONE) { fireQuitIfNeeded(nowMs); return; }
+                }
                 if (phase == Phase.WINDOW && action != null) {
                     try { action.frame(nowMs); } catch (Throwable t) { guard.fail(t); }
                 }
@@ -179,11 +194,6 @@ public final class SceneDriver {
             if (phase == Phase.IDLE && next == Phase.SETTLE) {
                 phase = Phase.SETTLE;
                 try { spawnPopulationIfNeeded(); } catch (Throwable t) { guard.fail(t); }
-                if (phase == Phase.DONE) { fireQuitIfNeeded(nowMs); return; }
-                if (action != null) {
-                    try { action.prepare(); } catch (Throwable t) { guard.fail(t); end("prepare failed", nowMs); }
-                }
-                if (phase == Phase.DONE) { fireQuitIfNeeded(nowMs); return; }
                 fireQuitIfNeeded(nowMs);
                 return;
             }
@@ -191,9 +201,9 @@ public final class SceneDriver {
                 if (phase == Phase.IDLE) {
                     try { spawnPopulationIfNeeded(); } catch (Throwable t) { guard.fail(t); }
                     if (phase == Phase.DONE) { fireQuitIfNeeded(nowMs); return; }
-                    if (action != null) {
-                        try { action.prepare(); } catch (Throwable t) { guard.fail(t); end("prepare failed", nowMs); }
-                    }
+                }
+                if (!prepared) {
+                    prepareAction(nowMs);
                     if (phase == Phase.DONE) { fireQuitIfNeeded(nowMs); return; }
                 }
                 phase = Phase.WINDOW;

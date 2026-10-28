@@ -24,6 +24,8 @@ public final class SceneDrive implements SceneDriver.Action {
         float heading(Object vehicle);
         zombie.iso.Vector2 position(Object vehicle);
         boolean inWorld(Object vehicle);
+        /** Still one of the cell's vehicles (the game drops a car whose chunk it unloads). */
+        boolean alive(Object vehicle);
         void holdForward(boolean on);
         void holdLeft(boolean on);
         void holdRight(boolean on);
@@ -45,6 +47,7 @@ public final class SceneDrive implements SceneDriver.Action {
         public zombie.characters.IsoPlayer player() { return playerVal; }
         public Object spawn(zombie.characters.IsoPlayer player, int targetKmh) { return vehicle; }
         public boolean inWorld(Object vehicle) { return inWorldOk; }
+        public boolean alive(Object vehicle) { return inWorldOk; }
         public boolean enter(Object vehicle, zombie.characters.IsoPlayer player) { return enterOk; }
         public void hotwire(Object vehicle) { }
         public boolean startEngine(Object vehicle) { return engineOk; }
@@ -119,6 +122,7 @@ public final class SceneDrive implements SceneDriver.Action {
         // enter and start here, a settle phase after the spawn: a car spawned this frame refuses enter()
         try {
             if (vehicle == null) return;
+            if (!driver.alive(vehicle)) { SceneDriver.end("no car: removed from world"); return; }
             if (!driver.enter(vehicle, player)) { SceneDriver.end("no car: enter"); return; }
             driver.hotwire(vehicle);
             if (!driver.startEngine(vehicle)) { SceneDriver.end("no car: engine"); return; }
@@ -234,6 +238,12 @@ public final class SceneDrive implements SceneDriver.Action {
                 // map the forward vector's world X/Z plane to iso X/Y: isoX = X, isoY = Z; heading = atan2(isoY, isoX)
                 return (float) Math.toDegrees(Math.atan2(v.z, v.x));
             } catch (Throwable t) { SceneDriver.guard.fail(t); return 0; }
+        }
+        public boolean alive(Object vehicle) {
+            try {
+                zombie.vehicles.BaseVehicle v = (zombie.vehicles.BaseVehicle) vehicle;
+                return v.getSquare() != null && v.getCell() != null && v.getCell().getVehicles().contains(v);
+            } catch (Throwable t) { SceneDriver.guard.fail(t); return false; }
         }
         public boolean inWorld(Object vehicle) {
             try { return ((zombie.vehicles.BaseVehicle) vehicle).getSquare() != null; }
