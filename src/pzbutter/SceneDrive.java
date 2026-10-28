@@ -286,7 +286,8 @@ public final class SceneDrive implements SceneDriver.Action {
             catch (Throwable t) { SceneDriver.guard.fail(t); return false; }
         }
         public float speed(Object vehicle) {
-            try { return ((zombie.vehicles.BaseVehicle) vehicle).getCurrentSpeedKmHour(); }
+            // signed along the car's own axis (a spawned car can drive "backwards" on it): the hold and the checks use the magnitude
+            try { return Math.abs(((zombie.vehicles.BaseVehicle) vehicle).getCurrentSpeedKmHour()); }
             catch (Throwable t) { SceneDriver.guard.fail(t); return 0; }
         }
         public float heading(Object vehicle) {
