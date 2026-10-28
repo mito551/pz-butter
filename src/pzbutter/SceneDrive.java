@@ -104,15 +104,15 @@ public final class SceneDrive implements SceneDriver.Action {
             if (player == null) { SceneDriver.end("no player"); return; }
 
             vehicle = driver.spawn(player, targetKmh);
-            if (vehicle == null) { SceneDriver.end("no car"); return; }
+            if (vehicle == null) { SceneDriver.end("no car: spawn"); return; }
             if (!driver.inWorld(vehicle)) { SceneDriver.end("no car: invalid spot"); return; }
-            if (!driver.enter(vehicle, player)) { SceneDriver.end("no car"); return; }
+            if (!driver.enter(vehicle, player)) { SceneDriver.end("no car: enter"); return; }
             driver.hotwire(vehicle);
-            if (!driver.startEngine(vehicle)) { SceneDriver.end("no car"); return; }
+            if (!driver.startEngine(vehicle)) { SceneDriver.end("no car: engine"); return; }
             zombie.iso.Vector2 at = driver.position(vehicle); // route origin = the spawn square
             originX = (int) Math.floor(at.x);
             originY = (int) Math.floor(at.y);
-        } catch (Throwable t) { SceneDriver.guard.fail(t); SceneDriver.end("no car"); }
+        } catch (Throwable t) { SceneDriver.guard.fail(t); SceneDriver.end("no car: " + t); }
     }
 
     @Override
@@ -180,19 +180,22 @@ public final class SceneDrive implements SceneDriver.Action {
                 zombie.iso.IsoDirections facing = player.getDir();
                 zombie.iso.IsoCell cell = player.getCell();
                 if (cell == null && zombie.iso.IsoWorld.instance != null) cell = zombie.iso.IsoWorld.instance.getCell();
-                if (cell == null) return null;
+                if (cell == null) { System.out.println("[PZButter] devScene drive: no cell"); return null; }
                 int sx = (int) Math.floor(player.getX());
                 int sy = (int) Math.floor(player.getY());
                 int sz = (int) Math.floor(player.getZ());
                 zombie.iso.IsoGridSquare sq = cell.getGridSquare(sx + facing.dx() * 3, sy + facing.dy() * 3, sz);
-                if (sq == null) return null;
+                if (sq == null) { System.out.println("[PZButter] devScene drive: no square at " + (sx + facing.dx() * 3) + "," + (sy + facing.dy() * 3) + "," + sz + " (facing " + facing + ")"); return null; }
                 String car = Settings.text("devDriveCar", "Base.CarNormal");
                 return zombie.Lua.LuaManager.GlobalObject.addVehicleDebug(car, facing, null, sq);
-            } catch (Throwable t) { SceneDriver.guard.fail(t); return null; }
+            } catch (Throwable t) { System.out.println("[PZButter] devScene drive: spawn: " + t); SceneDriver.guard.fail(t); return null; }
         }
         public boolean enter(Object vehicle, zombie.characters.IsoPlayer player) {
-            try { return ((zombie.vehicles.BaseVehicle) vehicle).enter(0, player); }
-            catch (Throwable t) { SceneDriver.guard.fail(t); return false; }
+            try {
+                boolean ok = ((zombie.vehicles.BaseVehicle) vehicle).enter(0, player);
+                if (!ok) System.out.println("[PZButter] devScene drive: enter(0, player) returned false");
+                return ok;
+            } catch (Throwable t) { System.out.println("[PZButter] devScene drive: enter: " + t); SceneDriver.guard.fail(t); return false; }
         }
         public void hotwire(Object vehicle) {
             try { ((zombie.vehicles.BaseVehicle) vehicle).setHotwired(true); }
@@ -200,7 +203,7 @@ public final class SceneDrive implements SceneDriver.Action {
         }
         public boolean startEngine(Object vehicle) {
             try { ((zombie.vehicles.BaseVehicle) vehicle).tryStartEngine(); return true; }
-            catch (Throwable t) { SceneDriver.guard.fail(t); return false; }
+            catch (Throwable t) { System.out.println("[PZButter] devScene drive: start: " + t); SceneDriver.guard.fail(t); return false; }
         }
         public boolean engineRunning(Object vehicle) {
             try { return ((zombie.vehicles.BaseVehicle) vehicle).isEngineRunning(); }
