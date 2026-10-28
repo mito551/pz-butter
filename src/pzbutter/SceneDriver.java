@@ -309,11 +309,15 @@ public final class SceneDriver {
         return menuBuilt && !firedBefore;
     }
 
-    /** Called from DevPatches.MainScreenState update hook. */
+    /**
+     * Called every frame from ZombiePatches.onFrameEnd (GameWindow.frameStep, menu included). A hook on
+     * MainScreenState.update never installs: that class is the game's entry point and loads before ZombieBuddy patches.
+     */
     public static void autoContinueTick() {
         if (!autoContinue) return;
         if (autoContinued) return;
         if (!autoGuard.on) return;
+        if (Thread.currentThread() != FrameClock.mainThread) return;
         try {
             Object ms = zombie.Lua.LuaManager.env.rawget("MainScreen");
             se.krka.kahlua.vm.KahluaTable t = ms instanceof se.krka.kahlua.vm.KahluaTable k ? k : null;
