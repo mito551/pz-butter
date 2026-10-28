@@ -120,6 +120,8 @@ public final class SceneDrive implements SceneDriver.Action {
 
     private long spawnedMs = -1;
     private boolean goneReported;
+    /** BaseVehicle.chunk: set only when addVehicleDebug really placed the car. */
+    static final java.lang.invoke.VarHandle CHUNK = Game.field(zombie.vehicles.BaseVehicle.class, "chunk", zombie.iso.IsoChunk.class);
     private static final java.lang.invoke.VarHandle REMOVED =
         Game.field(zombie.vehicles.BaseVehicle.class, "removedFromWorld", boolean.class);
 
@@ -214,13 +216,29 @@ public final class SceneDrive implements SceneDriver.Action {
                 int sx = (int) Math.floor(player.getX());
                 int sy = (int) Math.floor(player.getY());
                 int sz = (int) Math.floor(player.getZ());
-                zombie.iso.IsoGridSquare sq = cell.getGridSquare(sx + facing.dx() * 3, sy + facing.dy() * 3, sz);
-                if (sq == null) { System.out.println("[PZButter] devScene drive: no square at " + (sx + facing.dx() * 3) + "," + (sy + facing.dy() * 3) + "," + sz + " (facing " + facing + ")"); return null; }
                 String car = Settings.text("devDriveCar", "Base.CarNormal");
-                zombie.vehicles.BaseVehicle v = zombie.Lua.LuaManager.GlobalObject.addVehicleDebug(car, facing, null, sq);
-                // a debug spawn has random missing parts (the seat, the battery...); the game's Trailer3 scenarios repair() it
-                if (v != null) { v.repair(); watched = v; }
-                return v;
+                // addVehicleDebug returns the car even when the spot is blocked (doSpawnedVehiclesInInvalidPosition false),
+                // without placing it: only a placed car gets its chunk. Try the facing direction first, then the others, 3-10 tiles out.
+                zombie.iso.IsoDirections[] dirs = {facing, zombie.iso.IsoDirections.N, zombie.iso.IsoDirections.NE, zombie.iso.IsoDirections.E,
+                    zombie.iso.IsoDirections.SE, zombie.iso.IsoDirections.S, zombie.iso.IsoDirections.SW, zombie.iso.IsoDirections.W, zombie.iso.IsoDirections.NW};
+                int tries = 0;
+                for (int dist = 3; dist <= 10; dist++) {
+                    for (zombie.iso.IsoDirections d : dirs) {
+                        if (d.dx() == 0 && d.dy() == 0) continue;
+                        zombie.iso.IsoGridSquare sq = cell.getGridSquare(sx + d.dx() * dist, sy + d.dy() * dist, sz);
+                        if (sq == null) continue;
+                        tries++;
+                        zombie.vehicles.BaseVehicle v = zombie.Lua.LuaManager.GlobalObject.addVehicleDebug(car, d, null, sq);
+                        if (v == null || CHUNK == null || CHUNK.get(v) == null) continue;
+                        // a debug spawn has random missing parts (the seat, the battery...); the game's Trailer3 scenarios repair() it
+                        v.repair();
+                        watched = v;
+                        System.out.println("[PZButter] devScene drive: " + car + " placed " + dist + " tiles " + d + " of the player after " + tries + " tries");
+                        return v;
+                    }
+                }
+                System.out.println("[PZButter] devScene drive: no free spot for " + car + " within 10 tiles (" + tries + " tries)");
+                return null;
             } catch (Throwable t) { System.out.println("[PZButter] devScene drive: spawn: " + t); SceneDriver.guard.fail(t); return null; }
         }
         public boolean enter(Object vehicle, zombie.characters.IsoPlayer player) {
@@ -268,7 +286,7 @@ public final class SceneDrive implements SceneDriver.Action {
             } catch (Throwable t) { SceneDriver.guard.fail(t); return false; }
         }
         public boolean inWorld(Object vehicle) {
-            try { return ((zombie.vehicles.BaseVehicle) vehicle).getSquare() != null; }
+            try { return CHUNK != null && CHUNK.get((zombie.vehicles.BaseVehicle) vehicle) != null; }
             catch (Throwable t) { SceneDriver.guard.fail(t); return false; }
         }
         public zombie.iso.Vector2 position(Object vehicle) {
