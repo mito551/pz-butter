@@ -18,6 +18,8 @@ public final class SceneDriver {
     /** The action a concrete scene performs; assigned by the scene tasks. */
     public interface Action {
         default void prepare() { }
+        /** Each settle frame after prepare(). */
+        default void settleFrame(long nowMs) { }
         void start();
         void frame(long nowMs);
         void stop();
@@ -179,6 +181,8 @@ public final class SceneDriver {
                 if (phase == Phase.SETTLE && !prepared && since >= (long) settleSec * 500L) {
                     prepareAction(nowMs);
                     if (phase == Phase.DONE) { fireQuitIfNeeded(nowMs); return; }
+                } else if (phase == Phase.SETTLE && prepared && action != null) {
+                    try { action.settleFrame(nowMs); } catch (Throwable t) { guard.fail(t); }
                 }
                 if (phase == Phase.WINDOW && action != null) {
                     try { action.frame(nowMs); } catch (Throwable t) { guard.fail(t); }
