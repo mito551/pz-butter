@@ -78,6 +78,8 @@ public final class SceneDriver {
         settleSec = Settings.num("devSceneSettleSec", 20, 0, 86400);
         sceneSec = Math.max(1, Settings.num("devSceneSec", 60, 0, 86400));
         autoContinue = Settings.flag("devAutoContinue");
+        autoGuard.on = autoContinue;
+        if (autoContinue) System.out.println("[PZButter] devAutoContinue: presses Continue and Click to Start once");
         if (!guard.on) return;
         System.out.println("[PZButter] devScene: " + Settings.text("devScene", "off") + " settle=" + settleSec + " scene=" + sceneSec);
         String scene = Settings.text("devScene", "off");
