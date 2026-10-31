@@ -73,6 +73,7 @@ final class Preload {
     static synchronized void premain(String[] args) {
         if (ran) return;
         ran = true;
+        DevAudit.report("premain");
         try {
             Settings.load();
             var inst = ZbAccess.instrumentation();
