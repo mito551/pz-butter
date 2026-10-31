@@ -8,6 +8,10 @@ public class Main {
             return;
         }
         Settings.load();
+        if (Settings.enabled) {
+            int n = ZbAccess.retransformLoadedTargets();
+            System.out.println("[PZButter] patches: " + (n < 0 ? "no ZombieBuddy Instrumentation, early classes may stay unpatched" : "re-applied to " + n + " classes loaded before ZombieBuddy patched them"));
+        }
         ModCompat.init();   // before any feature init reads its key: modCompat=auto answers stock for the keys it switches off
         FrameClock.init();
         PresentLog.init();

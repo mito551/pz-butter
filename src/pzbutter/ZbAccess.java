@@ -18,6 +18,26 @@ final class ZbAccess {
         }
     }
 
+    /**
+     * Re-applies ZombieBuddy's patches to the holder targets already loaded when PZ Butter's main runs. Classes loaded in
+     * an early startup window get neither ZombieBuddy's new-load transform nor its retransform pass, so their holders never
+     * install (2026-10-28/31: BaseVehicle, AnimationPlayer, LuaManager$GlobalObject and others; which ones varies run to run).
+     * A JVM retransform runs ZombieBuddy's transformer on them again. Returns how many classes were retransformed.
+     */
+    static int retransformLoadedTargets() {
+        Instrumentation inst = instrumentation();
+        if (inst == null) return -1;
+        var targets = new java.util.HashSet<String>();
+        for (ModCompat.Target t : ModCompat.ours()) targets.add(t.className());
+        int n = 0;
+        for (Class<?> c : inst.getAllLoadedClasses()) {
+            if (!targets.contains(c.getName()) || !inst.isModifiableClass(c)) continue;
+            try { inst.retransformClasses(c); n++; }
+            catch (Throwable t) { System.out.println("[PZButter] patches: retransform " + c.getName() + " failed: " + t); }
+        }
+        return n;
+    }
+
     /** The set of mod ids in ZombieBuddy's current mod set, or null when it cannot be read. */
     static java.util.Set<String> modSet() { return modSet("me.zed_0xff.zombie_buddy.Loader"); }
 
