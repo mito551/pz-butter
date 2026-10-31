@@ -435,6 +435,8 @@ if [[ -n "$PERF_PID" ]]; then wait "$PERF_PID" 2>/dev/null; fi
 if [[ -n "$SYSMON_PID" ]]; then kill "$SYSMON_PID" 2>/dev/null; wait "$SYSMON_PID" 2>/dev/null; SYSMON_PID=""; fi
 
 cp "$Z/console.txt" "$RUN_DIR/" 2>/dev/null || true
+# the game's own stdout: every "[ZB] patching" line and Byte Buddy error, including those before console.txt starts
+cp "$Z/projectzomboid.sh.log" "$RUN_DIR/game-stdout.log" 2>/dev/null || true
 cp "$Z"/pzbutter/*.out* "$RUN_DIR/" 2>/dev/null || true
 if [[ -f "/tmp/perf-${GAME_PID_ACTUAL}.map" ]]; then cp "/tmp/perf-${GAME_PID_ACTUAL}.map" "$RUN_DIR/" 2>/dev/null || true; fi
 [[ -f "$BENCH_SAVE/mods.txt" ]] && cp "$BENCH_SAVE/mods.txt" "$RUN_DIR/save-mods.txt" 2>/dev/null || true
