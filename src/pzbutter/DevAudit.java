@@ -19,8 +19,12 @@ final class DevAudit {
         "zombie.iso.IsoGridSquare", "zombie.characters.IsoPlayer",
     };
 
+    /** Read at the first call (preload): the game replaces the system properties later on. */
+    private static String mode;
+    private static boolean read;
+
     static void report(String where) {
-        String mode = System.getProperty("pzbutter.patchAudit");
+        if (!read) { read = true; mode = System.getProperty("pzbutter.patchAudit"); }
         if (mode == null) return;
         try {
             Instrumentation inst = ZbAccess.instrumentation();
