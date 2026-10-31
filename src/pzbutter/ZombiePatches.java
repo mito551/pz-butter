@@ -332,6 +332,7 @@ public final class ZombiePatches {
      * its minute; the zombies line (ZombieStats) rolls its own. Game thread only.
      */
     public static void onFrameEnd() {
+        if (ZbAccess.secondPass) ZbAccess.retransformSecondPass();
         DevMarks.poll();
         if (SceneDriver.sceneSet()) SceneDriver.tick(System.currentTimeMillis());
         if (SceneDriver.autoContinue()) SceneDriver.autoContinueTick();

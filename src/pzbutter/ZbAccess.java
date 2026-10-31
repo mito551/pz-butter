@@ -29,13 +29,41 @@ final class ZbAccess {
         if (inst == null) return -1;
         var targets = new java.util.HashSet<String>();
         for (ModCompat.Target t : ModCompat.ours()) targets.add(t.className());
+        retransformTargets = targets;
+        return retransform(inst);
+    }
+
+    /** The holder targets' class names, and the ones already re-applied (one entry per class). */
+    private static java.util.Set<String> retransformTargets;
+    private static final java.util.Set<String> retransformed = new java.util.HashSet<>();
+    /** Second pass pending: classes that load while the first pass runs miss their new-load patch as well. */
+    static volatile boolean secondPass;
+
+    private static int retransform(Instrumentation inst) {
         int n = 0;
         for (Class<?> c : inst.getAllLoadedClasses()) {
-            if (!targets.contains(c.getName()) || !inst.isModifiableClass(c)) continue;
+            if (!retransformTargets.contains(c.getName()) || retransformed.contains(c.getName()) || !inst.isModifiableClass(c)) continue;
+            retransformed.add(c.getName());
             try { inst.retransformClasses(c); n++; }
             catch (Throwable t) { System.out.println("[PZButter] patches: retransform " + c.getName() + " failed: " + t); }
         }
+        secondPass = true;
         return n;
+    }
+
+    /** First frame (main thread): re-apply to the targets loaded while the first pass ran. One flag check afterwards. */
+    static void retransformSecondPass() {
+        if (!secondPass) return;
+        secondPass = false;
+        try {
+            Instrumentation inst = instrumentation();
+            if (inst == null || retransformTargets == null) return;
+            int n = retransform(inst);
+            secondPass = false;
+            System.out.println("[PZButter] patches: re-applied to " + n + " more classes at the first frame");
+        } catch (Throwable t) {
+            System.out.println("[PZButter] patches: second pass failed: " + t);
+        }
     }
 
     /** The set of mod ids in ZombieBuddy's current mod set, or null when it cannot be read. */
