@@ -135,8 +135,12 @@ public final class ChunkPatches {
         public static void enter(@Patch.Argument(0) IsoChunk chunk) { onBloodBake(chunk); }
     }
 
-    /** Binds the 2-argument overload only: the one-argument overload has no argument 1, so the advice does not apply to it. */
-    @Patch(className = "zombie.iso.IsoGridSquare", methodName = "isBlockedTo")
+    /**
+     * The 2-argument overload only. strictMatch makes ZombieBuddy match the advice's argument list exactly; without it the
+     * advice also lands on isBlockedTo(IsoGridSquare), Byte Buddy rejects that ("does not define an index 1") and the whole
+     * IsoGridSquare transform fails, dropping every mod's patches on the class (seen in-game 2026-10-28).
+     */
+    @Patch(className = "zombie.iso.IsoGridSquare", methodName = "isBlockedTo", strictMatch = true)
     public static class BlockedTo {
         @Patch.OnEnter(skipOn = true)
         public static boolean enter(@Patch.This IsoGridSquare self, @Patch.Argument(0) IsoGridSquare o,
