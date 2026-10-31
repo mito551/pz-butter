@@ -134,6 +134,7 @@ public final class SceneDriver {
     }
 
     public static void onWorldReady() {
+        DevAudit.report("world");
         try {
             if (action != null && phase != Phase.IDLE && phase != Phase.DONE) {
                 try { action.stop(); } catch (Throwable t) { guard.fail(t); }

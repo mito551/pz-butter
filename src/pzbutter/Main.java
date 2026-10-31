@@ -2,6 +2,7 @@ package pzbutter;
 
 public class Main {
     public static void main(String[] args) {
+        DevAudit.report("main");
         java.util.Set<String> mods = ZbAccess.modSet();
         if (mods != null && !Preload.inModList(mods)) {
             System.out.println("[PZButter] not in the active mod list; nothing is switched on");
