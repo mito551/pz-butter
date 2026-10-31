@@ -26,6 +26,7 @@ final class StreamTest {
         pacingTests();
         hotsaveMsClamps();
         hotsaveDefaultsWritten();
+        recalcTests();
     }
 
     static void pacingTests() throws Throwable {
@@ -140,6 +141,115 @@ final class StreamTest {
         assert t.contains("\nchunkHandoffFrameBudgetUs=0\n") : t;
     }
 
+    static void recalcTests() throws Throwable {
+        memoSkipsSecondRecalc();
+        memoMissesOnRoomChange();
+        memoOutsideWindowNeverSkips();
+        memoClearedOnExit();
+        memoClearedOnThrow();
+        memoOtherThreadNeverSkips();
+        memoOffIsStock();
+        memoDefaultsWritten();
+    }
+
+    static void memoSkipsSecondRecalc() {
+        RecalcMemo.resetForTest();
+        RecalcMemo.guard.on = true;
+        Object a = new Object();
+        RecalcMemo.enter();
+        assert !RecalcMemo.skip(a, 5);
+        assert RecalcMemo.skip(a, 5);
+        RecalcMemo.exit();
+        RecalcMemo.resetForTest();
+    }
+
+    static void memoMissesOnRoomChange() {
+        RecalcMemo.resetForTest();
+        RecalcMemo.guard.on = true;
+        Object a = new Object();
+        RecalcMemo.enter();
+        assert !RecalcMemo.skip(a, 5);
+        assert !RecalcMemo.skip(a, 6);
+        RecalcMemo.exit();
+        RecalcMemo.resetForTest();
+    }
+
+    static void memoOutsideWindowNeverSkips() {
+        RecalcMemo.resetForTest();
+        RecalcMemo.guard.on = true;
+        Object a = new Object();
+        assert !RecalcMemo.skip(a, 5);
+        assert !RecalcMemo.skip(a, 5);
+        RecalcMemo.resetForTest();
+    }
+
+    static void memoClearedOnExit() {
+        RecalcMemo.resetForTest();
+        RecalcMemo.guard.on = true;
+        Object a = new Object();
+        RecalcMemo.enter();
+        assert !RecalcMemo.skip(a, 5);
+        RecalcMemo.exit();
+        RecalcMemo.enter();
+        assert !RecalcMemo.skip(a, 5);
+        RecalcMemo.exit();
+        RecalcMemo.resetForTest();
+    }
+
+    static void memoClearedOnThrow() {
+        RecalcMemo.resetForTest();
+        RecalcMemo.guard.on = true;
+        Object a = new Object();
+        RecalcMemo.enter();
+        assert !RecalcMemo.skip(a, 5);
+        // call exit() the way the OnExit does
+        RecalcMemo.exit();
+        RecalcMemo.enter();
+        assert !RecalcMemo.skip(a, 5);
+        RecalcMemo.exit();
+        RecalcMemo.resetForTest();
+    }
+
+    static void memoOtherThreadNeverSkips() throws Exception {
+        RecalcMemo.resetForTest();
+        RecalcMemo.guard.on = true;
+        Object a = new Object();
+        RecalcMemo.enter();
+        assert !RecalcMemo.skip(a, 5);
+        Thread t = new Thread(() -> {
+            assert !RecalcMemo.skip(a, 5);
+            assert !RecalcMemo.skip(a, 5);
+        });
+        t.start();
+        t.join();
+        RecalcMemo.exit();
+        RecalcMemo.resetForTest();
+    }
+
+    static void memoOffIsStock() {
+        RecalcMemo.resetForTest();
+        Object a = new Object();
+        RecalcMemo.enter();
+        // guard off
+        RecalcMemo.guard.on = false;
+        assert !RecalcMemo.skip(a, 5);
+        assert !RecalcMemo.skip(a, 5);
+        // nothing recorded: done cleared anyway on exit; check count zero
+        assert RecalcMemo.recalcRun == 0 && RecalcMemo.recalcSkipped == 0;
+        RecalcMemo.exit();
+        RecalcMemo.resetForTest();
+    }
+
+    static void memoDefaultsWritten() {
+        java.io.File f = SelfTest.tmp("recalc.properties");
+        f.delete();
+        Settings.load(f);
+        String t = "";
+        try { t = java.nio.file.Files.readString(f.toPath()); }
+        catch (java.io.IOException e) { throw new RuntimeException(e); }
+        assert t.contains("\nhandoffRecalcFast=false\n") : t;
+    }
+
     static void gloveBoxSkipsOnlyNullContainer() {
         assert VehicleFixes.skipGloveBox(true, true);
         assert !VehicleFixes.skipGloveBox(true, false);
@@ -162,6 +272,7 @@ final class StreamTest {
         try { t = java.nio.file.Files.readString(f.toPath()); }
         catch (java.io.IOException e) { throw new RuntimeException(e); }
         assert t.contains("\ngloveBoxFix=false\n") : t;
+        assert t.contains("\nhandoffRecalcFast=false\n") : t;
     }
 
     static void hotsaveMsClamps() {

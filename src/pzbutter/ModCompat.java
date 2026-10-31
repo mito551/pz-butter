@@ -136,6 +136,8 @@ final class ModCompat {
         Map.entry("StreamPatches.Join", k("chunkHandoffDivisor", "chunkHandoffFrameBudgetUs")),
         Map.entry("StreamPatches.Poll", k("chunkHandoffDivisor", "chunkHandoffFrameBudgetUs")),
         Map.entry("StreamPatches.HotSaveInit", k("hotsaveIntervalSec")),
+        Map.entry("StreamPatches.RecalcMemoWindow", k("handoffRecalcFast")),
+        Map.entry("StreamPatches.RecalcProperties", k("handoffRecalcFast")),
         Map.entry("ZombiePatches.SchedStart", k("entityTiming")),
         Map.entry("ZombiePatches.SchedUpdate", k("entityTiming")),
         Map.entry("ZombiePatches.SchedPost", k("entityTiming")),

@@ -134,6 +134,7 @@ public final class DeliveryBench {
             case "latch" -> latch();
             case "pacing" -> pacing();
             case "vehanim" -> vehanim();
+            case "recalcmemo" -> recalcmemo();
             default -> throw new IllegalArgumentException("... | pacing | vehanim");
         }
     }
@@ -1766,5 +1767,38 @@ public final class DeliveryBench {
         System.out.printf("vehanim shim, guard off: %6.2f ns/call; decide() warm: %6.2f ns/call (skips %d/%d)%n",
             dt0 / (double) n, dt1 / (double) n, hits, dHits);
         VehicleFixes.resetForTest();
+    }
+
+    static void recalcmemo() {
+        Object[] sq = new Object[600];
+        for (int i = 0; i < sq.length; i++) sq[i] = new Object();
+
+        // guard off
+        RecalcMemo.resetForTest();
+        RecalcMemo.enter();
+        long t0 = System.nanoTime();
+        int skips = 0;
+        for (int i = 0; i < sq.length; i++)
+            for (int j = 0; j < 15; j++)
+                if (RecalcMemo.skip(sq[i], 5L)) skips++;
+        long dt0 = System.nanoTime() - t0;
+        RecalcMemo.exit();
+
+        // warm window, guard on
+        RecalcMemo.resetForTest();
+        RecalcMemo.guard.on = true;
+        RecalcMemo.enter();
+        t0 = System.nanoTime();
+        int dSkips = 0;
+        for (int i = 0; i < sq.length; i++)
+            for (int j = 0; j < 15; j++)
+                if (RecalcMemo.skip(sq[i], 5L)) dSkips++;
+        long dt1 = System.nanoTime() - t0;
+        RecalcMemo.exit();
+        RecalcMemo.resetForTest();
+
+        int calls = sq.length * 15;
+        System.out.printf("recalcmemo guard off: %6.2f ns/call; warm window: %6.2f ns/call (skips %d/%d)%n",
+            dt0 / (double) calls, dt1 / (double) calls, skips, dSkips);
     }
 }

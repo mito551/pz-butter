@@ -50,6 +50,7 @@ public class Main {
         SoundFixes.init();
         VehiclePatches.init();
         StreamPatches.init();
+        RecalcMemo.init();
         LightChecks.init();
         GridGate.init();
         Cutaways.init();

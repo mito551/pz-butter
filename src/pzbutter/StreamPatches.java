@@ -44,6 +44,28 @@ public final class StreamPatches {
         public static void exit() { ChunkPacer.joinEnd(); }
     }
 
+    @Patch(className = "zombie.iso.IsoChunk", methodName = "loadInMainThread")
+    public static class RecalcMemoWindow {
+        @Patch.OnEnter
+        public static void enter() { RecalcMemo.enter(); }
+
+        @OnExit(suppress = Throwable.class, onThrowable = Throwable.class)
+        public static void exit() { RecalcMemo.exit(); }
+    }
+
+    @Patch(className = "zombie.iso.IsoGridSquare", methodName = "RecalcProperties")
+    public static class RecalcProperties {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This Object self) {
+            try {
+                if (self instanceof zombie.iso.IsoGridSquare sq) {
+                    return RecalcMemo.skip(self, sq.getRoomID());
+                }
+            } catch (Throwable t) { RecalcMemo.guard.fail(t); }
+            return false;
+        }
+    }
+
     @Patch(className = "zombie.util.CappedConcurrentQueue", methodName = "poll")
     public static class Poll {
         @Patch.OnEnter(skipOn = true)
@@ -77,7 +99,8 @@ public final class StreamPatches {
     public static void tick(long nowNs) {
         boolean pacing = ChunkPacer.guard.on;
         boolean veh = VehicleFixes.animGuard.on;
-        if (!pacing && !veh) return;
+        boolean recalc = RecalcMemo.guard.on;
+        if (!pacing && !veh && !recalc) return;
         if (!streamStarted) {
             streamStarted = true;
             streamNextNs = nowNs + MINUTE_NS;
@@ -98,6 +121,13 @@ public final class StreamPatches {
             VehicleFixes.animStates.entrySet().removeIf(e -> f - e.getValue().seen > 1800);
             VehicleFixes.animChecked = 0;
             VehicleFixes.animSkipped = 0;
+        }
+        if (recalc) {
+            long r = RecalcMemo.recalcRun;
+            long s = RecalcMemo.recalcSkipped;
+            RecalcMemo.recalcRun = 0;
+            RecalcMemo.recalcSkipped = 0;
+            if (r + s > 0) System.out.println("[PZButter] handoff recalc: " + r + " run, " + s + " skipped");
         }
     }
 }
