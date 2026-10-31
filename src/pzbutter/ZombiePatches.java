@@ -332,6 +332,7 @@ public final class ZombiePatches {
      * its minute; the zombies line (ZombieStats) rolls its own. Game thread only.
      */
     public static void onFrameEnd() {
+        if (ZbAccess.secondPass) ZbAccess.retransformSecondPass();
         boolean timing = EntityTiming.guard.on;
         if (!timing && !ZombieStats.guard.on) return;
         if (Thread.currentThread() != FrameClock.mainThread) return;
