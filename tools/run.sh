@@ -107,10 +107,9 @@ echo "[step1] checking game process"
 if pgrep -x ProjectZomboid6 >/dev/null 2>&1; then
     if (( DRY )); then echo "[step1] a game process is running (would refuse in real run)"; else echo "refusing: a game process is running"; exit 1; fi
 fi
-if [[ "$LIST" == "full" ]]; then
-    if ! pgrep -x steam >/dev/null 2>&1; then
-        if (( DRY )); then echo "[step1] steam not running (would refuse in real run)"; else echo "refusing: steam is not running (--list full)"; exit 1; fi
-    fi
+# the launcher JSON sets -Dzomboid.steam=1: without Steam the game quits at once (SteamAPI_Init failed), whatever the list
+if ! pgrep -x steam >/dev/null 2>&1; then
+    if (( DRY )); then echo "[step1] steam not running (would refuse in real run)"; else echo "refusing: steam is not running"; exit 1; fi
 fi
 echo "[step1] ok"
 
@@ -476,4 +475,9 @@ EOF
 if [[ "$SCENE" == "S7" ]]; then WINDOW_HINT="w1"; else WINDOW_HINT="scene"; fi
 echo "[step12] profile with:"
 echo "  python3 $TOOLS/frames.py $RUN_DIR/frames.out --marks $RUN_DIR/marks.out --window $WINDOW_HINT"
+if [[ $SCENE != S7 ]] && ! grep -q "^mark scene.start " "$RUN_DIR/marks.out" 2>/dev/null; then
+    echo "run FAILED: no scene.start mark (see $RUN_DIR/game-stdout.log and console.txt): $RUN_DIR"
+    echo "result=failed (no scene.start)" >> "$RUN_DIR/run.opts"
+    exit 3
+fi
 echo "run complete: $RUN_DIR"
