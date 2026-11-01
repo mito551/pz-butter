@@ -20,8 +20,24 @@ public final class ScriptComments {
         guard.on = Settings.flag("scriptParserFast");
     }
 
+    static int large;
+    static long largeNs;
+    private static volatile boolean printed;
+
+    static synchronized void count(long ns) { large++; largeNs += ns; }
+
+    /** GameLoadingState exit: how many large inputs took this path so far (the boot's tileGeometry.txt is advised only if it ran after Main). */
+    public static void printSummaryOnce() {
+        if (!guard.on || printed) return;
+        printed = true;
+        System.out.println("[PZButter] scriptParserFast: " + large + " large inputs, " + (largeNs / 1_000_000) + " ms");
+    }
+
     static void resetForTest() {
         guard.on = false;
+        large = 0;
+        largeNs = 0;
+        printed = false;
     }
 
     /** Exactly what stock {@code stripComments(s)} returns; the control flow mirrors its bytecode (test ScriptCommentsRef). */

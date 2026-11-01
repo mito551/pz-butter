@@ -26,14 +26,9 @@ public final class VehicleZones {
         ArrayList<Z> kept = new ArrayList<>(zones.size());
         for (Z z : zones) {
             Key k = new Key(keyXY.applyAsLong(z), keyWH.applyAsLong(z));
-            Z survivor = first.get(k);
-            if (survivor == null && !first.containsKey(k)) {
-                first.put(k, z);
-                kept.add(z);
-            } else {
-                Z firstZone = first.get(k);
-                if (debug != null) debug.accept(z, firstZone);
-            }
+            Z firstZone = first.putIfAbsent(k, z);   // zones are never null
+            if (firstZone == null) kept.add(z);
+            else if (debug != null) debug.accept(z, firstZone);
         }
         zones.clear();
         zones.addAll(kept);

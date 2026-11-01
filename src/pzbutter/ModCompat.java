@@ -72,7 +72,7 @@ final class ModCompat {
         // frame loop: everything driven by the frame counter, the main thread mark or the frame ticks
         Map.entry("LoadPatches.CheckBuildingAndRoomIDs", k("skipIdChecks")),
         Map.entry("LoadPatches.FadeToBlack", k("noLoadFade")),
-        Map.entry("LoadPatches.GameLoadingExit", k("noLoadFade")),
+        Map.entry("LoadPatches.GameLoadingExit", k("noLoadFade", "shaderCache", "scriptParserFast")),
         Map.entry("LoadPatches.CreateShader", k("shaderCache")),
         Map.entry("LoadPatches.CheckVehiclesZones", k("loaderCpuFixes")),
         Map.entry("LoadPatches.StripComments", k("scriptParserFast")),

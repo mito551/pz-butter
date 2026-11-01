@@ -16,6 +16,7 @@ final class LoadTest {
         shaderCacheOffIsStock();
         shaderCacheFailureFallsBack();
         shaderManagerHandleBinds();
+        shaderRealLookupMisses();
         shaderDefaultsWritten();
         loadDefaultsWritten();
         vehicleZonesMatchStock();
@@ -141,6 +142,13 @@ final class LoadTest {
         ShaderReuse.resetForTest();
     }
 
+    /** The real path: the bound handle on ShaderManager.instance (no GL: an empty list) misses, so stock would build the shader. */
+    static void shaderRealLookupMisses() {
+        ShaderReuse.resetForTest();
+        assert ShaderReuse.lookup.apply(new Object[] {"pzbutterNoSuchShader", true, false}) == null;
+        ShaderReuse.resetForTest();
+    }
+
     static void shaderManagerHandleBinds() {
         assert Game.method(zombie.core.skinnedmodel.shader.ShaderManager.class, "getShader",
             java.lang.invoke.MethodType.methodType(zombie.core.skinnedmodel.shader.Shader.class, String.class, boolean.class, boolean.class)) != null;
@@ -158,7 +166,7 @@ final class LoadTest {
 
     static final class VZone {
         String name, type;
-        int x, y, w, h;
+        int x, y, w, h, id;
         VZone(String name, String type, int x, int y, int w, int h) {
             this.name = name; this.type = type; this.x = x; this.y = y; this.w = w; this.h = h;
         }
@@ -205,13 +213,14 @@ final class LoadTest {
                 int h = r.nextInt(4) + 1;
                 VZone z1 = new VZone(names[r.nextInt(names.length)], types[r.nextInt(types.length)], x, y, w, h);
                 VZone z2 = new VZone(z1.name, z1.type, z1.x, z1.y, z1.w, z1.h);
+                z1.id = i; z2.id = i;   // the same zone in both lists: debug lines must name the same removed and kept zones
                 a.add(z1);
                 b.add(z2);
             }
             java.util.ArrayList<String> da = new java.util.ArrayList<>();
             java.util.ArrayList<String> db = new java.util.ArrayList<>();
-            java.util.function.BiConsumer<VZone, VZone> ca = (x1, y1) -> da.add(x1.x + "," + x1.y + "->" + y1.x + "," + y1.y);
-            java.util.function.BiConsumer<VZone, VZone> cb = (x1, y1) -> db.add(x1.x + "," + x1.y + "->" + y1.x + "," + y1.y);
+            java.util.function.BiConsumer<VZone, VZone> ca = (x1, y1) -> da.add(x1.id + "->" + y1.id);
+            java.util.function.BiConsumer<VZone, VZone> cb = (x1, y1) -> db.add(x1.id + "->" + y1.id);
             stockDedupe(a, ca);
             VehicleZones.guard.on = true;
             VehicleZones.dedupe(b,
@@ -221,7 +230,7 @@ final class LoadTest {
             assert a.size() == b.size() : "size mismatch test " + t;
             for (int i = 0; i < a.size(); i++) {
                 VZone x1 = a.get(i), y1 = b.get(i);
-                assert x1.name.equals(y1.name) && x1.type.equals(y1.type) && x1.x == y1.x && x1.y == y1.y && x1.w == y1.w && x1.h == y1.h : "elem mismatch";
+                assert x1.id == y1.id : "elem mismatch";   // the same survivors, in the same order
             }
             assert da.equals(db) : "debug sequence mismatch";
             VehicleZones.guard.on = false;
@@ -234,10 +243,8 @@ final class LoadTest {
         java.util.ArrayList<VZone> zones = new java.util.ArrayList<>();
         zones.add(new VZone("a", "car", 1, 1, 2, 2));
         zones.add(new VZone("b", "car", 1, 1, 2, 2));
-        java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
         VehicleZones.dedupe(zones, z -> (((long) z.x) << 32) | (z.y & 0xffffffffL), z -> (((long) z.h) << 32) | (z.w & 0xffffffffL), null);
-        assert calls.get() == 0;
-        assert zones.size() == 1;
+        assert zones.size() == 1 && zones.get(0).name.equals("a");   // the first is kept
         VehicleZones.guard.on = false;
         VehicleZones.resetForTest();
     }

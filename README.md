@@ -129,7 +129,7 @@ The mod creates `~/Zomboid/PZButter.properties` on first start and reads it once
 | `skipIdChecks` | The building and room ID consistency walks the game runs on every continued save run only in debug; outside debug their findings only went to the debug log. Off by default. |
 | `noLoadFade` | Changes what you see: no 350 ms fade to black between the finished load and the first game frame. Not on the first new game of a session. Off by default. |
 | `shaderCache` | A model whose shader is already built takes it without a render-thread round trip. Off by default. |
-| `loaderCpuFixes` | Vehicle zones are de-duplicated in one pass (debug string built only when vehicle debug is on). Off by default. |
+| `loaderCpuFixes` | Vehicle zones are de-duplicated in one pass (debug string built only when vehicle debug is on). With vehicle debug output on, the duplicate-zone lines are the same but name PZ Butter as their caller. Off by default. |
 | `scriptParserFast` | Large script files have their comments stripped in linear time, with the same result (the game's 6.4 MB `tileGeometry.txt`: 1.2 s to about 0.03 s at boot). Small files keep the game's own code. Off by default. |
 | `frameThreads` | Width of PZ Butter's frame worker pool for the zombie update on workers. Needs `luaWorkerGate`, and one restart after it changes. `0` or `1`: no pool, no class changes. Max `32`. Nothing uses the pool yet in this version. Off by default (`0`). |
 | `devCensus` | Diagnostic. Counts, in play, which game calls a calm zombie's update reaches, and writes `Zomboid/pzbutter/census.out` once a minute. Needs the preload (one restart). Off by default. |
