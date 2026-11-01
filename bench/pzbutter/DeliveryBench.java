@@ -132,7 +132,10 @@ public final class DeliveryBench {
             case "batch" -> batch();
             case "calm" -> calm();
             case "latch" -> latch();
-            default -> throw new IllegalArgumentException("parker | stamps | learner | widths | rawget | uislice | readset | soundgate | cutaway | splash | edge | plan | gate | luagate | replay | luafiles | dedupe | scenecull | simlod | spotted | cullsort | statsget | vbosize | vboslots | glrecord | scratch | batch | calm | latch");
+            case "pacing" -> pacing();
+            case "vehanim" -> vehanim();
+            case "recalcmemo" -> recalcmemo();
+            default -> throw new IllegalArgumentException("... | pacing | vehanim | recalcmemo");
         }
     }
 
@@ -1695,5 +1698,107 @@ public final class DeliveryBench {
         System.out.printf("latch worker tasks: %d%n", workerTasks);
         System.out.printf("latch direct (non-worker): %6.2f ns/record%n", directNs);
         LuaGate.resetForTest();
+    }
+
+    static void pacing() {
+        zombie.util.CappedConcurrentQueue<Object> q = new zombie.util.CappedConcurrentQueue<>(64);   // the real queue type: size() is part of the decision
+        for (int k = 0; k < 10; k++) q.add(new Object());
+        FrameClock.frameStartNs = 1L;
+        // guard off
+        ChunkPacer.resetForTest();
+        ChunkPacer.inUpdate = true;
+        ChunkPacer.enterThread = Thread.currentThread();
+        ChunkPacer.queueRef = q;
+        int n = 10_000_000;
+        long t0 = System.nanoTime();
+        int hits = 0;
+        for (int i = 0; i < n; i++) if (ChunkPacer.onPoll(q)) hits++;
+        long dt0 = System.nanoTime() - t0;
+        // foreign queue
+        Object foreign = new Object();
+        t0 = System.nanoTime();
+        int fHits = 0;
+        for (int i = 0; i < n; i++) if (ChunkPacer.onPoll(foreign)) fHits++;
+        long dt1 = System.nanoTime() - t0;
+        // deciding hold
+        ChunkPacer.resetForTest();
+        ChunkPacer.guard.on = true;
+        ChunkPacer.divisor = 8;
+        ChunkPacer.budgetNs = 1_500_000L;
+        // no maxWait in this build
+        ChunkPacer.inUpdate = true;
+        ChunkPacer.enterThread = Thread.currentThread();
+        ChunkPacer.queueRef = q;
+        ChunkPacer.finishedThisFrame = 1;
+        ChunkPacer.meanJoinNs = 600_000L;
+        t0 = System.nanoTime();
+        int dHits = 0;
+        for (int i = 0; i < n; i++) if (ChunkPacer.onPoll(q)) dHits++;
+        long dt2 = System.nanoTime() - t0;
+        System.out.printf("pacing guard off: %6.2f ns/call, foreign: %6.2f ns/call, deciding: %6.2f ns/call (hits %d/%d/%d)%n",
+            dt0 / (double) n, dt1 / (double) n, dt2 / (double) n, hits, fHits, dHits);
+    }
+
+    static void vehanim() {
+        VehicleFixes.resetForTest();
+        VehicleFixes.animGuard.on = false;
+        Object p = new Object(), t = new Object(), s = new Object();
+        FrameClock.frameNo = 1;
+        int n = 10_000_000;
+        long t0 = System.nanoTime();
+        int hits = 0;
+        for (int i = 0; i < n; i++) if (VehiclePatches.onAnimUpdate(p)) hits++;
+        long dt0 = System.nanoTime() - t0;
+
+        VehicleFixes.resetForTest();
+        VehicleFixes.animGuard.on = true;
+        VehicleFixes.currentPartPlayer = p;
+        VehicleFixes.currentPartThread = Thread.currentThread();
+        FrameClock.frameNo = 1;
+        VehicleFixes.decide(p, t, s, 1f, 2f, 3f, 1);
+        FrameClock.frameNo = 2;
+        VehicleFixes.decide(p, t, s, 1f, 2f, 3f, 2);
+        FrameClock.frameNo = 3;
+        t0 = System.nanoTime();
+        int dHits = 0;
+        for (int i = 0; i < n; i++) if (VehicleFixes.decide(p, t, s, 1f, 2f, 3f, 3)) dHits++;   // warm state, identical values: skip path
+        long dt1 = System.nanoTime() - t0;
+
+        System.out.printf("vehanim shim, guard off: %6.2f ns/call; decide() warm: %6.2f ns/call (skips %d/%d)%n",
+            dt0 / (double) n, dt1 / (double) n, hits, dHits);
+        VehicleFixes.resetForTest();
+    }
+
+    static void recalcmemo() {
+        Object[] sq = new Object[600];
+        for (int i = 0; i < sq.length; i++) sq[i] = new Object();
+        int calls = sq.length * 15, joins = 200, runs = 7;
+        double[] off = new double[runs], on = new double[runs];
+        int skips = 0;
+        RecalcMemo.resetForTest();
+        for (int r = -3; r < runs; r++) {   // 3 warm-up runs
+            RecalcMemo.guard.on = false;
+            long t0 = System.nanoTime();
+            for (int k = 0; k < joins; k++)
+                for (int i = 0; i < sq.length; i++)
+                    for (int j = 0; j < 15; j++)
+                        if (StreamPatches.RecalcProperties.enter(sq[i])) skips++;
+            long d0 = System.nanoTime() - t0;
+            RecalcMemo.guard.on = true;
+            int s = 0;
+            t0 = System.nanoTime();
+            for (int k = 0; k < joins; k++) {   // one window per join: 600 squares, each recalculated 15 times
+                RecalcMemo.enter();
+                for (int i = 0; i < sq.length; i++)
+                    for (int j = 0; j < 15; j++)
+                        if (RecalcMemo.skip(sq[i], 5L)) s++;
+                RecalcMemo.exit();
+            }
+            long d1 = System.nanoTime() - t0;
+            if (r >= 0) { off[r] = d0 / (double) (joins * calls); on[r] = d1 / (double) (joins * calls); skips += s; }
+        }
+        RecalcMemo.resetForTest();
+        System.out.printf("recalcmemo shim, guard off: %6.2f ns/call; window (enter, 600 squares x 15, exit): %6.2f ns/call, median of %d (skips %d of %d)%n",
+            median(off), median(on), runs, skips, runs * joins * calls);
     }
 }

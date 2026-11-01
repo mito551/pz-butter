@@ -84,6 +84,33 @@ final class Preload {
                     try { Census.installFailure = String.valueOf(t); } catch (Throwable ignored) {}
                 }
             }
+            if (Settings.enabled && Settings.flag("wake")) {
+                if (loaded.contains("zombie.iso.WorldStreamer")) {
+                    try (var log = new LogSink(new File(System.getProperty("user.home"), "Zomboid/PZButter/preload.log"), 1 << 20)) {
+                        log.begin(System.currentTimeMillis()).text("wake skipped WorldStreamer loaded before premain").end(System.currentTimeMillis());
+                        log.flushBuf();
+                    } catch (Throwable ignored) {}
+                    StreamWake.transformState = false;
+                    StreamWake.transformReason = "WorldStreamer loaded before premain";
+                } else {
+                    try {
+                        inst.addTransformer(new WakeTransform(), false);
+                        StreamWake.transformState = true;
+                        StreamWake.transformReason = "";
+                        try (var log = new LogSink(new File(System.getProperty("user.home"), "Zomboid/PZButter/preload.log"), 1 << 20)) {
+                            log.begin(System.currentTimeMillis()).text("wake transform installed").end(System.currentTimeMillis());
+                            log.flushBuf();
+                        } catch (Throwable ignored) {}
+                    } catch (Throwable t) {
+                        StreamWake.transformState = false;
+                        StreamWake.transformReason = String.valueOf(t);
+                        try (var log = new LogSink(new File(System.getProperty("user.home"), "Zomboid/PZButter/preload.log"), 1 << 20)) {
+                            log.begin(System.currentTimeMillis()).text("wakeTransform " + t).end(System.currentTimeMillis());
+                            log.flushBuf();
+                        } catch (Throwable ignored) {}
+                    }
+                }
+            }
             var list = WorkerList.load(gameRevision());
             var d = decide(gameRevision(), list, Settings.num("frameThreads", 0, 0, 32), Settings.flag("luaWorkerGate"),
                     Settings.enabled, ManagementFactory.getRuntimeMXBean().getInputArguments(), inst != null, loaded);

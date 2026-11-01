@@ -42,7 +42,8 @@ final class ModCompat {
 
     /** The classes whose nested classes are PZ Butter's holders. */
     static final Class<?>[] OUTERS = {Patches.class, DeliveryPatches.class, LuaPatches.class, UiPatches.class, MapPatches.class,
-        SoundPatches.class, WorldPatches.class, ChunkPatches.class, LogPatches.class, ZombiePatches.class, GpuPatches.class, CensusPatches.class, LoadPatches.class};
+        SoundPatches.class, WorldPatches.class, ChunkPatches.class, LogPatches.class, ZombiePatches.class, GpuPatches.class, CensusPatches.class, LoadPatches.class,
+        VehiclePatches.class, StreamPatches.class, CameraPatches.class, ClockPatches.class};
 
     private static final String PATCH = "Lme/zed_0xff/zombie_buddy/Patch;";
     private static final String ON_ENTER = "Lme/zed_0xff/zombie_buddy/Patch$OnEnter;";
@@ -131,6 +132,20 @@ final class ModCompat {
         Map.entry("ZombiePatches.UpdateLos", k("playerLosFast", "entityTiming")),
         Map.entry("ZombiePatches.CullSortHook", k("zombieCullSortFast")),
         Map.entry("ZombiePatches.StatsGet", k("statsNoBox")),
+        Map.entry("VehiclePatches.GloveBox", k("gloveBoxFix")),
+        Map.entry("VehiclePatches.UpdateAnimationPlayer", k("vehicleAnimIdleSkip")),
+        Map.entry("VehiclePatches.AnimationUpdate", k("vehicleAnimIdleSkip")),
+        Map.entry("StreamPatches.ChunkUpdate", k("chunkHandoffDivisor", "chunkHandoffFrameBudgetUs")),
+        Map.entry("StreamPatches.Join", k("chunkHandoffDivisor", "chunkHandoffFrameBudgetUs")),
+        Map.entry("StreamPatches.Poll", k("chunkHandoffDivisor", "chunkHandoffFrameBudgetUs")),
+        Map.entry("StreamPatches.HotSaveInit", k("hotsaveIntervalSec")),
+        Map.entry("StreamPatches.RecalcMemoWindow", k("handoffRecalcFast")),
+        Map.entry("StreamPatches.RecalcProperties", k("handoffRecalcFast")),
+        Map.entry("StreamPatches.WakeJobAdded", k("wake", "streamTiming")),
+        Map.entry("StreamPatches.WakePickup", k("streamTiming")),
+        Map.entry("CameraPatches.Update", k("driveLookSmooth", "cameraScreenPixels", "driveTrace")),
+        Map.entry("CameraPatches.Center", k("driveLookSmooth")),
+        Map.entry("ClockPatches.FrameStep", k("frameClockSmooth")),
         Map.entry("ZombiePatches.SchedStart", k("entityTiming")),
         Map.entry("ZombiePatches.SchedUpdate", k("entityTiming")),
         Map.entry("ZombiePatches.SchedPost", k("entityTiming")),

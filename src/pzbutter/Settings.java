@@ -282,7 +282,44 @@ public final class Settings {
       + "# skipIdChecks: the building and room ID consistency walks on every continued save run only in debug (they only report mismatches to the debug log).\n"
       + "skipIdChecks=false\n"
       + "# noLoadFade: no 350 ms fade to black between the finished load and the first game frame (not on the first new game of a session).\n"
-      + "noLoadFade=false\n";
+      + "noLoadFade=false\n"
+      + "#\n"
+      + "# Vehicles (Plan 10).\n"
+      + "# gloveBoxFix: a vehicle whose GloveBox part has no item container no longer throws when adding a key.\n"
+      + "gloveBoxFix=false\n"
+      + "#\n"
+      + "# vehicleAnimIdleSkip: parked car parts skip unchanged animation updates.\n"
+      + "vehicleAnimIdleSkip=false\n"+ "#\n"
++ "# Chunk hand-off pacing (Plan 10a).\n"
++ "# chunkHandoffDivisor: joins per frame capped by 1 + queued/divisor (0 = off).\n"
++ "chunkHandoffDivisor=0\n"
++ "# chunkHandoffFrameBudgetUs: budget in microseconds for joins this frame (0 = off).\n"
++ "chunkHandoffFrameBudgetUs=0\n"
++ "#\n"
++ "# handoffRecalcFast: a joining chunk's squares recompute their properties once per join.\n"
++ "handoffRecalcFast=true\n"
++ "#\n"
++ "# driveLookSmooth: the camera look-ahead (driving, aiming, panning) moves by elapsed time above the frame cap the game assumes; models, trees, shadows and overlays follow it in fractional pixels, the ground keeps whole pixels.\n"
++ "driveLookSmooth=false\n"
++ "# cameraScreenPixels: zoomed in, the look-ahead that models, trees, shadows and overlays follow moves in whole screen pixels; the ground keeps whole offscreen pixels.\n"
++ "cameraScreenPixels=false\n"
++ "#\n"
++ "# Streamer wake (Plan 10b).\n"
++ "# wake: the chunk streamer wakes when a chunk job is queued instead of sleeping through it.\n"
++ "wake=true\n"
++ "# streamTiming: records chunk streamer add-to-pickup latency (diagnostic).\n"
++ "streamTiming=false\n"
++ "#\n"
++ "# driveTrace: diagnostic; writes a per-frame CSV of car, player and camera values while driving.\n"
++ "driveTrace=false\n"
++ "#\n"
++ "# Frame clock (Plan 10b).\n"
++ "# frameClockSmooth: each frame's simulated time is a whole number of frame periods; the remainder carries. Changes simulation timing.\n"
++ "frameClockSmooth=false\n"
++ "#\n"
++ "# Hot save (Plan 10a). Stock queues hot saves at most once a second.\n"
++ "# hotsaveIntervalSec: hot-save interval in seconds (0 = stock 1 s; 30 = 30 s). A crash can lose at least that many seconds of the world, and several times that when many chunks changed (the game writes at most about 10 chunks per hot save). Saving and quitting always write everything.\n"
++ "hotsaveIntervalSec=0\n";
 
     public static volatile boolean enabled;
     public static volatile boolean frameLog;
@@ -384,7 +421,8 @@ public final class Settings {
         "luaInternConstants", "luaSkipEmpty", "uiVerify", "uiRetainedMods", "uiTickStagger", "textWidthCache", "uiLuaFast", "mapStreetMemo", "mapStreetCache", "mapVisitedFast",   // these two only act with vsync on
         "audioLimiterStereoFold",
         "persistentVboFrameSync",   // acts only with persistentVbo (Plan 9)
-        "driveTreeCutaway", "glassTilesPerFrame", "translucentLightsPerFrame");   // stock-equivalent values (Plan 6), not passed features
+        "driveTreeCutaway", "glassTilesPerFrame", "translucentLightsPerFrame",   // stock-equivalent values (Plan 6), not passed features
+        "wake", "handoffRecalcFast");   // Plan 10b, on after the in-game check
 
     public static boolean flag(String key) {
         if (!enabled) return false;
