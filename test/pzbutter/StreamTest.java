@@ -28,7 +28,86 @@ final class StreamTest {
         hotsaveDefaultsWritten();
         recalcTests();
         cameraTests();
+        clockTests();
         wakeTests();
+    }
+
+    static void clockTests() throws Throwable {
+        gridPeriodRules();
+        snapKeepsRealTime();
+        snapSteadyAtGrid();
+        snapKeepsHitch();
+        snapNoGridIsStock();
+        clockOffIsStock();
+        clockDefaultsWritten();
+    }
+
+    static void gridPeriodRules() {
+        assert FrameGrid.periodNs(true, false, 144, false, 60) == 6_944_444L;   // vsync without VRR: the refresh grid
+        assert FrameGrid.periodNs(false, false, 144, false, 120) == 8_333_333L; // capped
+        assert FrameGrid.periodNs(false, false, 144, true, 120) == 0L;          // uncapped, no vsync: stock
+        assert FrameGrid.periodNs(true, true, 144, false, 120) == 8_333_333L;   // VRR: frames follow the cap
+    }
+
+    static void snapKeepsRealTime() {
+        FrameGrid.resetForTest();
+        long p = 8_333_333L;
+        double grid = 60.0 * p / 1e9;
+        for (double[] pat : new double[][] {{0.007, 0.00967}, {0.009, 0.010}}) {   // mean at the grid, and above it
+        FrameGrid.resetForTest();
+        double stockSum = 0, snapSum = 0;
+        for (int i = 0; i < 1000; i++) {
+            float stock = (float) (60.0 * pat[i & 1]);
+            float out = FrameGrid.snap(stock, p);
+            double k = out / grid;
+            assert Math.abs(k - Math.rint(k)) < 1e-4 && Math.rint(k) >= 1 : out;   // a whole number of periods
+            stockSum += stock / 60.0;
+            snapSum += out / 60.0;
+            assert Math.abs(snapSum - stockSum) <= p / 1e9 + 1e-6 : i;            // never more than one period off real time
+        }
+        }
+        FrameGrid.resetForTest();
+    }
+
+    static void snapSteadyAtGrid() {
+        FrameGrid.resetForTest();
+        long p = 8_333_333L;
+        float g = (float) (60.0 * p / 1e9);
+        for (int i = 0; i < 100; i++) assert Math.abs(FrameGrid.snap(g, p) - g) < 1e-5f;
+        FrameGrid.resetForTest();
+    }
+
+    static void snapKeepsHitch() {
+        FrameGrid.resetForTest();
+        long p = 8_333_333L;
+        FrameGrid.snap(0.7f, p);                    // leaves a carry
+        assert FrameGrid.carry != 0;
+        assert FrameGrid.snap(5.0f, p) == 5.0f;      // stock's cap is kept
+        assert FrameGrid.carry == 0;                 // and the carry is reset
+        FrameGrid.resetForTest();
+    }
+
+    static void snapNoGridIsStock() {
+        FrameGrid.resetForTest();
+        assert FrameGrid.snap(0.6123f, 0) == 0.6123f;
+        FrameGrid.resetForTest();
+    }
+
+    static void clockOffIsStock() {
+        ClockPatches.resetForTest();
+        ClockPatches.onExit(8_000_000L);             // guard off: returns before binding or touching GameTime
+        assert FrameGrid.carry == 0 && FrameGrid.ringCount == 0;
+        ClockPatches.resetForTest();
+    }
+
+    static void clockDefaultsWritten() {
+        java.io.File f = SelfTest.tmp("clock.properties");
+        f.delete();
+        Settings.load(f);
+        String t = "";
+        try { t = java.nio.file.Files.readString(f.toPath()); }
+        catch (java.io.IOException e) { throw new RuntimeException(e); }
+        assert t.contains("\nframeClockSmooth=false\n") : t;
     }
 
     static void cameraTests() throws Throwable {
@@ -400,7 +479,7 @@ final class StreamTest {
         String t = "";
         try { t = java.nio.file.Files.readString(f.toPath()); }
         catch (java.io.IOException e) { throw new RuntimeException(e); }
-        assert t.contains("\nhandoffRecalcFast=false\n") : t;
+        assert t.contains("\nhandoffRecalcFast=true\n") : t;
     }
 
     static void gloveBoxSkipsOnlyNullContainer() {
@@ -425,7 +504,7 @@ final class StreamTest {
         try { t = java.nio.file.Files.readString(f.toPath()); }
         catch (java.io.IOException e) { throw new RuntimeException(e); }
         assert t.contains("\ngloveBoxFix=false\n") : t;
-        assert t.contains("\nhandoffRecalcFast=false\n") : t;
+        assert t.contains("\nhandoffRecalcFast=true\n") : t;
         assert t.contains("\ndriveLookSmooth=false\n") : t;
         assert t.contains("\ncameraScreenPixels=false\n") : t;
     }
@@ -707,7 +786,7 @@ final class StreamTest {
         String t = "";
         try { t = java.nio.file.Files.readString(f.toPath()); }
         catch (java.io.IOException e) { throw new RuntimeException(e); }
-        assert t.contains("\nwake=false\n") : t;
+        assert t.contains("\nwake=true\n") : t;
         assert t.contains("\nstreamTiming=false\n") : t;
     }
 
