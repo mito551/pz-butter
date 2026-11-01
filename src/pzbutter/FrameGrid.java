@@ -57,8 +57,7 @@ public final class FrameGrid {
             if (!quantized && meanDt > 1.03 * periodNs / 1e9) {
                 carry = 0.0;
                 belowCap++;
-                stockPrev = stockMultiplier;
-                snapPrev = stockMultiplier;
+                record(stockMultiplier, stockMultiplier);   // the minute line covers every frame, kept or snapped
                 return stockMultiplier;
             }
         }
@@ -80,23 +79,7 @@ public final class FrameGrid {
         float result = (float) (60.0 * n * P);
         if (result > 5.0f) result = 5.0f;
 
-        // rings
-        if (stockPrev >= 0f && stockPrev != 0f) {
-            float rel = Math.abs((stockMultiplier - stockPrev) / stockPrev);
-            stockRel[ringPos] = rel;
-        } else {
-            stockRel[ringPos] = 0f;
-        }
-        if (snapPrev >= 0f && snapPrev != 0f) {
-            float rel = Math.abs((result - snapPrev) / snapPrev);
-            snapRel[ringPos] = rel;
-        } else {
-            snapRel[ringPos] = 0f;
-        }
-        ringPos = (ringPos + 1) % RING;
-        if (ringCount < RING) ringCount++;
-        stockPrev = stockMultiplier;
-        snapPrev = result;
+        record(stockMultiplier, result);
         float c = (float) (Math.abs(carry) * 1000.0);
         if (c > maxCarryMs) maxCarryMs = c;
         return result;
@@ -118,6 +101,15 @@ public final class FrameGrid {
         belowCap = 0;
         maxCarryMs = 0;
         ringCount = 0;
+    }
+
+    private static void record(float stock, float out) {
+        stockRel[ringPos] = stockPrev > 0f ? Math.abs((stock - stockPrev) / stockPrev) : 0f;
+        snapRel[ringPos] = snapPrev > 0f ? Math.abs((out - snapPrev) / snapPrev) : 0f;
+        ringPos = (ringPos + 1) % RING;
+        if (ringCount < RING) ringCount++;
+        stockPrev = stock;
+        snapPrev = out;
     }
 
     static float[] ringCopy(float[] src, int n) {
