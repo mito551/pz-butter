@@ -479,7 +479,7 @@ final class StreamTest {
         String t = "";
         try { t = java.nio.file.Files.readString(f.toPath()); }
         catch (java.io.IOException e) { throw new RuntimeException(e); }
-        assert t.contains("\nhandoffRecalcFast=false\n") : t;
+        assert t.contains("\nhandoffRecalcFast=true\n") : t;
     }
 
     static void gloveBoxSkipsOnlyNullContainer() {
@@ -504,7 +504,7 @@ final class StreamTest {
         try { t = java.nio.file.Files.readString(f.toPath()); }
         catch (java.io.IOException e) { throw new RuntimeException(e); }
         assert t.contains("\ngloveBoxFix=false\n") : t;
-        assert t.contains("\nhandoffRecalcFast=false\n") : t;
+        assert t.contains("\nhandoffRecalcFast=true\n") : t;
         assert t.contains("\ndriveLookSmooth=false\n") : t;
         assert t.contains("\ncameraScreenPixels=false\n") : t;
     }
@@ -786,7 +786,7 @@ final class StreamTest {
         String t = "";
         try { t = java.nio.file.Files.readString(f.toPath()); }
         catch (java.io.IOException e) { throw new RuntimeException(e); }
-        assert t.contains("\nwake=false\n") : t;
+        assert t.contains("\nwake=true\n") : t;
         assert t.contains("\nstreamTiming=false\n") : t;
     }
 
