@@ -80,8 +80,11 @@ public final class LoadPatches {
     }
 
     /** Script comments: true skips stock. */
+    /** Inputs below this run stock: its replace loop only goes quadratic on large commented files (tileGeometry.txt: 6.4 MB, 21,523 comments, 1.2 s vs 15-45 ms). */
+    static final int STRIP_MIN_CHARS = 1 << 16;
+
     public static String onScriptComments(String s) {
-        if (!ScriptComments.guard.on) return null;
+        if (!ScriptComments.guard.on || s == null || s.length() < STRIP_MIN_CHARS) return null;
         try { return ScriptComments.strip(s); }
         catch (Throwable t) { ScriptComments.guard.fail(t); return null; }
     }

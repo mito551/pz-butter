@@ -293,12 +293,14 @@ final class LoadTest {
     static void stripCommentsMatchesReference() {
         java.util.Random r = new java.util.Random(42);
         char[] alpha = {'/', '*', 'a', '\n', ' '};
-        for (int t = 0; t < 10000; t++) {
-            int len = r.nextInt(61);
+        for (int t = 0; t < 10500; t++) {
+            int len = t < 10000 ? r.nextInt(61) : r.nextInt(3001);   // short ones, then long ones (many suffix chunks)
             StringBuilder sb = new StringBuilder();
             for (int i = 0; i < len; i++) sb.append(alpha[r.nextInt(alpha.length)]);
             String s = sb.toString();
-            assert ScriptComments.strip(s).equals(ScriptCommentsRef.stock(s)) : "mismatch " + t;
+            String ref = ScriptCommentsRef.stock(s);
+            assert ScriptComments.strip(s).equals(ref) : "mismatch " + t + ": " + s;
+            assert ref.equals(zombie.scripting.ScriptParser.stripComments(s)) : "transcription differs from stock " + t;
         }
     }
 
@@ -316,6 +318,14 @@ final class LoadTest {
             });
         } catch (java.io.IOException e) { throw new RuntimeException(e); }
         assert count.get() > 0;
+        try {   // the one large commented file the boot spends its time on (TileGeometryFile.parseFile)
+            String geo = java.nio.file.Files.readString(java.nio.file.Paths.get(
+                "/home/mitori/Sonic/SteamLibrary/steamapps/common/ProjectZomboid/projectzomboid/media/tileGeometry.txt"));
+            assert geo.length() >= LoadPatches.STRIP_MIN_CHARS;
+            assert ScriptComments.strip(geo).equals(zombie.scripting.ScriptParser.stripComments(geo)) : "tileGeometry.txt";
+            assert LoadPatches.onScriptComments(geo) != null;          // large: ours
+            assert LoadPatches.onScriptComments("a/*b*/c") == null;    // small: stock
+        } catch (java.io.IOException e) { throw new RuntimeException(e); }
         ScriptComments.guard.on = false;
         ScriptComments.resetForTest();
     }
