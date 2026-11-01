@@ -252,6 +252,7 @@ final class StreamTest {
         memoOtherThreadCannotTakeWindow();
         memoOffIsStock();
         memoDefaultsWritten();
+        streamLinesHaveOwnGate();
     }
 
     static void memoSkipsSecondRecalc() {
@@ -372,6 +373,24 @@ final class StreamTest {
         assert RecalcMemo.recalcRun == 0 && RecalcMemo.recalcSkipped == 0;
         RecalcMemo.exit();
         RecalcMemo.resetForTest();
+    }
+
+    static void streamLinesHaveOwnGate() {
+        RecalcMemo.resetForTest();
+        boolean et = EntityTiming.guard.on, zs = ZombieStats.guard.on;
+        Thread mt = FrameClock.mainThread;
+        EntityTiming.guard.on = false;
+        ZombieStats.guard.on = false;
+        FrameClock.mainThread = Thread.currentThread();
+        StreamPatches.streamStarted = false;
+        RecalcMemo.guard.on = true;   // only a streaming key on
+        ZombiePatches.onFrameEnd();
+        assert StreamPatches.streamStarted;   // reached StreamPatches.tick without entityTiming or zombieStats
+        StreamPatches.streamStarted = false;
+        RecalcMemo.resetForTest();
+        EntityTiming.guard.on = et;
+        ZombieStats.guard.on = zs;
+        FrameClock.mainThread = mt;
     }
 
     static void memoDefaultsWritten() {
