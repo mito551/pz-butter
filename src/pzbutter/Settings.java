@@ -285,6 +285,8 @@ public final class Settings {
       + "noLoadFade=false\n"
       + "# shaderCache: a model whose shader is already built takes it without a render-thread round trip.\n"
       + "shaderCache=false\n"
+      + "# loaderCpuFixes: vehicle zones are de-duplicated in one pass (debug string built only when vehicle debug is on).\n"
+      + "loaderCpuFixes=false\n"
       + "#\n"
       + "# Vehicles (Plan 10).\n"
       + "# gloveBoxFix: a vehicle whose GloveBox part has no item container no longer throws when adding a key.\n"

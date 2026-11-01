@@ -49,4 +49,33 @@ public final class LoadPatches {
             catch (Throwable t) { ShaderReuse.guard.fail(t); return false; }
         }
     }
+
+    /** Vehicle zones: true skips stock. */
+    public static boolean onVehicleZones(Object self) {
+        if (!VehicleZones.guard.on) return false;
+        try {
+            if (!(self instanceof zombie.iso.IsoMetaGrid grid)) return false;
+            java.util.List<zombie.iso.zones.VehicleZone> zones = grid.vehiclesZones;
+            java.util.function.BiConsumer<zombie.iso.zones.VehicleZone, zombie.iso.zones.VehicleZone> debug = null;
+            if (zombie.debug.DebugType.Vehicle.isEnabled()) {
+                debug = (removed, kept) -> zombie.debug.DebugType.Vehicle.debugln(
+                    "checkVehiclesZones: ERROR! Zone '" + removed.name + "':'" + removed.type + "' (" + removed.x + ", " + removed.y
+                        + ") duplicate with Zone '" + kept.name + "':'" + kept.type + "' (" + kept.x + ", " + kept.y + ")");
+            }
+            VehicleZones.dedupe(zones,
+                z -> (((long) z.x) << 32) | (z.y & 0xffffffffL),
+                z -> (((long) z.h) << 32) | (z.w & 0xffffffffL),
+                debug);
+            return true;
+        } catch (Throwable t) { VehicleZones.guard.fail(t); return false; }
+    }
+
+    @Patch(className = "zombie.iso.IsoMetaGrid", methodName = "checkVehiclesZones")
+    public static class CheckVehiclesZones {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This Object self) {
+            try { return LoadPatches.onVehicleZones(self); }
+            catch (Throwable t) { VehicleZones.guard.fail(t); return false; }
+        }
+    }
 }

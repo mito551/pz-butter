@@ -18,6 +18,10 @@ final class LoadTest {
         shaderManagerHandleBinds();
         shaderDefaultsWritten();
         loadDefaultsWritten();
+        vehicleZonesMatchStock();
+        vehicleZonesNoDebugNoStrings();
+        loaderCpuFixesOffIsStock();
+        loaderCpuFixesDefaultsWritten();
     }
 
     static void idChecksSkippedOnlyOutsideDebug() {
@@ -87,6 +91,7 @@ final class LoadTest {
         assert Settings.render(new java.util.Properties()).contains("\nnoLoadFade=false\n");
         assert !Settings.render(new java.util.Properties()).contains("noLoadingScreen");
         assert Settings.render(new java.util.Properties()).contains("\nshaderCache=false\n");
+        assert Settings.render(new java.util.Properties()).contains("\nloaderCpuFixes=false\n");
     }
 
     static class FakeModel { public boolean isStatic; public Object effect; }
@@ -145,5 +150,107 @@ final class LoadTest {
         try { t = java.nio.file.Files.readString(f.toPath()); }
         catch (java.io.IOException e) { throw new RuntimeException(e); }
         assert t.contains("\nshaderCache=false\n") : t;
+    }
+
+    static final class VZone {
+        String name, type;
+        int x, y, w, h;
+        VZone(String name, String type, int x, int y, int w, int h) {
+            this.name = name; this.type = type; this.x = x; this.y = y; this.w = w; this.h = h;
+        }
+        int getX() { return x; }
+        int getY() { return y; }
+    }
+
+    static void stockDedupe(java.util.List<VZone> zones, java.util.function.BiConsumer<VZone, VZone> debug) {
+        int i = 0;
+        while (true) {
+            if (i >= zones.size()) break;
+            boolean isUnique = true;
+            int k = 0;
+            while (k < i) {
+                VZone a = zones.get(i);
+                VZone b = zones.get(k);
+                if (a.getX() == b.getX() && a.getY() == b.getY() && a.h == b.h && a.w == b.w) {
+                    isUnique = false;
+                    if (debug != null) debug.accept(a, b);
+                    break;
+                }
+                k++;
+            }
+            if (isUnique) {
+                i++;
+            } else {
+                zones.remove(i);
+            }
+        }
+    }
+
+    static void vehicleZonesMatchStock() {
+        java.util.Random r = new java.util.Random(12345);
+        String[] names = {"a", "b", "c"};
+        String[] types = {"car", "trailer"};
+        for (int t = 0; t < 200; t++) {
+            int n = r.nextInt(301);
+            java.util.ArrayList<VZone> a = new java.util.ArrayList<>();
+            java.util.ArrayList<VZone> b = new java.util.ArrayList<>();
+            for (int i = 0; i < n; i++) {
+                int x = r.nextInt(6);
+                int y = r.nextInt(6);
+                int w = r.nextInt(4) + 1;
+                int h = r.nextInt(4) + 1;
+                VZone z1 = new VZone(names[r.nextInt(names.length)], types[r.nextInt(types.length)], x, y, w, h);
+                VZone z2 = new VZone(z1.name, z1.type, z1.x, z1.y, z1.w, z1.h);
+                a.add(z1);
+                b.add(z2);
+            }
+            java.util.ArrayList<String> da = new java.util.ArrayList<>();
+            java.util.ArrayList<String> db = new java.util.ArrayList<>();
+            java.util.function.BiConsumer<VZone, VZone> ca = (x1, y1) -> da.add(x1.x + "," + x1.y + "->" + y1.x + "," + y1.y);
+            java.util.function.BiConsumer<VZone, VZone> cb = (x1, y1) -> db.add(x1.x + "," + x1.y + "->" + y1.x + "," + y1.y);
+            stockDedupe(a, ca);
+            VehicleZones.guard.on = true;
+            VehicleZones.dedupe(b,
+                z -> (((long) z.x) << 32) | (z.y & 0xffffffffL),
+                z -> (((long) z.h) << 32) | (z.w & 0xffffffffL),
+                cb);
+            assert a.size() == b.size() : "size mismatch test " + t;
+            for (int i = 0; i < a.size(); i++) {
+                VZone x1 = a.get(i), y1 = b.get(i);
+                assert x1.name.equals(y1.name) && x1.type.equals(y1.type) && x1.x == y1.x && x1.y == y1.y && x1.w == y1.w && x1.h == y1.h : "elem mismatch";
+            }
+            assert da.equals(db) : "debug sequence mismatch";
+            VehicleZones.guard.on = false;
+        }
+        VehicleZones.resetForTest();
+    }
+
+    static void vehicleZonesNoDebugNoStrings() {
+        VehicleZones.guard.on = true;
+        java.util.ArrayList<VZone> zones = new java.util.ArrayList<>();
+        zones.add(new VZone("a", "car", 1, 1, 2, 2));
+        zones.add(new VZone("b", "car", 1, 1, 2, 2));
+        java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
+        VehicleZones.dedupe(zones, z -> (((long) z.x) << 32) | (z.y & 0xffffffffL), z -> (((long) z.h) << 32) | (z.w & 0xffffffffL), null);
+        assert calls.get() == 0;
+        assert zones.size() == 1;
+        VehicleZones.guard.on = false;
+        VehicleZones.resetForTest();
+    }
+
+    static void loaderCpuFixesOffIsStock() {
+        VehicleZones.guard.on = false;
+        assert !LoadPatches.onVehicleZones(new Object());
+        VehicleZones.resetForTest();
+    }
+
+    static void loaderCpuFixesDefaultsWritten() {
+        java.io.File f = SelfTest.tmp("vz.properties");
+        f.delete();
+        Settings.load(f);
+        String t = "";
+        try { t = java.nio.file.Files.readString(f.toPath()); }
+        catch (java.io.IOException e) { throw new RuntimeException(e); }
+        assert t.contains("\nloaderCpuFixes=false\n") : t;
     }
 }
