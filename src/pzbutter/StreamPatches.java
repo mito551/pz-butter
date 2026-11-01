@@ -10,6 +10,7 @@ public final class StreamPatches {
 
     public static void init() {
         ChunkPacer.init();
+        StreamWake.init();
         try {
             int sec = Settings.num("hotsaveIntervalSec", 0, 0, 600);
             hotsaveGuard.on = Settings.enabled && sec > 0;
@@ -42,6 +43,41 @@ public final class StreamPatches {
 
         @OnExit(suppress = Throwable.class, onThrowable = Throwable.class)
         public static void exit() { ChunkPacer.joinEnd(); }
+    }
+
+    @Patch(className = "zombie.iso.IsoChunk", methodName = "loadInMainThread")
+    public static class RecalcMemoWindow {
+        @Patch.OnEnter
+        public static void enter() { RecalcMemo.enter(); }
+
+        @OnExit(suppress = Throwable.class, onThrowable = Throwable.class)
+        public static void exit() { RecalcMemo.exit(); }
+    }
+
+    @Patch(className = "zombie.iso.IsoGridSquare", methodName = "RecalcProperties")
+    public static class RecalcProperties {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This Object self) {
+            if (!RecalcMemo.guard.on) return false;
+            try {
+                if (self instanceof zombie.iso.IsoGridSquare sq) {
+                    return RecalcMemo.skip(self, sq.getRoomID());
+                }
+            } catch (Throwable t) { RecalcMemo.guard.fail(t); }
+            return false;
+        }
+    }
+
+    @Patch(className = "zombie.iso.WorldStreamer", methodName = "addJob")
+    public static class WakeJobAdded {
+        @Patch.OnExit
+        public static void exit() { try { StreamWake.jobAdded(); } catch (Throwable t) { StreamWake.guard.fail(t); } }
+    }
+
+    @Patch(className = "zombie.iso.WorldStreamer", methodName = "DoChunkAlways")
+    public static class WakePickup {
+        @Patch.OnEnter
+        public static void enter() { try { StreamWake.pickup(); } catch (Throwable t) { StreamWake.guard.fail(t); } }
     }
 
     @Patch(className = "zombie.util.CappedConcurrentQueue", methodName = "poll")
@@ -77,7 +113,9 @@ public final class StreamPatches {
     public static void tick(long nowNs) {
         boolean pacing = ChunkPacer.guard.on;
         boolean veh = VehicleFixes.animGuard.on;
-        if (!pacing && !veh) return;
+        boolean recalc = RecalcMemo.guard.on;
+        boolean stream = StreamWake.timing || StreamWake.guard.on;
+        if (!pacing && !veh && !recalc && !stream) return;
         if (!streamStarted) {
             streamStarted = true;
             streamNextNs = nowNs + MINUTE_NS;
@@ -98,6 +136,28 @@ public final class StreamPatches {
             VehicleFixes.animStates.entrySet().removeIf(e -> f - e.getValue().seen > 1800);
             VehicleFixes.animChecked = 0;
             VehicleFixes.animSkipped = 0;
+        }
+        if (recalc) {
+            long r = RecalcMemo.recalcRun;
+            long s = RecalcMemo.recalcSkipped;
+            RecalcMemo.recalcRun = 0;
+            RecalcMemo.recalcSkipped = 0;
+            if (r + s > 0) System.out.println("[PZButter] handoff recalc: " + r + " run, " + s + " skipped");
+        }
+        if (stream) {
+            long n = StreamWake.latencyCount;
+            long sum = StreamWake.latencySumNs;
+            long max = StreamWake.latencyMaxNs;
+            StreamWake.latencyCount = 0;
+            StreamWake.latencySumNs = 0;
+            StreamWake.latencyMaxNs = 0;
+            if (n > 0) System.out.println("[PZButter] stream latency: mean " + (sum / n / 1000L) + " us, max " + (max / 1000L) + " us (" + n + " pickups)");
+        }
+        if (StreamWake.guard.on) {
+            long sl = StreamWake.sleeps, w = StreamWake.woken;
+            StreamWake.sleeps = 0;
+            StreamWake.woken = 0;
+            System.out.println("[PZButter] wake: " + sl + " streamer sleeps, " + w + " ended early by a queued job" + (StreamWake.transformState ? "" : " (transform off: " + StreamWake.transformReason + ")"));
         }
     }
 }

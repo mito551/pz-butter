@@ -57,6 +57,9 @@ public class Main {
         SoundFixes.init();
         VehiclePatches.init();
         StreamPatches.init();
+        RecalcMemo.init();
+        CameraPatches.init();
+        DriveTrace.init();
         LightChecks.init();
         GridGate.init();
         Cutaways.init();
