@@ -114,7 +114,7 @@ public final class StreamPatches {
         boolean pacing = ChunkPacer.guard.on;
         boolean veh = VehicleFixes.animGuard.on;
         boolean recalc = RecalcMemo.guard.on;
-        boolean stream = Settings.flag("streamTiming");
+        boolean stream = StreamWake.timing;
         if (!pacing && !veh && !recalc && !stream) return;
         if (!streamStarted) {
             streamStarted = true;

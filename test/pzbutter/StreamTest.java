@@ -494,13 +494,14 @@ final class StreamTest {
         VehicleFixes.resetForTest();
     }
 
-    static void wakeTests() {
+    static void wakeTests() throws Exception {
         wakeParkBounded();
         wakeReturnsOnJob();
         wakeJobBeforeSleep();
         wakeOffIsThreadSleep();
         wakeRewritesOnlySleeps();
         wakeTransformIgnoresOtherClasses();
+        streamTimingKeepsOldestAdd();
         wakeDefaultsWritten();
     }
 
@@ -558,7 +559,56 @@ final class StreamTest {
             byte[] orig = in.readAllBytes(); in.close();
             byte[] tr = WakeTransform.transform(orig);
             assert tr != null;
+            var cf = java.lang.classfile.ClassFile.of();
+            var a = cf.parse(orig); var b = cf.parse(tr);
+            assert a.methods().size() == b.methods().size();
+            for (int k = 0; k < a.methods().size(); k++) {
+                var ma = a.methods().get(k); var mb = b.methods().get(k);
+                String name = ma.methodName().stringValue() + ma.methodType().stringValue();
+                assert name.equals(mb.methodName().stringValue() + mb.methodType().stringValue()) : name;
+                java.util.List<String> ia = invokes(ma), ib = invokes(mb);
+                if (name.equals("threadLoop()V")) {
+                    assert java.util.Collections.frequency(ia, "java/lang/Thread.sleep(J)V") == 4 : ia;
+                    assert !ib.contains("java/lang/Thread.sleep(J)V") : ib;
+                    assert java.util.Collections.frequency(ib, "pzbutter/StreamWake.sleep(J)V") == 4 : ib;
+                    ia.removeIf(x -> x.equals("java/lang/Thread.sleep(J)V"));
+                    ib.removeIf(x -> x.equals("pzbutter/StreamWake.sleep(J)V"));
+                    assert ia.equals(ib) : name;
+                } else {
+                    assert codeText(ma).equals(codeText(mb)) : name;   // every other method unchanged
+                }
+            }
         } catch (Exception e) { throw new RuntimeException(e); }
+    }
+
+    static java.util.List<String> invokes(java.lang.classfile.MethodModel m) {
+        java.util.List<String> r = new java.util.ArrayList<>();
+        m.code().ifPresent(c -> { for (var e : c) if (e instanceof java.lang.classfile.instruction.InvokeInstruction i)
+            r.add(i.owner().asInternalName() + "." + i.name().stringValue() + i.type().stringValue()); });
+        return r;
+    }
+
+    static String codeText(java.lang.classfile.MethodModel m) {
+        StringBuilder sb = new StringBuilder();
+        m.code().ifPresent(c -> { for (var e : c) if (e instanceof java.lang.classfile.Instruction i) sb.append(i).append('\n'); });
+        return sb.toString();
+    }
+
+    static void streamTimingKeepsOldestAdd() throws Exception {
+        StreamWake.resetForTest();
+        StreamWake.timing = true;
+        StreamWake.jobAdded();
+        Thread.sleep(20);
+        StreamWake.jobAdded();   // a later add must not move the stamp
+        StreamWake.pickup();
+        assert StreamWake.latencyCount == 1 && StreamWake.latencyMaxNs >= 19_000_000L : StreamWake.latencyMaxNs;
+        StreamWake.pickup();     // nothing waiting: no sample
+        assert StreamWake.latencyCount == 1;
+        StreamWake.resetForTest();
+        StreamWake.jobAdded();   // timing off: nothing stamped
+        StreamWake.pickup();
+        assert StreamWake.latencyCount == 0;
+        StreamWake.resetForTest();
     }
 
     static void wakeTransformIgnoresOtherClasses() {

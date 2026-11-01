@@ -17,16 +17,21 @@ public final class StreamWake {
     public static volatile long latencyMaxNs;
     public static volatile long latencyCount;
 
+    /** streamTiming: the add-to-pickup latency of the oldest job still waiting, per minute. */
+    public static volatile boolean timing;
     private static volatile boolean queued;
     private static volatile long queuedNs;
 
     static void init() {
-        try { guard.on = Settings.enabled && Settings.flag("wake"); }
-        catch (Throwable t) { guard.fail(t); guard.on = false; }
+        try {
+            guard.on = Settings.enabled && Settings.flag("wake");
+            timing = Settings.enabled && Settings.flag("streamTiming");
+        } catch (Throwable t) { guard.fail(t); guard.on = false; timing = false; }
     }
 
     public static void resetForTest() {
         guard.on = false;
+        timing = false;
         streamerThread = null;
         jobQueued = false;
         latencySumNs = 0;
@@ -61,19 +66,22 @@ public final class StreamWake {
         }
     }
 
+    /** WorldStreamer.addJob exit (game thread). */
     public static void jobAdded() {
-        jobQueued = true;
-        Thread t = streamerThread;
-        if (t != null) LockSupport.unpark(t);
-        if (Settings.flag("streamTiming")) {
+        if (guard.on) {
+            jobQueued = true;
+            Thread t = streamerThread;
+            if (t != null) LockSupport.unpark(t);
+        }
+        if (timing && !queued) {   // keep the oldest waiting job's stamp
             queuedNs = System.nanoTime();
             queued = true;
         }
     }
 
+    /** WorldStreamer.DoChunkAlways entry (streamer thread): the streamer picked a job up. */
     public static void pickup() {
-        if (!Settings.flag("streamTiming")) return;
-        if (!queued) return;
+        if (!timing || !queued) return;
         long now = System.nanoTime();
         long d = now - queuedNs;
         latencySumNs += d;
