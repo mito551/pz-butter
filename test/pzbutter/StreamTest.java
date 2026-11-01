@@ -148,6 +148,8 @@ final class StreamTest {
         memoClearedOnExit();
         memoClearedOnThrow();
         memoOtherThreadNeverSkips();
+        memoNestedKeepsWindow();
+        memoOtherThreadCannotTakeWindow();
         memoOffIsStock();
         memoDefaultsWritten();
     }
@@ -196,7 +198,7 @@ final class StreamTest {
         RecalcMemo.resetForTest();
     }
 
-    static void memoClearedOnThrow() {
+    static void memoClearedOnThrow() throws Exception {
         RecalcMemo.resetForTest();
         RecalcMemo.guard.on = true;
         Object a = new Object();
@@ -207,6 +209,36 @@ final class StreamTest {
         RecalcMemo.enter();
         assert !RecalcMemo.skip(a, 5);
         RecalcMemo.exit();
+        me.zed_0xff.zombie_buddy.Patch.OnExit x = StreamPatches.RecalcMemoWindow.class.getMethod("exit").getAnnotation(me.zed_0xff.zombie_buddy.Patch.OnExit.class);
+        assert x != null && x.onThrowable() == Throwable.class;
+        RecalcMemo.resetForTest();
+    }
+
+    static void memoNestedKeepsWindow() {
+        RecalcMemo.resetForTest();
+        RecalcMemo.guard.on = true;
+        Object a = new Object();
+        RecalcMemo.enter();
+        assert !RecalcMemo.skip(a, 5);
+        RecalcMemo.enter();
+        RecalcMemo.exit();
+        assert RecalcMemo.skip(a, 5);   // the nested exit did not end the window
+        RecalcMemo.exit();
+        assert !RecalcMemo.skip(a, 5);  // the outer exit did
+        RecalcMemo.resetForTest();
+    }
+
+    static void memoOtherThreadCannotTakeWindow() throws Exception {
+        RecalcMemo.resetForTest();
+        RecalcMemo.guard.on = true;
+        Object a = new Object();
+        RecalcMemo.enter();
+        assert !RecalcMemo.skip(a, 5);
+        Thread t = new Thread(() -> { RecalcMemo.enter(); RecalcMemo.exit(); });
+        t.start();
+        t.join();
+        assert RecalcMemo.skip(a, 5);   // still this thread's window, memo intact
+        RecalcMemo.exit();
         RecalcMemo.resetForTest();
     }
 
@@ -216,12 +248,14 @@ final class StreamTest {
         Object a = new Object();
         RecalcMemo.enter();
         assert !RecalcMemo.skip(a, 5);
+        boolean[] got = new boolean[2];
         Thread t = new Thread(() -> {
-            assert !RecalcMemo.skip(a, 5);
-            assert !RecalcMemo.skip(a, 5);
+            got[0] = RecalcMemo.skip(a, 5);
+            got[1] = RecalcMemo.skip(a, 5);
         });
         t.start();
         t.join();
+        assert !got[0] && !got[1];
         RecalcMemo.exit();
         RecalcMemo.resetForTest();
     }

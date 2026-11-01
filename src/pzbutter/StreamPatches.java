@@ -57,6 +57,7 @@ public final class StreamPatches {
     public static class RecalcProperties {
         @Patch.OnEnter(skipOn = true)
         public static boolean enter(@Patch.This Object self) {
+            if (!RecalcMemo.guard.on) return false;
             try {
                 if (self instanceof zombie.iso.IsoGridSquare sq) {
                     return RecalcMemo.skip(self, sq.getRoomID());

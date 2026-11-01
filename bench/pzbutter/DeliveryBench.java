@@ -135,7 +135,7 @@ public final class DeliveryBench {
             case "pacing" -> pacing();
             case "vehanim" -> vehanim();
             case "recalcmemo" -> recalcmemo();
-            default -> throw new IllegalArgumentException("... | pacing | vehanim");
+            default -> throw new IllegalArgumentException("... | pacing | vehanim | recalcmemo");
         }
     }
 
@@ -1772,33 +1772,33 @@ public final class DeliveryBench {
     static void recalcmemo() {
         Object[] sq = new Object[600];
         for (int i = 0; i < sq.length; i++) sq[i] = new Object();
-
-        // guard off
-        RecalcMemo.resetForTest();
-        RecalcMemo.enter();
-        long t0 = System.nanoTime();
+        int calls = sq.length * 15, joins = 200, runs = 7;
+        double[] off = new double[runs], on = new double[runs];
         int skips = 0;
-        for (int i = 0; i < sq.length; i++)
-            for (int j = 0; j < 15; j++)
-                if (RecalcMemo.skip(sq[i], 5L)) skips++;
-        long dt0 = System.nanoTime() - t0;
-        RecalcMemo.exit();
-
-        // warm window, guard on
         RecalcMemo.resetForTest();
-        RecalcMemo.guard.on = true;
-        RecalcMemo.enter();
-        t0 = System.nanoTime();
-        int dSkips = 0;
-        for (int i = 0; i < sq.length; i++)
-            for (int j = 0; j < 15; j++)
-                if (RecalcMemo.skip(sq[i], 5L)) dSkips++;
-        long dt1 = System.nanoTime() - t0;
-        RecalcMemo.exit();
+        for (int r = -3; r < runs; r++) {   // 3 warm-up runs
+            RecalcMemo.guard.on = false;
+            long t0 = System.nanoTime();
+            for (int k = 0; k < joins; k++)
+                for (int i = 0; i < sq.length; i++)
+                    for (int j = 0; j < 15; j++)
+                        if (StreamPatches.RecalcProperties.enter(sq[i])) skips++;
+            long d0 = System.nanoTime() - t0;
+            RecalcMemo.guard.on = true;
+            int s = 0;
+            t0 = System.nanoTime();
+            for (int k = 0; k < joins; k++) {   // one window per join: 600 squares, each recalculated 15 times
+                RecalcMemo.enter();
+                for (int i = 0; i < sq.length; i++)
+                    for (int j = 0; j < 15; j++)
+                        if (RecalcMemo.skip(sq[i], 5L)) s++;
+                RecalcMemo.exit();
+            }
+            long d1 = System.nanoTime() - t0;
+            if (r >= 0) { off[r] = d0 / (double) (joins * calls); on[r] = d1 / (double) (joins * calls); skips += s; }
+        }
         RecalcMemo.resetForTest();
-
-        int calls = sq.length * 15;
-        System.out.printf("recalcmemo guard off: %6.2f ns/call; warm window: %6.2f ns/call (skips %d/%d)%n",
-            dt0 / (double) calls, dt1 / (double) calls, skips, dSkips);
+        System.out.printf("recalcmemo shim, guard off: %6.2f ns/call; window (enter, 600 squares x 15, exit): %6.2f ns/call, median of %d (skips %d of %d)%n",
+            median(off), median(on), runs, skips, runs * joins * calls);
     }
 }
