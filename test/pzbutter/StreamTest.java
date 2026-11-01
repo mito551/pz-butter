@@ -40,6 +40,8 @@ final class StreamTest {
         cameraOffIsStock();
         cameraFieldsBind();
         cameraDefaultsWritten();
+        driveTraceLineFormat();
+        driveTraceDefaultsWritten();
     }
 
     static void publishStockTruncates() {
@@ -628,5 +630,20 @@ final class StreamTest {
         catch (java.io.IOException e) { throw new RuntimeException(e); }
         assert t.contains("\nwake=false\n") : t;
         assert t.contains("\nstreamTiming=false\n") : t;
+    }
+
+    static void driveTraceLineFormat() {
+        assert "1,2,3.000,4.000,5.000,6.000,7.000,8.000,9.000,10".equals(
+            DriveTrace.line(1, 2, 3f, 4f, 5f, 6f, 7f, 8f, 9f, 10));
+    }
+
+    static void driveTraceDefaultsWritten() {
+        java.io.File f = SelfTest.tmp("drivetrace.properties");
+        f.delete();
+        Settings.load(f);
+        String t = "";
+        try { t = java.nio.file.Files.readString(f.toPath()); }
+        catch (java.io.IOException e) { throw new RuntimeException(e); }
+        assert t.contains("\ndriveTrace=false\n") : t;
     }
 }

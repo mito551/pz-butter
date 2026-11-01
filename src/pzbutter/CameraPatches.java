@@ -38,6 +38,7 @@ public final class CameraPatches {
     }
 
     public static void onEnter(Object self) {
+        if (DriveTrace.guard.on) DriveTrace.record(self);
         if (!CameraPixels.smoothGuard.on) return;
         try {
             if (!(self instanceof zombie.iso.PlayerCamera cam) || !bind()) return;
@@ -76,5 +77,6 @@ public final class CameraPatches {
         bound = false;
         xfH = yfH = null;
         java.util.Arrays.fill(lastNs, 0);
+        DriveTrace.resetForTest();
     }
 }
