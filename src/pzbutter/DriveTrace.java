@@ -29,22 +29,6 @@ public final class DriveTrace {
                 frameNo, nanoTime, carX, carY, playerX, playerY, rightClickXf, rightClickX, fpsMultiplier, bulletFrameNo);
     }
 
-    public static String line(long frameNo, long nanoTime,
-                              float carX, float carY,
-                              float playerX, float playerY,
-                              float rightClickXf, float rightClickX,
-                              float fpsMultiplier, long bulletFrameNo) {
-        return line(frameNo, nanoTime, carX, carY, playerX, playerY, rightClickXf, rightClickX, fpsMultiplier, (int) bulletFrameNo);
-    }
-
-    public static String line(long frameNo, long nanoTime,
-                              float carX, float carY,
-                              float playerX, float playerY,
-                              float rightClickXf, float rightClickX,
-                              double fpsMultiplier, int bulletFrameNo) {
-        return line(frameNo, nanoTime, carX, carY, playerX, playerY, rightClickXf, rightClickX, (float) fpsMultiplier, bulletFrameNo);
-    }
-
     private static boolean bind() {
         if (bound) return xfH != null && vehicleH != null && gameTimeInstanceH != null && worldSimInstanceH != null;
         bound = true;

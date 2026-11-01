@@ -31,13 +31,14 @@ final class StreamTest {
         wakeTests();
     }
 
-    static void cameraTests() {
+    static void cameraTests() throws Throwable {
         publishStockTruncates();
         publishScreenPixelsZoomedIn();
         publishSmoothFractional();
         frameFactorIsStockAtLockRate();
         scaleKeepsShareOfStep();
         cameraOffIsStock();
+        cameraCenterKeptStock();
         cameraFieldsBind();
         cameraDefaultsWritten();
         driveTraceLineFormat();
@@ -78,10 +79,37 @@ final class StreamTest {
 
     static void cameraOffIsStock() {
         CameraPatches.resetForTest();
-        Object notACamera = new Object();
-        CameraPatches.onEnter(notACamera);
-        CameraPatches.onExit(notACamera);
-        assert !CameraPatches.bound;   // guards off: no field binding, nothing read or written
+        zombie.iso.PlayerCamera cam = new zombie.iso.PlayerCamera(0);
+        cam.rightClickX = 3.7f;
+        cam.rightClickY = -2.2f;
+        CameraPatches.onEnter(cam);
+        CameraPatches.onExit(cam);
+        assert cam.rightClickX == 3.7f && cam.rightClickY == -2.2f;   // guards off: nothing written
+        assert !CameraPatches.bound;                                  // and nothing bound or read
+        CameraPatches.resetForTest();
+    }
+
+    static void cameraCenterKeptStock() throws Throwable {
+        CameraPatches.resetForTest();
+        var xfH = Game.field(zombie.iso.PlayerCamera.class, "rightClickXf", float.class);
+        zombie.iso.PlayerCamera cam = new zombie.iso.PlayerCamera(0);
+        CameraPixels.smoothGuard.on = true;
+        xfH.set(cam, 10f);
+        CameraPatches.onEnter(cam);
+        CameraPatches.onCenter();
+        xfH.set(cam, 0f);               // returnToCenter snapped to the centre
+        CameraPatches.onExit(cam);       // first call: k = 1 anyway; second call below tests the skip
+        xfH.set(cam, 10f);
+        CameraPatches.onEnter(cam);
+        CameraPatches.onCenter();
+        xfH.set(cam, 0f);
+        CameraPatches.onExit(cam);       // a few ns after the previous call: k ~ 0, but the snap is kept
+        assert (float) xfH.get(cam) == 0f : (float) xfH.get(cam);
+        xfH.set(cam, 10f);
+        CameraPatches.onEnter(cam);      // no returnToCenter this time: the step is scaled down
+        xfH.set(cam, 0f);
+        CameraPatches.onExit(cam);
+        assert (float) xfH.get(cam) > 5f : (float) xfH.get(cam);
         CameraPatches.resetForTest();
     }
 

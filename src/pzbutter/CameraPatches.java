@@ -14,6 +14,7 @@ public final class CameraPatches {
     static boolean bound;
     private static VarHandle xfH, yfH;
     private static float enterXf, enterYf;          // game thread only
+    private static boolean centerRan;               // returnToCenter ran inside this update: keep its snap as stock
     private static final long[] lastNs = new long[4];   // per playerIndex: split screen updates up to four cameras a frame
 
     @Patch(className = "zombie.iso.PlayerCamera", methodName = "update")
@@ -24,6 +25,15 @@ public final class CameraPatches {
         @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
         public static void exit(@Patch.This Object self) { CameraPatches.onExit(self); }
     }
+
+    @Patch(className = "zombie.iso.PlayerCamera", methodName = "returnToCenter")
+    public static class Center {
+        @Patch.OnEnter
+        public static void enter() { CameraPatches.onCenter(); }
+    }
+
+    /** PlayerCamera.returnToCenter entry: it zeroes the target and snaps the look-ahead to a whole pixel near the end. */
+    public static void onCenter() { if (CameraPixels.smoothGuard.on) centerRan = true; }
 
     private static boolean bind() {
         if (!bound) {
@@ -40,6 +50,7 @@ public final class CameraPatches {
     public static void onEnter(Object self) {
         if (DriveTrace.guard.on) DriveTrace.record(self);
         if (!CameraPixels.smoothGuard.on) return;
+        centerRan = false;
         try {
             if (!(self instanceof zombie.iso.PlayerCamera cam) || !bind()) return;
             enterXf = (float) xfH.get(cam);
@@ -57,11 +68,13 @@ public final class CameraPatches {
                 int p = cam.playerIndex & 3;
                 long now = System.nanoTime(), last = lastNs[p];
                 lastNs[p] = now;
+                if (!centerRan) {
                 double k = CameraPixels.frameFactor(last == 0 ? 0 : now - last, zombie.core.PerformanceSettings.getLockFPS());
                 xf = CameraPixels.scale(enterXf, xf, k);
                 yf = CameraPixels.scale(enterYf, yf, k);
                 xfH.set(cam, xf);
                 yfH.set(cam, yf);
+                }
             }
             float zoom = zombie.core.Core.getInstance().getZoom(cam.playerIndex);
             cam.rightClickX = CameraPixels.publish(xf, zoom, smooth, pixels);
@@ -75,6 +88,7 @@ public final class CameraPatches {
         CameraPixels.smoothGuard.on = false;
         CameraPixels.pixelGuard.on = false;
         bound = false;
+        centerRan = false;
         xfH = yfH = null;
         java.util.Arrays.fill(lastNs, 0);
         DriveTrace.resetForTest();
