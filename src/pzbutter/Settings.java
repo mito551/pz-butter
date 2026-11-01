@@ -293,6 +293,11 @@ public final class Settings {
 + "# handoffRecalcFast: a joining chunk's squares recompute their properties once per join.\n"
 + "handoffRecalcFast=false\n"
 + "#\n"
++ "# driveLookSmooth: the driving camera look-ahead moves with elapsed time instead of per frame, so it stays smooth at any frame rate.\n"
++ "driveLookSmooth=false\n"
++ "# cameraScreenPixels: while zoomed in, the driving camera look-ahead advances in whole screen pixels.\n"
++ "cameraScreenPixels=false\n"
++ "#\n"
 + "# Hot save (Plan 10a). Stock queues hot saves at most once a second.\n"
 + "# hotsaveIntervalSec: hot-save interval in seconds (0 = stock 1 s; 30 = 30 s). A crash can lose at least that many seconds of the world, and several times that when many chunks changed (the game writes at most about 10 chunks per hot save). Saving and quitting always write everything.\n"
 + "hotsaveIntervalSec=0\n";

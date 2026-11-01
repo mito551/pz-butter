@@ -51,6 +51,7 @@ public class Main {
         VehiclePatches.init();
         StreamPatches.init();
         RecalcMemo.init();
+        CameraPatches.init();
         LightChecks.init();
         GridGate.init();
         Cutaways.init();

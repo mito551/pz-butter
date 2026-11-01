@@ -27,6 +27,64 @@ final class StreamTest {
         hotsaveMsClamps();
         hotsaveDefaultsWritten();
         recalcTests();
+        cameraTests();
+    }
+
+    static void cameraTests() {
+        publishStockTruncates();
+        publishScreenPixelsZoomedIn();
+        publishSmoothFractional();
+        stepMatchesStockAtLockRate();
+        cameraOffIsStock();
+        cameraDefaultsWritten();
+    }
+
+    static void publishStockTruncates() {
+        CameraPixels.resetForTest();
+        assert CameraPixels.publish(10.7f, 1f, false, false) == 10f;
+        assert CameraPixels.publish(-10.7f, 1f, false, false) == -10f;
+        CameraPixels.resetForTest();
+    }
+
+    static void publishScreenPixelsZoomedIn() {
+        CameraPixels.resetForTest();
+        assert CameraPixels.publish(10.7f, 0.5f, false, true) == 10.5f;
+        assert CameraPixels.publish(10.7f, 2f, false, true) == 10f;
+        CameraPixels.resetForTest();
+    }
+
+    static void publishSmoothFractional() {
+        CameraPixels.resetForTest();
+        assert CameraPixels.publish(10.7f, 0.5f, true, true) == 10.7f;
+        CameraPixels.resetForTest();
+    }
+
+    static void stepMatchesStockAtLockRate() {
+        CameraPixels.resetForTest();
+        float one = CameraPixels.step(0f, 100f, 1f, 1_000_000_000L / 60, 60);
+        assert Math.abs(one - 1f) < 1e-4f : one;
+        float two = CameraPixels.step(0f, 100f, 1f, 2 * (1_000_000_000L / 60), 60);
+        assert Math.abs(two - 2f) < 1e-4f : two;
+        float cap = CameraPixels.step(0f, 100f, 1f, 10 * (1_000_000_000L / 60), 60);
+        assert Math.abs(cap - 4f) < 1e-4f : cap;
+        CameraPixels.resetForTest();
+    }
+
+    static void cameraOffIsStock() {
+        CameraPixels.resetForTest();
+        assert !CameraPixels.smoothGuard.on && !CameraPixels.pixelGuard.on;
+        CameraPixels.resetForTest();
+    }
+
+    static void cameraDefaultsWritten() {
+        java.io.File f = SelfTest.tmp("camera.properties");
+        f.delete();
+        Settings.load(f);
+        String t = "";
+        try { t = java.nio.file.Files.readString(f.toPath()); }
+        catch (java.io.IOException e) { throw new RuntimeException(e); }
+        assert t.contains("\ndriveLookSmooth=false\n") : t;
+        assert t.contains("\ncameraScreenPixels=false\n") : t;
     }
 
     static void pacingTests() throws Throwable {
@@ -307,6 +365,8 @@ final class StreamTest {
         catch (java.io.IOException e) { throw new RuntimeException(e); }
         assert t.contains("\ngloveBoxFix=false\n") : t;
         assert t.contains("\nhandoffRecalcFast=false\n") : t;
+        assert t.contains("\ndriveLookSmooth=false\n") : t;
+        assert t.contains("\ncameraScreenPixels=false\n") : t;
     }
 
     static void hotsaveMsClamps() {

@@ -43,7 +43,7 @@ final class ModCompat {
     /** The classes whose nested classes are PZ Butter's holders. */
     static final Class<?>[] OUTERS = {Patches.class, DeliveryPatches.class, LuaPatches.class, UiPatches.class, MapPatches.class,
         SoundPatches.class, WorldPatches.class, ChunkPatches.class, LogPatches.class, ZombiePatches.class, GpuPatches.class, CensusPatches.class,
-        VehiclePatches.class, StreamPatches.class};
+        VehiclePatches.class, StreamPatches.class, CameraPatches.class};
 
     private static final String PATCH = "Lme/zed_0xff/zombie_buddy/Patch;";
     private static final String ON_ENTER = "Lme/zed_0xff/zombie_buddy/Patch$OnEnter;";
@@ -138,6 +138,7 @@ final class ModCompat {
         Map.entry("StreamPatches.HotSaveInit", k("hotsaveIntervalSec")),
         Map.entry("StreamPatches.RecalcMemoWindow", k("handoffRecalcFast")),
         Map.entry("StreamPatches.RecalcProperties", k("handoffRecalcFast")),
+        Map.entry("CameraPatches.Update", k("driveLookSmooth", "cameraScreenPixels")),
         Map.entry("ZombiePatches.SchedStart", k("entityTiming")),
         Map.entry("ZombiePatches.SchedUpdate", k("entityTiming")),
         Map.entry("ZombiePatches.SchedPost", k("entityTiming")),
