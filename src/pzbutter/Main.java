@@ -46,6 +46,9 @@ public class Main {
         GpuPatches.init();
         LoadFixes.init();
         GpuPstate.init();
+        ShaderReuse.init();
+        VehicleZones.init();
+        ScriptComments.init();
         UiTiming.init();
         UiCensus.init();
         UiRetain.init();
