@@ -40,6 +40,7 @@ public class Main {
         ZombiePatches.init();
         GpuPatches.init();
         LoadFixes.init();
+        ShaderReuse.init();
         UiTiming.init();
         UiCensus.init();
         UiRetain.init();

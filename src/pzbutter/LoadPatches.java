@@ -38,6 +38,15 @@ public final class LoadPatches {
         public static void enter() { LoadFixes.loadExitEnter(); }
 
         @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
-        public static void exit() { LoadFixes.loadExitLeave(); }
+        public static void exit() { LoadFixes.loadExitLeave(); ShaderReuse.printSummaryOnce(); }
+    }
+
+    @Patch(className = "zombie.core.skinnedmodel.model.Model", methodName = "CreateShader")
+    public static class CreateShader {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This Object self, @Patch.Argument(0) String name) {
+            try { return ShaderReuse.onCreateShader(self, name); }
+            catch (Throwable t) { ShaderReuse.guard.fail(t); return false; }
+        }
     }
 }

@@ -283,6 +283,8 @@ public final class Settings {
       + "skipIdChecks=false\n"
       + "# noLoadFade: no 350 ms fade to black between the finished load and the first game frame (not on the first new game of a session).\n"
       + "noLoadFade=false\n"
+      + "# shaderCache: a model whose shader is already built takes it without a render-thread round trip.\n"
+      + "shaderCache=false\n"
       + "#\n"
       + "# Vehicles (Plan 10).\n"
       + "# gloveBoxFix: a vehicle whose GloveBox part has no item container no longer throws when adding a key.\n"

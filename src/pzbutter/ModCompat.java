@@ -73,6 +73,7 @@ final class ModCompat {
         Map.entry("LoadPatches.CheckBuildingAndRoomIDs", k("skipIdChecks")),
         Map.entry("LoadPatches.FadeToBlack", k("noLoadFade")),
         Map.entry("LoadPatches.GameLoadingExit", k("noLoadFade")),
+        Map.entry("LoadPatches.CreateShader", k("shaderCache")),
         Map.entry("Patches.Frame", k("luaWorkerGate", "luaFileWriteThrottle", "logDedupe", "luaBudget", "luaTiming", "frameStartGate",
             "presentPacing", "reflexSleep", "bakeScheduler", "lightSwitchCheckFrames", "gridStackInterval", "roofHideDebounceFrames",
             "soundTickHz", "mapStreetMemo", "mapStreetCache", "textWidthCache", "uiTiming", "uiCensus", "uiRetained", "uiRetainCheck", "entityTiming")),
