@@ -20,13 +20,13 @@ public final class DriveTrace {
         catch (Throwable t) { guard.fail(t); guard.on = false; }
     }
 
-    public static String line(long frameNo, long nanoTime,
+    public static String line(long frameNo, int playerIndex, long nanoTime,
                               float carX, float carY,
                               float playerX, float playerY,
                               float rightClickXf, float rightClickX,
                               float fpsMultiplier, int bulletFrameNo) {
-        return String.format(Locale.ROOT, "%d,%d,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%d",
-                frameNo, nanoTime, carX, carY, playerX, playerY, rightClickXf, rightClickX, fpsMultiplier, bulletFrameNo);
+        return String.format(Locale.ROOT, "%d,%d,%d,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%d",
+                frameNo, playerIndex, nanoTime, carX, carY, playerX, playerY, rightClickXf, rightClickX, fpsMultiplier, bulletFrameNo);
     }
 
     private static boolean bind() {
@@ -65,7 +65,7 @@ public final class DriveTrace {
             float fps = (gt == null) ? 1.0f : gt.fpsMultiplier;
             zombie.core.physics.WorldSimulation ws = (zombie.core.physics.WorldSimulation) worldSimInstanceH.get();
             int bullet = (ws == null) ? 0 : ws.getBulletFrameNo();
-            String ln = line(frameNo, now, carX, carY, playerX, playerY, xf, rightClickX, fps, bullet);
+            String ln = line(frameNo, pi, now, carX, carY, playerX, playerY, xf, rightClickX, fps, bullet);
             LogSink s = log;
             if (s == null) {
                 try {
@@ -73,7 +73,7 @@ public final class DriveTrace {
                     s = new LogSink(f, FrameClock.logLimit);
                     log = s;
                     long e = System.currentTimeMillis();
-                    s.begin(e).text("frameNo,nanoTime,carX,carY,playerX,playerY,rightClickXf,rightClickX,fpsMultiplier,bulletFrameNo").end(e);
+                    s.begin(e).text("frameNo,playerIndex,nanoTime,carX,carY,playerX,playerY,rightClickXf,rightClickX,fpsMultiplier,bulletFrameNo").end(e);
                 } catch (Throwable t) {
                     guard.fail(t);
                     log = null;

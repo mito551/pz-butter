@@ -110,8 +110,8 @@ The mod creates `~/Zomboid/PZButter.properties` on first start and reads it once
 | `chunkHandoffDivisor` | Caps how many streamed chunks join per frame while driving (0 = off). Try 8. |
 | `chunkHandoffFrameBudgetUs` | Microsecond budget for joining streamed chunks per frame (0 = off). Try 1500. |
 | `handoffRecalcFast` | A joining chunk's squares recompute their properties once per join instead of on every neighbour pass. Off by default. |
-| `driveLookSmooth` | The camera's look-ahead (driving, aiming, panning) keeps its fractional pixels and, above the frame cap the game assumes, moves by elapsed time instead of a fixed step per frame. Off by default. |
-| `cameraScreenPixels` | Zoomed in, the camera's look-ahead moves in whole screen pixels instead of whole offscreen pixels (smaller steps). Off by default. |
+| `driveLookSmooth` | Above the frame cap the game assumes, the camera's look-ahead (driving, aiming, panning) moves by elapsed time instead of a fixed step per frame. Models, trees, shadows and overlays follow it in fractional pixels; the ground still moves in whole pixels. Off by default. |
+| `cameraScreenPixels` | Zoomed in, models, trees, shadows and overlays follow the camera's look-ahead in whole screen pixels instead of whole offscreen pixels (smaller steps); the ground keeps offscreen pixels. Off by default. |
 | `wake` | The chunk streamer wakes when a chunk job is queued instead of sleeping through it. Off by default. |
 | `streamTiming` | Records chunk streamer add-to-pickup latency once a minute (diagnostic). Off by default. |
 | `driveTrace` | Writes a per-frame CSV of car, player and camera values while driving (diagnostic). Off by default. |

@@ -15,21 +15,25 @@ import java.lang.constant.MethodTypeDesc;
 import java.lang.instrument.ClassFileTransformer;
 import java.security.ProtectionDomain;
 
-/** Rewrites every Thread.sleep(J)V inside WorldStreamer.threadLoop to StreamWake.sleep(J)V; nothing else changes. */
+/** Rewrites every Thread.sleep(J)V inside WorldStreamer.threadLoop to StreamWake.sleep(J)V and calls StreamWake.loopStart() at its entry; nothing else changes. */
 final class WakeTransform implements ClassFileTransformer {
     private static final ClassDesc STREAMWAKE = ClassDesc.of("pzbutter.StreamWake");
     private static final MethodTypeDesc SLEEP = MethodTypeDesc.of(ConstantDescs.CD_void, ConstantDescs.CD_long);
+    private static final MethodTypeDesc LOOP = MethodTypeDesc.of(ConstantDescs.CD_void);
 
     WakeTransform() {}
 
     @Override public byte[] transform(Module module, ClassLoader loader, String className, Class<?> redefining, ProtectionDomain pd, byte[] bytes) {
         try {
-            if (redefining != null || className == null || !className.equals("zombie/iso/WorldStreamer")) return null;
-            return transform(bytes, loader == null ? ClassLoader.getSystemClassLoader() : loader);
+            // a redefine is transformed again (idempotent); a retransform never reaches a non-retransformable transformer
+            if (className == null || !className.equals("zombie/iso/WorldStreamer")) return null;
+            byte[] out = transform(bytes, loader == null ? ClassLoader.getSystemClassLoader() : loader);
+            if (out == null) { StreamWake.transformState = false; StreamWake.transformReason = "threadLoop not found"; }
+            return out;
         } catch (Throwable t) {
-            try {
-                System.out.println("[PZButter] wakeTransform " + t);
-            } catch (Throwable ignored) {}
+            StreamWake.transformState = false;
+            StreamWake.transformReason = String.valueOf(t);
+            try { System.out.println("[PZButter] wakeTransform " + t); } catch (Throwable ignored) {}
             return null;
         }
     }
@@ -46,15 +50,19 @@ final class WakeTransform implements ClassFileTransformer {
         ClassFile cf = WorkerTransform.classFile(loader);
         java.util.function.Predicate<MethodModel> methodPred = mm ->
             mm.methodName().equalsString("threadLoop") && mm.methodType().equalsString("()V");
-        CodeTransform ct = (cb, e) -> {
-            if (e instanceof InvokeInstruction inv
-                    && inv.opcode() == Opcode.INVOKESTATIC
-                    && inv.owner().asInternalName().equals("java/lang/Thread")
-                    && inv.name().stringValue().equals("sleep")
-                    && inv.type().stringValue().equals("(J)V")) {
-                cb.invokestatic(STREAMWAKE, "sleep", SLEEP);
-            } else {
-                cb.with(e);
+        if (m.methods().stream().noneMatch(methodPred)) return null;
+        CodeTransform ct = new CodeTransform() {
+            @Override public void atStart(java.lang.classfile.CodeBuilder cb) { cb.invokestatic(STREAMWAKE, "loopStart", LOOP); }
+            @Override public void accept(java.lang.classfile.CodeBuilder cb, CodeElement e) {
+                if (e instanceof InvokeInstruction inv
+                        && inv.opcode() == Opcode.INVOKESTATIC
+                        && inv.owner().asInternalName().equals("java/lang/Thread")
+                        && inv.name().stringValue().equals("sleep")
+                        && inv.type().stringValue().equals("(J)V")) {
+                    cb.invokestatic(STREAMWAKE, "sleep", SLEEP);
+                } else {
+                    cb.with(e);
+                }
             }
         };
         return cf.transformClass(m, ClassTransform.transformingMethodBodies(methodPred, ct));

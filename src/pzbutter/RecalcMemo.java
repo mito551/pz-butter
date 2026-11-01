@@ -26,7 +26,9 @@ public final class RecalcMemo {
         }
     }
 
-    public static void enter() {
+    /** Synchronized with exit: loadInMainThread also runs on the streamer (Convert/SoftReset jobs) and addJobInstant callers. */
+    public static synchronized void enter() {
+        if (!guard.on) return;
         try {
             Thread cur = Thread.currentThread();
             if (active) {
@@ -39,7 +41,7 @@ public final class RecalcMemo {
         } catch (Throwable t) { guard.fail(t); }
     }
 
-    public static void exit() {
+    public static synchronized void exit() {
         try {
             if (!active || Thread.currentThread() != owner) return;
             if (--depth > 0) return;

@@ -71,13 +71,13 @@ public final class StreamPatches {
     @Patch(className = "zombie.iso.WorldStreamer", methodName = "addJob")
     public static class WakeJobAdded {
         @Patch.OnExit
-        public static void exit() { StreamWake.jobAdded(); }
+        public static void exit() { try { StreamWake.jobAdded(); } catch (Throwable t) { StreamWake.guard.fail(t); } }
     }
 
     @Patch(className = "zombie.iso.WorldStreamer", methodName = "DoChunkAlways")
     public static class WakePickup {
         @Patch.OnEnter
-        public static void enter() { StreamWake.pickup(); }
+        public static void enter() { try { StreamWake.pickup(); } catch (Throwable t) { StreamWake.guard.fail(t); } }
     }
 
     @Patch(className = "zombie.util.CappedConcurrentQueue", methodName = "poll")
@@ -114,7 +114,7 @@ public final class StreamPatches {
         boolean pacing = ChunkPacer.guard.on;
         boolean veh = VehicleFixes.animGuard.on;
         boolean recalc = RecalcMemo.guard.on;
-        boolean stream = StreamWake.timing;
+        boolean stream = StreamWake.timing || StreamWake.guard.on;
         if (!pacing && !veh && !recalc && !stream) return;
         if (!streamStarted) {
             streamStarted = true;
@@ -152,6 +152,12 @@ public final class StreamPatches {
             StreamWake.latencySumNs = 0;
             StreamWake.latencyMaxNs = 0;
             if (n > 0) System.out.println("[PZButter] stream latency: mean " + (sum / n / 1000L) + " us, max " + (max / 1000L) + " us (" + n + " pickups)");
+        }
+        if (StreamWake.guard.on) {
+            long sl = StreamWake.sleeps, w = StreamWake.woken;
+            StreamWake.sleeps = 0;
+            StreamWake.woken = 0;
+            System.out.println("[PZButter] wake: " + sl + " streamer sleeps, " + w + " ended early by a queued job" + (StreamWake.transformState ? "" : " (transform off: " + StreamWake.transformReason + ")"));
         }
     }
 }

@@ -91,12 +91,19 @@ final class Preload {
                         log.flushBuf();
                     } catch (Throwable ignored) {}
                     StreamWake.transformState = false;
+                    StreamWake.transformReason = "WorldStreamer loaded before premain";
                 } else {
                     try {
                         inst.addTransformer(new WakeTransform(), false);
                         StreamWake.transformState = true;
+                        StreamWake.transformReason = "";
+                        try (var log = new LogSink(new File(System.getProperty("user.home"), "Zomboid/PZButter/preload.log"), 1 << 20)) {
+                            log.begin(System.currentTimeMillis()).text("wake transform installed").end(System.currentTimeMillis());
+                            log.flushBuf();
+                        } catch (Throwable ignored) {}
                     } catch (Throwable t) {
                         StreamWake.transformState = false;
+                        StreamWake.transformReason = String.valueOf(t);
                         try (var log = new LogSink(new File(System.getProperty("user.home"), "Zomboid/PZButter/preload.log"), 1 << 20)) {
                             log.begin(System.currentTimeMillis()).text("wakeTransform " + t).end(System.currentTimeMillis());
                             log.flushBuf();

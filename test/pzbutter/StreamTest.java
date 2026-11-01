@@ -529,6 +529,7 @@ final class StreamTest {
         wakeReturnsOnJob();
         wakeJobBeforeSleep();
         wakeOffIsThreadSleep();
+        wakeEndsBothIdleSleeps();
         wakeRewritesOnlySleeps();
         wakeTransformIgnoresOtherClasses();
         streamTimingKeepsOldestAdd();
@@ -548,17 +549,17 @@ final class StreamTest {
     static void wakeReturnsOnJob() {
         StreamWake.resetForTest();
         StreamWake.guard.on = true;
-        final long[] ret = new long[1];
+        final long[] ret = {-1};
         Thread th = new Thread(() -> {
             long t0 = System.nanoTime();
-            try { StreamWake.sleep(140); } catch (InterruptedException e) { throw new RuntimeException(e); }
+            try { StreamWake.sleep(140); } catch (InterruptedException e) { return; }
             ret[0] = (System.nanoTime() - t0) / 1_000_000L;
         });
         th.start();
         try { Thread.sleep(5); } catch (InterruptedException e) {}
         StreamWake.jobAdded();
         try { th.join(200); } catch (InterruptedException e) {}
-        assert ret[0] <= 30 : ret[0];
+        assert !th.isAlive() && ret[0] >= 0 && ret[0] <= 30 : ret[0];   // finished, and early
         StreamWake.resetForTest();
     }
 
@@ -580,6 +581,34 @@ final class StreamTest {
         try { StreamWake.sleep(20); } catch (InterruptedException e) { throw new RuntimeException(e); }
         long ms1 = (System.nanoTime() - t0) / 1_000_000L;
         assert ms1 >= 20 : ms1;
+        StreamWake.jobAdded();             // off: sets nothing
+        StreamWake.guard.on = true;
+        t0 = System.nanoTime();
+        try { StreamWake.sleep(30); } catch (InterruptedException e) { throw new RuntimeException(e); }
+        long ms2 = (System.nanoTime() - t0) / 1_000_000L;
+        assert ms2 >= 25 : ms2;
+        StreamWake.resetForTest();
+    }
+
+    static void wakeEndsBothIdleSleeps() throws Exception {
+        StreamWake.resetForTest();
+        StreamWake.guard.on = true;
+        StreamWake.loopStart();
+        StreamWake.jobAdded();             // queued during the first idle sleep (threadLoop 450) ...
+        long t0 = System.nanoTime();
+        StreamWake.sleep(140);
+        StreamWake.sleep(140);             // ... must also end the second one (492): the queue is polled only at the loop top
+        long ms = (System.nanoTime() - t0) / 1_000_000L;
+        assert ms <= 5 : ms;
+        assert StreamWake.woken == 2 && StreamWake.sleeps == 2;
+        StreamWake.loopStart();            // the next pass polled the queue: sleeping again parks
+        t0 = System.nanoTime();
+        StreamWake.sleep(30);
+        ms = (System.nanoTime() - t0) / 1_000_000L;
+        assert ms >= 25 : ms;
+        t0 = System.nanoTime();
+        StreamWake.sleep(0);               // 0 ms stays Thread.sleep(0)
+        assert StreamWake.sleeps == 3;
         StreamWake.resetForTest();
     }
 
@@ -598,6 +627,9 @@ final class StreamTest {
                 assert name.equals(mb.methodName().stringValue() + mb.methodType().stringValue()) : name;
                 java.util.List<String> ia = invokes(ma), ib = invokes(mb);
                 if (name.equals("threadLoop()V")) {
+                    assert java.util.Collections.frequency(ib, "pzbutter/StreamWake.loopStart()V") == 1 : ib;
+                    assert ib.get(0).equals("pzbutter/StreamWake.loopStart()V") : ib;   // first call: before the jobQueue poll
+                    ib.remove(0);
                     assert java.util.Collections.frequency(ia, "java/lang/Thread.sleep(J)V") == 4 : ia;
                     assert !ib.contains("java/lang/Thread.sleep(J)V") : ib;
                     assert java.util.Collections.frequency(ib, "pzbutter/StreamWake.sleep(J)V") == 4 : ib;
@@ -661,8 +693,8 @@ final class StreamTest {
     }
 
     static void driveTraceLineFormat() {
-        assert "1,2,3.000,4.000,5.000,6.000,7.000,8.000,9.000,10".equals(
-            DriveTrace.line(1, 2, 3f, 4f, 5f, 6f, 7f, 8f, 9f, 10));
+        assert "1,0,2,3.000,4.000,5.000,6.000,7.000,8.000,9.000,10".equals(
+            DriveTrace.line(1, 0, 2, 3f, 4f, 5f, 6f, 7f, 8f, 9f, 10));
     }
 
     static void driveTraceDefaultsWritten() {

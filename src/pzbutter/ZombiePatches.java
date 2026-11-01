@@ -345,7 +345,7 @@ public final class ZombiePatches {
             try { ZombieStats.tick(now); }
             catch (Throwable t) { ZombieStats.guard.fail(t); }
         }
-        if (ChunkPacer.guard.on || VehicleFixes.animGuard.on || RecalcMemo.guard.on || StreamWake.timing) {
+        if (ChunkPacer.guard.on || VehicleFixes.animGuard.on || RecalcMemo.guard.on || StreamWake.timing || StreamWake.guard.on) {
             try { StreamPatches.tick(now); }
             catch (Throwable t) { System.out.println("[PZButter] stream stats failed: " + t); }
         }
