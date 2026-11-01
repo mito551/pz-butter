@@ -33,11 +33,12 @@ public final class ClockPatches {
             Thread m = FrameClock.mainThread;
             if (m != null && Thread.currentThread() != m) return;
             if (!bindCaps()) return;
-            long period = FrameGrid.periodNs((boolean) vsyncField.get(), Boolean.TRUE.equals(Vrr.active()), Caps.refreshHz,
-                (boolean) uncappedField.get(), (int) lockFpsField.get());
+            boolean vsync = (boolean) vsyncField.get(), vrr = Boolean.TRUE.equals(Vrr.active());
+            int refresh = Caps.refreshHz;
+            long period = FrameGrid.periodNs(vsync, vrr, refresh, (boolean) uncappedField.get(), (int) lockFpsField.get());
             zombie.GameTime gt = zombie.GameTime.instance;
             if (gt == null) return;
-            gt.fpsMultiplier = FrameGrid.snap(gt.fpsMultiplier, period);
+            gt.fpsMultiplier = FrameGrid.snap(gt.fpsMultiplier, period, FrameGrid.quantized(vsync, vrr, refresh));
             if (period > 0) FrameGrid.minute(System.nanoTime());
         } catch (Throwable t) {
             FrameGrid.guard.fail(t);

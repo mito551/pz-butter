@@ -459,7 +459,8 @@ public final class Settings {
         "luaInternConstants", "luaSkipEmpty", "uiVerify", "uiRetainedMods", "uiTickStagger", "textWidthCache", "uiLuaFast", "mapStreetMemo", "mapStreetCache", "mapVisitedFast",   // these two only act with vsync on
         "audioLimiterStereoFold",
         "persistentVboFrameSync",   // acts only with persistentVbo (Plan 9)
-        "driveTreeCutaway", "glassTilesPerFrame", "translucentLightsPerFrame");   // stock-equivalent values (Plan 6), not passed features
+        "driveTreeCutaway", "glassTilesPerFrame", "translucentLightsPerFrame",   // stock-equivalent values (Plan 6), not passed features
+        "wake", "handoffRecalcFast");   // Plan 10b, on after the in-game check
 
     public static boolean flag(String key) {
         if (!enabled) return false;

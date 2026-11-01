@@ -34,8 +34,34 @@ public final class FrameGrid {
         } catch (Throwable t) { return 0L; }
     }
 
-    /** Snap a stock fpsMultiplier to the grid, updating the carry. */
-    public static float snap(float stockMultiplier, long periodNs) {
+    /** With vsync on and no VRR, frames are shown on refresh multiples: a late frame really is shown n periods later. */
+    public static boolean quantized(boolean vsync, boolean vrrActive, int refreshHz) { return vsync && !vrrActive && refreshHz > 0; }
+
+    static double meanDt;        // running mean of stock frame seconds (weight 1/16), game thread only
+    static long belowCap;        // frames left stock because the game was not holding its cap (minute line)
+    static boolean lastQuantized; static long lastPeriodNs;
+
+    /** Snap a stock fpsMultiplier to the grid with vsync quantization (tests and the vsync path). */
+    public static float snap(float stockMultiplier, long periodNs) { return snap(stockMultiplier, periodNs, true); }
+
+    /**
+     * Snap a stock fpsMultiplier to the grid, updating the carry. Without vsync quantization a frame is shown when it is done, so the
+     * grid only describes the frames while the game holds its cap: above 1.03 grid periods (running mean) the stock value is kept.
+     */
+    public static float snap(float stockMultiplier, long periodNs, boolean quantized) {
+        lastQuantized = quantized;
+        lastPeriodNs = periodNs;
+        if (periodNs > 0 && stockMultiplier < 5.0f) {
+            double d = stockMultiplier / 60.0;
+            meanDt = meanDt == 0 ? d : meanDt + (d - meanDt) / 16;
+            if (!quantized && meanDt > 1.03 * periodNs / 1e9) {
+                carry = 0.0;
+                belowCap++;
+                stockPrev = stockMultiplier;
+                snapPrev = stockMultiplier;
+                return stockMultiplier;
+            }
+        }
         if (periodNs <= 0 || stockMultiplier == 5.0f) {
             carry = 0.0;
             stockPrev = stockMultiplier;
@@ -86,9 +112,10 @@ public final class FrameGrid {
         nextMinuteNs = nowNs + 60_000_000_000L;
         int n = ringCount;
         System.out.println(String.format(java.util.Locale.ROOT,
-            "[PZButter] frame clock: %d frames snapped, frame-to-frame change p90 %.1f %% stock vs %.1f %% snapped, max carry %.2f ms",
-            snapped, 100 * p90(stockRel, n), 100 * p90(snapRel, n), maxCarryMs));
+            "[PZButter] frame clock: %d frames snapped, %d left stock below the cap, frame-to-frame change p90 %.1f %% stock vs %.1f %% snapped, max carry %.2f ms (%s grid %.2f ms)",
+            snapped - belowCap, belowCap, 100 * p90(stockRel, n), 100 * p90(snapRel, n), maxCarryMs, lastQuantized ? "vsync" : "cap", lastPeriodNs / 1e6));
         snapped = 0;
+        belowCap = 0;
         maxCarryMs = 0;
         ringCount = 0;
     }
@@ -118,6 +145,8 @@ public final class FrameGrid {
         maxCarryMs = 0;
         nextMinuteNs = 0;
         snapped = 0;
+        belowCap = 0;
+        meanDt = 0;
         guard.on = false;
     }
 }

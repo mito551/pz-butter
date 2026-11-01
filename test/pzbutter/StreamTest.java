@@ -29,7 +29,22 @@ final class StreamTest {
         recalcTests();
         cameraTests();
         clockTests();
+        defaultsAgreeWithFlagSet();
         wakeTests();
+    }
+
+    /** Settings.flag falls back to ON_BY_DEFAULT for a key missing from the file (premain reads it before any default is written). */
+    static void defaultsAgreeWithFlagSet() {
+        java.io.File f = SelfTest.tmp("agree.properties");
+        f.delete();
+        Settings.load(f);
+        java.util.Set<String> on = new java.util.TreeSet<>();
+        try {
+            for (String line : java.nio.file.Files.readAllLines(f.toPath()))
+                if (!line.startsWith("#") && line.endsWith("=true")) on.add(line.substring(0, line.length() - 5));
+        } catch (java.io.IOException e) { throw new RuntimeException(e); }
+        java.util.Set<String> set = new java.util.TreeSet<>(Settings.ON_BY_DEFAULT);
+        assert on.equals(set) : "DEFAULTS =true " + on + " vs ON_BY_DEFAULT " + set;
     }
 
     static void clockTests() throws Throwable {
@@ -38,6 +53,7 @@ final class StreamTest {
         snapSteadyAtGrid();
         snapKeepsHitch();
         snapNoGridIsStock();
+        snapBelowCapIsStock();
         clockOffIsStock();
         clockDefaultsWritten();
     }
@@ -47,6 +63,7 @@ final class StreamTest {
         assert FrameGrid.periodNs(false, false, 144, false, 120) == 8_333_333L; // capped
         assert FrameGrid.periodNs(false, false, 144, true, 120) == 0L;          // uncapped, no vsync: stock
         assert FrameGrid.periodNs(true, true, 144, false, 120) == 8_333_333L;   // VRR: frames follow the cap
+        assert FrameGrid.quantized(true, false, 144) && !FrameGrid.quantized(true, true, 144) && !FrameGrid.quantized(false, false, 144);
     }
 
     static void snapKeepsRealTime() {
@@ -84,6 +101,20 @@ final class StreamTest {
         assert FrameGrid.carry != 0;
         assert FrameGrid.snap(5.0f, p) == 5.0f;      // stock's cap is kept
         assert FrameGrid.carry == 0;                 // and the carry is reset
+        FrameGrid.resetForTest();
+    }
+
+    static void snapBelowCapIsStock() {
+        FrameGrid.resetForTest();
+        long p = 8_333_333L;
+        float slow = (float) (60.0 * 0.0091);              // 9.1 ms frames against an 8.33 ms cap, no vsync
+        float last = 0;
+        for (int i = 0; i < 64; i++) last = FrameGrid.snap(slow, p, false);
+        assert last == slow && FrameGrid.belowCap > 0;     // not holding the cap: stock
+        FrameGrid.resetForTest();
+        boolean two = false;
+        for (int i = 0; i < 64; i++) two |= FrameGrid.snap(slow, p, true) > 1.5f * 60f * p / 1e9f;
+        assert two && FrameGrid.belowCap == 0;             // vsync: late frames really take two refresh periods
         FrameGrid.resetForTest();
     }
 
