@@ -21,7 +21,7 @@ public final class FrameGrid {
     static float maxCarryMs;
 
     static void init() {
-        try { guard.on = Settings.flag("frameClockSmooth"); }
+        try { guard.on = Settings.enabled && Settings.flag("frameClockSmooth"); }
         catch (Throwable t) { guard.fail(t); guard.on = false; }
     }
 
@@ -76,6 +76,23 @@ public final class FrameGrid {
         return result;
     }
 
+    private static long nextMinuteNs, snapped;
+
+    /** Once a minute (game thread): frames snapped, p90 frame-to-frame change of the stock vs the snapped multiplier, largest |carry|. */
+    static void minute(long nowNs) {
+        snapped++;
+        if (nextMinuteNs == 0) { nextMinuteNs = nowNs + 60_000_000_000L; return; }
+        if (nowNs < nextMinuteNs) return;
+        nextMinuteNs = nowNs + 60_000_000_000L;
+        int n = ringCount;
+        System.out.println(String.format(java.util.Locale.ROOT,
+            "[PZButter] frame clock: %d frames snapped, frame-to-frame change p90 %.1f %% stock vs %.1f %% snapped, max carry %.2f ms",
+            snapped, 100 * p90(stockRel, n), 100 * p90(snapRel, n), maxCarryMs));
+        snapped = 0;
+        maxCarryMs = 0;
+        ringCount = 0;
+    }
+
     static float[] ringCopy(float[] src, int n) {
         float[] out = new float[n];
         int start = (ringPos - n + RING) % RING;
@@ -99,6 +116,8 @@ public final class FrameGrid {
         stockPrev = -1f;
         snapPrev = -1f;
         maxCarryMs = 0;
+        nextMinuteNs = 0;
+        snapped = 0;
         guard.on = false;
     }
 }

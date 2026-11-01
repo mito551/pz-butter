@@ -3,6 +3,7 @@ package pzbutter;
 import java.lang.invoke.VarHandle;
 import me.zed_0xff.zombie_buddy.Patch;
 
+/** frameClockSmooth (Plan 10b Task 6): FPSTracking.frameStep sets GameTime.fpsMultiplier = 60 / instant fps (112-119, cap 5.0 at 128-139). */
 public final class ClockPatches {
     private ClockPatches() {}
 
@@ -25,35 +26,28 @@ public final class ClockPatches {
         return ok;
     }
 
-    public static void onEnter() { }
-    public static void enter() { onEnter(); }
-
-    public static void onExit() {
-        if (!FrameGrid.guard.on) return;
+    /** FPSTracking.frameStep exit (GameWindow.frameStep 32, game thread). dtNs is its return value: the frame's nanoTime delta; it writes fpsMultiplier only when dtNs > 0. */
+    public static void onExit(long dtNs) {
+        if (!FrameGrid.guard.on || dtNs <= 0) return;
         try {
-            if (Thread.currentThread() != FrameClock.mainThread) return;
+            Thread m = FrameClock.mainThread;
+            if (m != null && Thread.currentThread() != m) return;
             if (!bindCaps()) return;
-            boolean vsync = vsyncField != null && (boolean) vsyncField.get();
-            boolean vrrActive = Boolean.TRUE.equals(Vrr.active());
-            int refresh = Caps.refreshHz;
-            boolean uncapped = (boolean) uncappedField.get();
-            int lockFps = (int) lockFpsField.get();
-            long period = FrameGrid.periodNs(vsync, vrrActive, refresh, uncapped, lockFps);
-            float stock = zombie.GameTime.instance.fpsMultiplier;
-            float snapped = FrameGrid.snap(stock, period);
-            zombie.GameTime.instance.fpsMultiplier = snapped;
+            long period = FrameGrid.periodNs((boolean) vsyncField.get(), Boolean.TRUE.equals(Vrr.active()), Caps.refreshHz,
+                (boolean) uncappedField.get(), (int) lockFpsField.get());
+            zombie.GameTime gt = zombie.GameTime.instance;
+            if (gt == null) return;
+            gt.fpsMultiplier = FrameGrid.snap(gt.fpsMultiplier, period);
+            if (period > 0) FrameGrid.minute(System.nanoTime());
         } catch (Throwable t) {
             FrameGrid.guard.fail(t);
         }
     }
-    public static void exit() { onExit(); }
 
     @Patch(className = "zombie.FPSTracking", methodName = "frameStep")
     public static class FrameStep {
-        @Patch.OnEnter
-        public static void enter() { ClockPatches.onEnter(); }
         @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
-        public static void exit() { ClockPatches.onExit(); }
+        public static void exit(@Patch.Return long dtNs) { ClockPatches.onExit(dtNs); }
     }
 
     static void resetForTest() {
