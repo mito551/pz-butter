@@ -1,16 +1,15 @@
 package pzbutter;
 
-import java.lang.reflect.Field;
-
+/**
+ * driveLookSmooth / cameraScreenPixels (Plan 10b Task 2): PlayerCamera.update truncates the look-ahead to whole offscreen
+ * pixels (rightClickX = (int) rightClickXf, update 754-770, 943-960, 1292-1309, 1765-1782) and steps it once per call with a
+ * per-frame amount that assumes the lock rate.
+ */
 public final class CameraPixels {
     private CameraPixels() {}
 
     public static final Guard smoothGuard = new Guard("driveLookSmooth");
     public static final Guard pixelGuard = new Guard("cameraScreenPixels");
-
-    static volatile float keptXf;
-    static volatile float keptYf;
-    static volatile long keptNano;
 
     static void init() {
         try {
@@ -24,55 +23,25 @@ public final class CameraPixels {
         }
     }
 
-    /** The value written to rightClickX (and Y). */
+    /** The value written to rightClickX (and Y): fractional when smooth; whole screen pixels zoomed in; else stock truncation. */
     public static float publish(float xf, float zoom, boolean smooth, boolean screenPixels) {
         if (smooth) return xf;
-        if (screenPixels && zoom < 1f) {
-            return Math.round(xf / zoom) * zoom;
-        }
+        if (screenPixels && zoom > 0f && zoom < 1f) return Math.round(xf / zoom) * zoom;
         return (float) (int) xf;
     }
 
-    /** Time-based look-ahead step, clamped to [0,4] stock frames. */
-    public static float step(float current, float target, float stockStep, long dtNs, int lockFps) {
-        double frameTime = 1_000_000_000.0 / Math.max(1, lockFps);
-        double frames = dtNs / frameTime;
-        if (frames < 0) frames = 0;
-        if (frames > 4) frames = 4;
-        float sign = (target > current) ? 1f : (target < current) ? -1f : 0f;
-        float amount = stockStep * (float) frames * sign;
-        float next = current + amount;
-        if (sign > 0f) next = Math.min(next, target);
-        if (sign < 0f) next = Math.max(next, target);
-        return next;
+    /**
+     * How much of stock's per-call step this frame gets: the time since the previous call over the lock-rate frame, at most 1.
+     * At or below the lock rate it is stock (1); above it the look-ahead moves by elapsed time. No previous call: 1.
+     */
+    public static double frameFactor(long dtNs, int lockFps) {
+        if (dtNs <= 0 || lockFps <= 0) return 1.0;
+        double k = dtNs * (double) lockFps / 1_000_000_000.0;
+        return k > 1.0 ? 1.0 : k;
     }
 
-    public static float fieldGet(Object obj, String name) {
-        try {
-            Field f = obj.getClass().getDeclaredField(name);
-            f.setAccessible(true);
-            return f.getFloat(obj);
-        } catch (Throwable t) {
-            smoothGuard.fail(t);
-            return 0f;
-        }
-    }
-
-    public static void fieldSet(Object obj, String name, float value) {
-        try {
-            Field f = obj.getClass().getDeclaredField(name);
-            f.setAccessible(true);
-            f.setFloat(obj, value);
-        } catch (Throwable t) {
-            smoothGuard.fail(t);
-        }
-    }
-
-    static void resetForTest() {
-        smoothGuard.on = false;
-        pixelGuard.on = false;
-        keptXf = 0f;
-        keptYf = 0f;
-        keptNano = 0L;
+    /** Stock moved the look-ahead from before to after this call; keep the share k of that step. */
+    public static float scale(float before, float after, double k) {
+        return (float) (before + (after - before) * k);
     }
 }

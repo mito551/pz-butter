@@ -34,46 +34,57 @@ final class StreamTest {
         publishStockTruncates();
         publishScreenPixelsZoomedIn();
         publishSmoothFractional();
-        stepMatchesStockAtLockRate();
+        frameFactorIsStockAtLockRate();
+        scaleKeepsShareOfStep();
         cameraOffIsStock();
+        cameraFieldsBind();
         cameraDefaultsWritten();
     }
 
     static void publishStockTruncates() {
-        CameraPixels.resetForTest();
         assert CameraPixels.publish(10.7f, 1f, false, false) == 10f;
         assert CameraPixels.publish(-10.7f, 1f, false, false) == -10f;
-        CameraPixels.resetForTest();
+        assert CameraPixels.publish(10.7f, 0.5f, false, false) == 10f;   // cameraScreenPixels off: stock at any zoom
     }
 
     static void publishScreenPixelsZoomedIn() {
-        CameraPixels.resetForTest();
         assert CameraPixels.publish(10.7f, 0.5f, false, true) == 10.5f;
-        assert CameraPixels.publish(10.7f, 2f, false, true) == 10f;
-        CameraPixels.resetForTest();
+        assert CameraPixels.publish(10.7f, 2f, false, true) == 10f;      // zoomed out: stock
+        assert CameraPixels.publish(10.7f, 1f, false, true) == 10f;
     }
 
     static void publishSmoothFractional() {
-        CameraPixels.resetForTest();
         assert CameraPixels.publish(10.7f, 0.5f, true, true) == 10.7f;
-        CameraPixels.resetForTest();
+        assert CameraPixels.publish(10.7f, 1f, true, false) == 10.7f;
     }
 
-    static void stepMatchesStockAtLockRate() {
-        CameraPixels.resetForTest();
-        float one = CameraPixels.step(0f, 100f, 1f, 1_000_000_000L / 60, 60);
-        assert Math.abs(one - 1f) < 1e-4f : one;
-        float two = CameraPixels.step(0f, 100f, 1f, 2 * (1_000_000_000L / 60), 60);
-        assert Math.abs(two - 2f) < 1e-4f : two;
-        float cap = CameraPixels.step(0f, 100f, 1f, 10 * (1_000_000_000L / 60), 60);
-        assert Math.abs(cap - 4f) < 1e-4f : cap;
-        CameraPixels.resetForTest();
+    static void frameFactorIsStockAtLockRate() {
+        assert Math.abs(CameraPixels.frameFactor(1_000_000_000L / 60, 60) - 1.0) < 1e-6;
+        assert Math.abs(CameraPixels.frameFactor(1_000_000_000L / 120, 60) - 0.5) < 1e-6;   // 120 fps at a 60 lock: half a step
+        assert CameraPixels.frameFactor(3 * (1_000_000_000L / 60), 60) == 1.0;              // slow frame: never more than stock
+        assert CameraPixels.frameFactor(0, 60) == 1.0;                                       // no previous call
+        assert CameraPixels.frameFactor(5_000_000L, 0) == 1.0;
+    }
+
+    static void scaleKeepsShareOfStep() {
+        assert CameraPixels.scale(0f, 10f, 0.5) == 5f;
+        assert CameraPixels.scale(4f, 10f, 1.0) == 10f;
+        assert CameraPixels.scale(4f, 10f, 0.0) == 4f;
+        assert CameraPixels.scale(10f, 4f, 0.25) == 8.5f;
     }
 
     static void cameraOffIsStock() {
-        CameraPixels.resetForTest();
-        assert !CameraPixels.smoothGuard.on && !CameraPixels.pixelGuard.on;
-        CameraPixels.resetForTest();
+        CameraPatches.resetForTest();
+        Object notACamera = new Object();
+        CameraPatches.onEnter(notACamera);
+        CameraPatches.onExit(notACamera);
+        assert !CameraPatches.bound;   // guards off: no field binding, nothing read or written
+        CameraPatches.resetForTest();
+    }
+
+    static void cameraFieldsBind() {
+        assert Game.field(zombie.iso.PlayerCamera.class, "rightClickXf", float.class) != null;
+        assert Game.field(zombie.iso.PlayerCamera.class, "rightClickYf", float.class) != null;
     }
 
     static void cameraDefaultsWritten() {
