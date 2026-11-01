@@ -106,7 +106,7 @@ public final class StreamPatches {
     }
 
     private static final long MINUTE_NS = 60_000_000_000L;
-    private static boolean streamStarted;
+    static boolean streamStarted;   // package-private: StreamTest checks the frame-end gate reaches tick
     private static long streamNextNs;
 
     /** Once a minute: print pacing and vehicle lines when something happened. */

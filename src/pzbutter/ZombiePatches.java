@@ -334,7 +334,8 @@ public final class ZombiePatches {
     public static void onFrameEnd() {
         if (ZbAccess.secondPass) ZbAccess.retransformSecondPass();
         boolean timing = EntityTiming.guard.on;
-        if (!timing && !ZombieStats.guard.on) return;
+        boolean stream = ChunkPacer.guard.on || VehicleFixes.animGuard.on || RecalcMemo.guard.on || StreamWake.timing || StreamWake.guard.on;
+        if (!timing && !ZombieStats.guard.on && !stream) return;
         if (Thread.currentThread() != FrameClock.mainThread) return;
         long now = System.nanoTime();
         if (timing) {
@@ -345,7 +346,7 @@ public final class ZombiePatches {
             try { ZombieStats.tick(now); }
             catch (Throwable t) { ZombieStats.guard.fail(t); }
         }
-        if (ChunkPacer.guard.on || VehicleFixes.animGuard.on || RecalcMemo.guard.on || StreamWake.timing || StreamWake.guard.on) {
+        if (stream) {   // the streaming minute lines (Plan 10): their own gate, not entityTiming's or zombieStats'
             try { StreamPatches.tick(now); }
             catch (Throwable t) { System.out.println("[PZButter] stream stats failed: " + t); }
         }
