@@ -22,6 +22,10 @@ final class LoadTest {
         vehicleZonesNoDebugNoStrings();
         loaderCpuFixesOffIsStock();
         loaderCpuFixesDefaultsWritten();
+        stripCommentsMatchesReference();
+        stripCommentsMatchesStock();
+        scriptParserFastOffIsStock();
+        scriptParserFastDefaultsWritten();
     }
 
     static void idChecksSkippedOnlyOutsideDebug() {
@@ -252,5 +256,83 @@ final class LoadTest {
         try { t = java.nio.file.Files.readString(f.toPath()); }
         catch (java.io.IOException e) { throw new RuntimeException(e); }
         assert t.contains("\nloaderCpuFixes=false\n") : t;
+    }
+
+    /** Test-only transcription of stock stripComments, offset by offset. */
+    static final class ScriptCommentsRef {
+        static String stock(String s) {
+            StringBuilder sb = new StringBuilder();
+            sb.setLength(0);
+            sb.append(s);
+            int i1 = sb.lastIndexOf("*/");
+            while (i1 != -1) {
+                int i2 = sb.lastIndexOf("/*", i1 - 1);
+                if (i2 == -1) break;
+                int i3 = sb.lastIndexOf("*/", i1 - 1);
+                if (i3 > i2) {
+                    int i4 = i2;
+                    i2 = sb.lastIndexOf("/*", i2 - 2);
+                    if (i2 == -1) break;
+                    i3 = sb.lastIndexOf("*/", i4 - 2);
+                    while (i3 > i2 && i2 != -1) {
+                        i4 = i2;
+                        i2 = sb.lastIndexOf("/*", i2 - 2);
+                        if (i2 == -1) break;
+                        i3 = sb.lastIndexOf("*/", i4 - 2);
+                    }
+                    if (i2 == -1) break;
+                }
+                if (i2 == -1) break;
+                sb.replace(i2, i1 + 2, "");
+                i1 = sb.lastIndexOf("*/", i2);
+            }
+            return sb.toString();
+        }
+    }
+
+    static void stripCommentsMatchesReference() {
+        java.util.Random r = new java.util.Random(42);
+        char[] alpha = {'/', '*', 'a', '\n', ' '};
+        for (int t = 0; t < 10000; t++) {
+            int len = r.nextInt(61);
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < len; i++) sb.append(alpha[r.nextInt(alpha.length)]);
+            String s = sb.toString();
+            assert ScriptComments.strip(s).equals(ScriptCommentsRef.stock(s)) : "mismatch " + t;
+        }
+    }
+
+    static void stripCommentsMatchesStock() {
+        ScriptComments.guard.on = true;
+        java.nio.file.Path root = java.nio.file.Paths.get("/home/mitori/Sonic/SteamLibrary/steamapps/common/ProjectZomboid/projectzomboid/media/scripts");
+        java.util.concurrent.atomic.AtomicInteger count = new java.util.concurrent.atomic.AtomicInteger();
+        try (java.util.stream.Stream<java.nio.file.Path> w = java.nio.file.Files.walk(root)) {
+            w.filter(p -> p.toString().endsWith(".txt")).forEach(p -> {
+                try {
+                    String text = java.nio.file.Files.readString(p);
+                    assert ScriptComments.strip(text).equals(zombie.scripting.ScriptParser.stripComments(text)) : p;
+                    count.incrementAndGet();
+                } catch (java.io.IOException e) { throw new RuntimeException(e); }
+            });
+        } catch (java.io.IOException e) { throw new RuntimeException(e); }
+        assert count.get() > 0;
+        ScriptComments.guard.on = false;
+        ScriptComments.resetForTest();
+    }
+
+    static void scriptParserFastOffIsStock() {
+        ScriptComments.guard.on = false;
+        assert LoadPatches.onScriptComments("a/*b*/c") == null;
+        ScriptComments.resetForTest();
+    }
+
+    static void scriptParserFastDefaultsWritten() {
+        java.io.File f = SelfTest.tmp("sp.properties");
+        f.delete();
+        Settings.load(f);
+        String t = "";
+        try { t = java.nio.file.Files.readString(f.toPath()); }
+        catch (java.io.IOException e) { throw new RuntimeException(e); }
+        assert t.contains("\nscriptParserFast=false\n") : t;
     }
 }

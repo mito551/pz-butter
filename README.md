@@ -130,6 +130,7 @@ The mod creates `~/Zomboid/PZButter.properties` on first start and reads it once
 | `noLoadFade` | Changes what you see: no 350 ms fade to black between the finished load and the first game frame. Not on the first new game of a session. Off by default. |
 | `shaderCache` | A model whose shader is already built takes it without a render-thread round trip. Off by default. |
 | `loaderCpuFixes` | Vehicle zones are de-duplicated in one pass (debug string built only when vehicle debug is on). Off by default. |
+| `scriptParserFast` | Script comments are stripped in one pass, with the same result. Off by default. |
 | `frameThreads` | Width of PZ Butter's frame worker pool for the zombie update on workers. Needs `luaWorkerGate`, and one restart after it changes. `0` or `1`: no pool, no class changes. Max `32`. Nothing uses the pool yet in this version. Off by default (`0`). |
 | `devCensus` | Diagnostic. Counts, in play, which game calls a calm zombie's update reaches, and writes `Zomboid/pzbutter/census.out` once a minute. Needs the preload (one restart). Off by default. |
 | `persistentVbo` | The sprite and puddle buffers keep storage that stays mapped (OpenGL 4.4 or `GL_ARB_buffer_storage`) instead of asking the driver for new storage and a mapping every 64 KB of sprites. Off by default; stays off by itself on older drivers. |

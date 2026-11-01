@@ -78,4 +78,27 @@ public final class LoadPatches {
             catch (Throwable t) { VehicleZones.guard.fail(t); return false; }
         }
     }
+
+    /** Script comments: true skips stock. */
+    public static String onScriptComments(String s) {
+        if (!ScriptComments.guard.on) return null;
+        try { return ScriptComments.strip(s); }
+        catch (Throwable t) { ScriptComments.guard.fail(t); return null; }
+    }
+
+    @Patch(className = "zombie.scripting.ScriptParser", methodName = "stripComments")
+    public static class StripComments {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.Argument(0) String s, @Patch.Local("v") Object v) {
+            try {
+                v = LoadPatches.onScriptComments(s);
+                return v != null;
+            } catch (Throwable t) { ScriptComments.guard.fail(t); return false; }
+        }
+
+        @Patch.OnExit
+        public static void exit(@Patch.Return(readOnly = false) String ret, @Patch.Local("v") Object v) {
+            if (v != null) ret = (String) v;
+        }
+    }
 }
