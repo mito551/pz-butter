@@ -53,6 +53,7 @@ public class Main {
         RecalcMemo.init();
         CameraPatches.init();
         DriveTrace.init();
+        ClockPatches.init();
         LightChecks.init();
         GridGate.init();
         Cutaways.init();
