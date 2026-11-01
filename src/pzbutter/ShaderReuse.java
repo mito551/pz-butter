@@ -78,8 +78,9 @@ public final class ShaderReuse {
 
     private static volatile boolean printed;
 
+    /** GameLoadingState exit: the load's count, once per session, only when the key is on. */
     public static void printSummaryOnce() {
-        if (printed) return;
+        if (!guard.on || printed) return;
         printed = true;
         System.out.println("[PZButter] shaderCache: " + reused + " reused, " + sent + " sent to the render thread");
     }
