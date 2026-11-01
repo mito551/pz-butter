@@ -112,6 +112,8 @@ The mod creates `~/Zomboid/PZButter.properties` on first start and reads it once
 | `handoffRecalcFast` | A joining chunk's squares recompute their properties once per join instead of on every neighbour pass. Off by default. |
 | `driveLookSmooth` | The camera's look-ahead (driving, aiming, panning) keeps its fractional pixels and, above the frame cap the game assumes, moves by elapsed time instead of a fixed step per frame. Off by default. |
 | `cameraScreenPixels` | Zoomed in, the camera's look-ahead moves in whole screen pixels instead of whole offscreen pixels (smaller steps). Off by default. |
+| `wake` | The chunk streamer wakes when a chunk job is queued instead of sleeping through it. Off by default. |
+| `streamTiming` | Records chunk streamer add-to-pickup latency once a minute (diagnostic). Off by default. |
 | `hotsaveIntervalSec` | Hot-save interval in seconds (0 = stock 1 s; 30 = 30 s). A crash can lose at least that many seconds of the world, and several times that when many chunks changed (the game writes at most about 10 chunks per hot save). Saving and quitting always write everything. |
 | `numberZombiesBlended` | How many of the most relevant zombies get blended animations. `0` keeps the game's 20; `1` to `64`. Fewer looks stiffer and costs less. |
 | `zombieLodFixed3d` | Changes the simulation. At most this many zombies are drawn as 3D models; the rest are flat sprites and, like the game's own zombies past 510, update less often. `0` keeps the game's 510; `50` to `510`, never below `numberZombiesBlended`. |

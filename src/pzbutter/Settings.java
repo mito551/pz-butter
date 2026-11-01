@@ -298,6 +298,12 @@ public final class Settings {
 + "# cameraScreenPixels: while zoomed in, the driving camera look-ahead advances in whole screen pixels.\n"
 + "cameraScreenPixels=false\n"
 + "#\n"
++ "# Streamer wake (Plan 10b).\n"
++ "# wake: the chunk streamer wakes when a chunk job is queued instead of sleeping through it.\n"
++ "wake=false\n"
++ "# streamTiming: records chunk streamer add-to-pickup latency (diagnostic).\n"
++ "streamTiming=false\n"
++ "#\n"
 + "# Hot save (Plan 10a). Stock queues hot saves at most once a second.\n"
 + "# hotsaveIntervalSec: hot-save interval in seconds (0 = stock 1 s; 30 = 30 s). A crash can lose at least that many seconds of the world, and several times that when many chunks changed (the game writes at most about 10 chunks per hot save). Saving and quitting always write everything.\n"
 + "hotsaveIntervalSec=0\n";

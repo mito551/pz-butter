@@ -10,6 +10,7 @@ public final class StreamPatches {
 
     public static void init() {
         ChunkPacer.init();
+        StreamWake.init();
         try {
             int sec = Settings.num("hotsaveIntervalSec", 0, 0, 600);
             hotsaveGuard.on = Settings.enabled && sec > 0;
@@ -67,6 +68,18 @@ public final class StreamPatches {
         }
     }
 
+    @Patch(className = "zombie.iso.WorldStreamer", methodName = "addJob")
+    public static class WakeJobAdded {
+        @Patch.OnExit
+        public static void exit() { StreamWake.jobAdded(); }
+    }
+
+    @Patch(className = "zombie.iso.WorldStreamer", methodName = "DoChunkAlways")
+    public static class WakePickup {
+        @Patch.OnEnter
+        public static void enter() { StreamWake.pickup(); }
+    }
+
     @Patch(className = "zombie.util.CappedConcurrentQueue", methodName = "poll")
     public static class Poll {
         @Patch.OnEnter(skipOn = true)
@@ -101,7 +114,8 @@ public final class StreamPatches {
         boolean pacing = ChunkPacer.guard.on;
         boolean veh = VehicleFixes.animGuard.on;
         boolean recalc = RecalcMemo.guard.on;
-        if (!pacing && !veh && !recalc) return;
+        boolean stream = Settings.flag("streamTiming");
+        if (!pacing && !veh && !recalc && !stream) return;
         if (!streamStarted) {
             streamStarted = true;
             streamNextNs = nowNs + MINUTE_NS;
@@ -129,6 +143,15 @@ public final class StreamPatches {
             RecalcMemo.recalcRun = 0;
             RecalcMemo.recalcSkipped = 0;
             if (r + s > 0) System.out.println("[PZButter] handoff recalc: " + r + " run, " + s + " skipped");
+        }
+        if (stream) {
+            long n = StreamWake.latencyCount;
+            long sum = StreamWake.latencySumNs;
+            long max = StreamWake.latencyMaxNs;
+            StreamWake.latencyCount = 0;
+            StreamWake.latencySumNs = 0;
+            StreamWake.latencyMaxNs = 0;
+            if (n > 0) System.out.println("[PZButter] stream latency: mean " + (sum / n / 1000L) + " us, max " + (max / 1000L) + " us (" + n + " pickups)");
         }
     }
 }

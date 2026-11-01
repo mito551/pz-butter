@@ -138,6 +138,8 @@ final class ModCompat {
         Map.entry("StreamPatches.HotSaveInit", k("hotsaveIntervalSec")),
         Map.entry("StreamPatches.RecalcMemoWindow", k("handoffRecalcFast")),
         Map.entry("StreamPatches.RecalcProperties", k("handoffRecalcFast")),
+        Map.entry("StreamPatches.WakeJobAdded", k("wake", "streamTiming")),
+        Map.entry("StreamPatches.WakePickup", k("streamTiming")),
         Map.entry("CameraPatches.Update", k("driveLookSmooth", "cameraScreenPixels")),
         Map.entry("ZombiePatches.SchedStart", k("entityTiming")),
         Map.entry("ZombiePatches.SchedUpdate", k("entityTiming")),

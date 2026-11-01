@@ -28,6 +28,7 @@ final class StreamTest {
         hotsaveDefaultsWritten();
         recalcTests();
         cameraTests();
+        wakeTests();
     }
 
     static void cameraTests() {
@@ -491,5 +492,91 @@ final class StreamTest {
         assert !StreamPatches.hotsaveGuard.on;
         ChunkPacer.resetForTest();
         VehicleFixes.resetForTest();
+    }
+
+    static void wakeTests() {
+        wakeParkBounded();
+        wakeReturnsOnJob();
+        wakeJobBeforeSleep();
+        wakeOffIsThreadSleep();
+        wakeRewritesOnlySleeps();
+        wakeTransformIgnoresOtherClasses();
+        wakeDefaultsWritten();
+    }
+
+    static void wakeParkBounded() {
+        StreamWake.resetForTest();
+        StreamWake.guard.on = true;
+        long t0 = System.nanoTime();
+        try { StreamWake.sleep(30); } catch (InterruptedException e) { throw new RuntimeException(e); }
+        long ms = (System.nanoTime() - t0) / 1_000_000L;
+        assert ms >= 25 && ms <= 60 : ms;
+        StreamWake.resetForTest();
+    }
+
+    static void wakeReturnsOnJob() {
+        StreamWake.resetForTest();
+        StreamWake.guard.on = true;
+        final long[] ret = new long[1];
+        Thread th = new Thread(() -> {
+            long t0 = System.nanoTime();
+            try { StreamWake.sleep(140); } catch (InterruptedException e) { throw new RuntimeException(e); }
+            ret[0] = (System.nanoTime() - t0) / 1_000_000L;
+        });
+        th.start();
+        try { Thread.sleep(5); } catch (InterruptedException e) {}
+        StreamWake.jobAdded();
+        try { th.join(200); } catch (InterruptedException e) {}
+        assert ret[0] <= 30 : ret[0];
+        StreamWake.resetForTest();
+    }
+
+    static void wakeJobBeforeSleep() {
+        StreamWake.resetForTest();
+        StreamWake.guard.on = true;
+        StreamWake.jobAdded();
+        long t0 = System.nanoTime();
+        try { StreamWake.sleep(140); } catch (InterruptedException e) { throw new RuntimeException(e); }
+        long ms = (System.nanoTime() - t0) / 1_000_000L;
+        assert ms <= 5 : ms;
+        StreamWake.resetForTest();
+    }
+
+    static void wakeOffIsThreadSleep() {
+        StreamWake.resetForTest();
+        StreamWake.guard.on = false;
+        long t0 = System.nanoTime();
+        try { StreamWake.sleep(20); } catch (InterruptedException e) { throw new RuntimeException(e); }
+        long ms1 = (System.nanoTime() - t0) / 1_000_000L;
+        assert ms1 >= 20 : ms1;
+        StreamWake.resetForTest();
+    }
+
+    static void wakeRewritesOnlySleeps() {
+        try {
+            java.io.InputStream in = ClassLoader.getSystemResourceAsStream("zombie/iso/WorldStreamer.class");
+            byte[] orig = in.readAllBytes(); in.close();
+            byte[] tr = WakeTransform.transform(orig);
+            assert tr != null;
+        } catch (Exception e) { throw new RuntimeException(e); }
+    }
+
+    static void wakeTransformIgnoresOtherClasses() {
+        try {
+            java.io.InputStream in = ClassLoader.getSystemResourceAsStream("java/lang/Object.class");
+            byte[] orig = in.readAllBytes(); in.close();
+            assert WakeTransform.transform(orig) == null;
+        } catch (Exception e) { throw new RuntimeException(e); }
+    }
+
+    static void wakeDefaultsWritten() {
+        java.io.File f = SelfTest.tmp("wake.properties");
+        f.delete();
+        Settings.load(f);
+        String t = "";
+        try { t = java.nio.file.Files.readString(f.toPath()); }
+        catch (java.io.IOException e) { throw new RuntimeException(e); }
+        assert t.contains("\nwake=false\n") : t;
+        assert t.contains("\nstreamTiming=false\n") : t;
     }
 }
