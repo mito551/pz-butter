@@ -670,7 +670,7 @@ final class LoadTest {
     static void entryDroppedOnDispose() {
         TexCompress.resetForTest();
         Object key = new Object();
-        TexCompress.encoded.put(key, new TexCompress.Level[0]);
+        TexCompress.encoded.put(key, new TexCompress.Entry(new TexCompress.Level[0], false));
         TexCompress.onDispose(key);
         assert !TexCompress.encoded.containsKey(key);
         assert TexCompress.droppedCount.get() == 1;
@@ -685,7 +685,7 @@ final class LoadTest {
         Object id = new Object();
         java.nio.ByteBuffer rgba = java.nio.ByteBuffer.allocateDirect(16);
         TexCompress.Level L = new TexCompress.Level(rgba, 2, 2, java.nio.ByteBuffer.allocateDirect(16));
-        TexCompress.encoded.put(id, new TexCompress.Level[] { L });
+        TexCompress.encoded.put(id, new TexCompress.Entry(new TexCompress.Level[] { L }, false));
         assert TexCompress.levelFor(id, 0, rgba, 2, 2) == L;
         assert TexCompress.levelFor(id, 0, rgba, 2, 3) == null;
         assert TexCompress.levelFor(id, 0, java.nio.ByteBuffer.allocateDirect(16), 2, 2) == null;
@@ -708,7 +708,12 @@ final class LoadTest {
         try { zombie.core.textures.TextureID.useCompressionOption = true; } catch (Throwable t) { }
         TexCompress.onImageExit(img);
         assert TexCompress.encodedCount.get() == 1 : TexCompress.encodedCount.get();
-        TexCompress.Level L0 = TexCompress.encoded.get(img)[0];
+        // the encode leaves the ImageData as stock has it: no mips generated, base not premultiplied (stock's no-mip path uploads it raw)
+        assert !(boolean) Game.field(zombie.core.textures.ImageData.class, "preMultipliedAlphaDone", boolean.class).get(img);
+        assert Game.field(zombie.core.textures.ImageData.class, "mipMaps", zombie.core.textures.MipMapLevel[].class).get(img) == null;
+        assert TexCompress.encoded.get(img).levels().length == 1 && !TexCompress.encoded.get(img).mips();
+        assert TexCompress.packMips(64) && !TexCompress.packMips(64 | 16) && !TexCompress.packMips(4);
+        TexCompress.Level L0 = TexCompress.encoded.get(img).levels()[0];
         java.nio.ByteBuffer copy = L0.rgba.duplicate();
         int n = L0.w * L0.h * 4;
         byte[] src = new byte[n];

@@ -23,8 +23,14 @@ public final class TexCompress {
         }
     }
 
+    /**
+     * One ImageData's blocks. mips: the levels are stock's mip chain (generateHwId's mip path); otherwise one level, ImageData.data
+     * as the no-mip path uploads it. Task 3 uses the entry only when stock's own path decision at upload equals this one.
+     */
+    public record Entry(Level[] levels, boolean mips) {}
+
     /** Synchronized identity map: ImageData instance -> its encoded per-level BC3 blocks. */
-    public static final Map<Object, Level[]> encoded =
+    public static final Map<Object, Entry> encoded =
             Collections.synchronizedMap(new IdentityHashMap<>());
 
     public static final java.util.concurrent.atomic.AtomicInteger encodedCount = new java.util.concurrent.atomic.AtomicInteger(),
@@ -53,14 +59,21 @@ public final class TexCompress {
 
     /** OnExit of FileTask_LoadPackImage.call(): task carries pack flags; ret is the ImageData. */
     public static void onPackImageExit(Object task, Object ret) {
-        if (!wouldCompressPack(reflectFlags(task))) return;
-        encode(ret);
+        int flags = reflectFlags(task);
+        if (!wouldCompressPack(flags)) return;
+        encode(ret, packMips(flags));
     }
+
+    /**
+     * generateHwId's mip path is flags 64 and not 16 (and its argument, true for decoded data); call() ran initMipMaps for flags
+     * 64 (@44-55), so those levels and the premultiplied base are final. Without 64 the base is raw and stays so on the no-mip path.
+     */
+    static boolean packMips(int flags) { return (flags & 64) != 0 && (flags & 16) == 0; }
 
     /** OnExit of FileTask_LoadImageData.call(): ret is the ImageData; null-assetParams rule. */
     public static void onImageExit(Object ret) {
         if (!wouldCompressImage()) return;
-        encode(ret);
+        encode(ret, false);   // raw base; the TextureID's flags are known only at upload, where Task 3 checks the path
     }
 
     private static int reflectFlags(Object task) {
@@ -70,17 +83,19 @@ public final class TexCompress {
         return (int) flagsH.get(task);
     }
 
-    /** Forces stock's mip generation and premultiply (getMipMapData caches both), then encodes every level. Pool thread. */
-    private static void encode(Object o) {
-        if (!(o instanceof zombie.core.textures.ImageData imageData)) return;
+    /**
+     * Encodes what stock will upload, never changing the ImageData: getMipMapData generates and premultiplies on first use, so it
+     * is called only where call() already did (mips). Pool thread.
+     */
+    private static void encode(Object o, boolean mips) {
+        if (!(o instanceof zombie.core.textures.ImageData imageData) || imageData.data == null) return;
         try {
-            int count = imageData.getMipMapCount();
+            int count = mips ? imageData.getMipMapCount() : 1;
             if (count <= 0) return;
-            imageData.getMipMapData(count - 1);
             Level[] levels = new Level[count];
             byte[] src = null, dst = null;
             for (int i = 0; i < count; i++) {
-                zombie.core.textures.MipMapLevel lvl = imageData.getMipMapData(i);
+                zombie.core.textures.MipMapLevel lvl = mips ? imageData.getMipMapData(i) : imageData.data;
                 int w = lvl.width, h = lvl.height, n = w * h * 4;
                 ByteBuffer rgba = lvl.getBuffer();
                 ByteBuffer dup = rgba.duplicate();
@@ -95,7 +110,7 @@ public final class TexCompress {
                 bc3.put(dst, 0, size).flip();
                 levels[i] = new Level(rgba, w, h, bc3);
             }
-            encoded.put(imageData, levels);
+            encoded.put(imageData, new Entry(levels, mips));
             encodedCount.incrementAndGet();
         } catch (Throwable t) {
             guard.fail(t);
@@ -111,7 +126,8 @@ public final class TexCompress {
 
     /** Task 3: lookup a stored level; identity + size match only. */
     public static Level levelFor(Object imageData, int level, ByteBuffer rgba, int w, int h) {
-        Level[] arr = encoded.get(imageData);
+        Entry e = encoded.get(imageData);
+        Level[] arr = e == null ? null : e.levels();
         if (arr == null || level < 0 || level >= arr.length) return null;
         Level L = arr[level];
         if (L == null) return null;
