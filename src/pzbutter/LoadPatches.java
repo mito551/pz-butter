@@ -121,4 +121,55 @@ public final class LoadPatches {
             if (v != null) ret = (String) v;
         }
     }
+
+    /** DebugFileWatcher maps: take the shared lock only while modWatchAsync is on. */
+    @Patch(className = "zombie.DebugFileWatcher", methodName = "registerDir")
+    public static class DFWRegisterDir {
+        @Patch.OnEnter
+        public static void enter(@Patch.Local("locked") boolean locked) { locked = ModWatch.lockEnter(); }
+        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
+        public static void exit(@Patch.Local("locked") boolean locked) { ModWatch.lockExit(locked); }
+    }
+
+    @Patch(className = "zombie.DebugFileWatcher", methodName = "update")
+    public static class DFWUpdate {
+        @Patch.OnEnter
+        public static void enter(@Patch.Local("locked") boolean locked) { locked = ModWatch.lockEnter(); }
+        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
+        public static void exit(@Patch.Local("locked") boolean locked) { ModWatch.lockExit(locked); }
+    }
+
+    @Patch(className = "zombie.DebugFileWatcher", methodName = "addWatchedFile")
+    public static class DFWAddWatchedFile {
+        @Patch.OnEnter
+        public static void enter(@Patch.Local("locked") boolean locked) { locked = ModWatch.lockEnter(); }
+        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
+        public static void exit(@Patch.Local("locked") boolean locked) { ModWatch.lockExit(locked); }
+    }
+
+    @Patch(className = "zombie.DebugFileWatcher", methodName = "add")
+    public static class DFWAdd {
+        @Patch.OnEnter
+        public static void enter(@Patch.Local("locked") boolean locked) { locked = ModWatch.lockEnter(); }
+        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
+        public static void exit(@Patch.Local("locked") boolean locked) { ModWatch.lockExit(locked); }
+    }
+
+    @Patch(className = "zombie.DebugFileWatcher", methodName = "remove")
+    public static class DFWRemove {
+        @Patch.OnEnter
+        public static void enter(@Patch.Local("locked") boolean locked) { locked = ModWatch.lockEnter(); }
+        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
+        public static void exit(@Patch.Local("locked") boolean locked) { ModWatch.lockExit(locked); }
+    }
+
+    /** addDirectoryRecurse: hand the path to the background worker when the key is on. */
+    @Patch(className = "zombie.DebugFileWatcher", methodName = "addDirectoryRecurse")
+    public static class DFWAddDirectoryRecurse {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.Argument(0) String path) {
+            try { return ModWatch.onAddDirectoryRecurse(path); }
+            catch (Throwable t) { ModWatch.guard.fail(t); return false; }
+        }
+    }
 }

@@ -35,6 +35,11 @@ final class LoadTest {
         stripCommentsMatchesStock();
         scriptParserFastOffIsStock();
         scriptParserFastDefaultsWritten();
+        modWatchVisitsLikeStock();
+        modWatchLockPerDirectory();
+        modWatchStopsOnNullWatcher();
+        modWatchOffIsStock();
+        modWatchAsyncDefaultsWritten();
     }
 
     static void idChecksSkippedOnlyOutsideDebug() {
@@ -486,5 +491,65 @@ final class LoadTest {
         try { t = java.nio.file.Files.readString(f.toPath()); }
         catch (java.io.IOException e) { throw new RuntimeException(e); }
         assert t.contains("\nscriptParserFast=true\n") : t;
+    }
+
+    static void modWatchVisitsLikeStock() throws Exception {
+        ModWatch.resetForTest();
+        ModWatch.guard.on = true;
+        ModWatch.watcherSupplier = () -> new Object();
+        java.nio.file.Path root = java.nio.file.Files.createTempDirectory("mwv");
+        java.nio.file.Files.createDirectories(root.resolve("a/b"));
+        java.nio.file.Files.writeString(root.resolve("file.txt"), "x");
+        java.util.List<java.nio.file.Path> visited = new java.util.ArrayList<>();
+        ModWatch.register = visited::add;
+        ModWatch.runSync(root.toString());
+        assert visited.size() == 3 : visited;
+        ModWatch.resetForTest();
+    }
+
+    static void modWatchLockPerDirectory() {
+        ModWatch.resetForTest();
+        ModWatch.guard.on = true;
+        ModWatch.watcherSupplier = () -> new Object();
+        java.nio.file.Path root;
+        try { root = java.nio.file.Files.createTempDirectory("mwl"); java.nio.file.Files.createDirectories(root.resolve("a/b")); }
+        catch (java.io.IOException e) { throw new RuntimeException(e); }
+        java.util.concurrent.atomic.AtomicInteger n = new java.util.concurrent.atomic.AtomicInteger();
+        ModWatch.register = p -> { assert ModWatch.lock.isHeldByCurrentThread(); n.incrementAndGet(); };
+        assert !ModWatch.lock.isHeldByCurrentThread();
+        ModWatch.runSync(root.toString());
+        assert n.get() == 3;
+        assert !ModWatch.lock.isHeldByCurrentThread();
+        ModWatch.resetForTest();
+    }
+
+    static void modWatchStopsOnNullWatcher() {
+        ModWatch.resetForTest();
+        ModWatch.guard.on = true;
+        ModWatch.watcherSupplier = () -> null;
+        java.nio.file.Path root;
+        try { root = java.nio.file.Files.createTempDirectory("mws"); java.nio.file.Files.createDirectories(root.resolve("a/b")); }
+        catch (java.io.IOException e) { throw new RuntimeException(e); }
+        java.util.concurrent.atomic.AtomicInteger n = new java.util.concurrent.atomic.AtomicInteger();
+        ModWatch.register = p -> n.incrementAndGet();
+        ModWatch.runSync(root.toString());
+        assert n.get() == 0;
+        ModWatch.resetForTest();
+    }
+
+    static void modWatchOffIsStock() {
+        ModWatch.resetForTest();
+        assert !ModWatch.onAddDirectoryRecurse("/tmp/whatever");
+        ModWatch.resetForTest();
+    }
+
+    static void modWatchAsyncDefaultsWritten() {
+        java.io.File f = SelfTest.tmp("mw.properties");
+        f.delete();
+        Settings.load(f);
+        String t = "";
+        try { t = java.nio.file.Files.readString(f.toPath()); }
+        catch (java.io.IOException e) { throw new RuntimeException(e); }
+        assert t.contains("\nmodWatchAsync=false\n") : t;
     }
 }

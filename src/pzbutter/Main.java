@@ -40,6 +40,7 @@ public class Main {
         ZombiePatches.init();
         GpuPatches.init();
         LoadFixes.init();
+        ModWatch.init();
         ShaderReuse.init();
         VehicleZones.init();
         ScriptComments.init();
