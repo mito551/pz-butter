@@ -30,6 +30,8 @@ final class FileTransform implements ClassFileTransformer {
             if (className == null || !className.equals("zombie/fileSystem/FileSystemImpl")) return null;
             byte[] out = transform(bytes, loader == null ? ClassLoader.getSystemClassLoader() : loader);
             if (out == null) { transformState = false; transformReason = "updateAsyncTransactions not found"; }
+            else { transformState = true; transformReason = ""; }
+            System.out.println("[PZButter] fileTransform: FileSystemImpl " + (out != null ? "rewritten" : "untouched: " + transformReason) + (redefining != null ? " (retransform)" : " (load)"));
             return out;
         } catch (Throwable t) {
             transformState = false;
