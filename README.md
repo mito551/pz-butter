@@ -133,7 +133,8 @@ The mod creates `~/Zomboid/PZButter.properties` on first start and reads it once
 | `scriptParserFast` | Large script files have their comments stripped in linear time, with the same result (the game's 6.4 MB `tileGeometry.txt`: 1.2 s to about 0.03 s at boot). Small files keep the game's own code. In testing, boot was about 2 s shorter. On by default. |
 | `textureBufferMb` | Cap of the texture decode buffer in MB (0 = stock 50). |
 | `fileThreads` | Width of the file thread pool (0 = stock 2-4). |
-| `fileInflight` | File tasks in flight at once (0 = stock 16). || `frameThreads` | Width of PZ Butter's frame worker pool for the zombie update on workers. Needs `luaWorkerGate`, and one restart after it changes. `0` or `1`: no pool, no class changes. Max `32`. Nothing uses the pool yet in this version. Off by default (`0`). |
+| `fileInflight` | File tasks in flight at once (0 = stock 16). |
+| `frameThreads` | Width of PZ Butter's frame worker pool for the zombie update on workers. Needs `luaWorkerGate`, and one restart after it changes. `0` or `1`: no pool, no class changes. Max `32`. Nothing uses the pool yet in this version. Off by default (`0`). |
 | `devCensus` | Diagnostic. Counts, in play, which game calls a calm zombie's update reaches, and writes `Zomboid/pzbutter/census.out` once a minute. Needs the preload (one restart). Off by default. |
 | `persistentVbo` | The sprite and puddle buffers keep storage that stays mapped (OpenGL 4.4 or `GL_ARB_buffer_storage`) instead of asking the driver for new storage and a mapping every 64 KB of sprites. Off by default; stays off by itself on older drivers. |
 | `persistentVboSlots` | With `persistentVbo`: storages per buffer, used in turn (`1` to `8`, default `4`; fewer when the buffers would pass 64 MB). |
