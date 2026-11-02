@@ -9,8 +9,10 @@ public class Main {
         }
         Settings.load();
         if (Settings.enabled) {
+            long t0 = System.nanoTime();
             int n = ZbAccess.retransformLoadedTargets();
-            System.out.println("[PZButter] patches: " + (n < 0 ? "no ZombieBuddy Instrumentation, early classes may stay unpatched" : "re-applied to " + n + " classes loaded before ZombieBuddy patched them"));
+            System.out.println("[PZButter] patches: " + (n < 0 ? "no ZombieBuddy Instrumentation, early classes may stay unpatched"
+                : "re-applied to " + n + " classes loaded before ZombieBuddy patched them (" + (System.nanoTime() - t0) / 1_000_000 + " ms)"));
         }
         ModCompat.init();   // before any feature init reads its key: modCompat=auto answers stock for the keys it switches off
         FrameClock.init();
