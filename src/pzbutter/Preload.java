@@ -139,6 +139,34 @@ final class Preload {
                     }
                 }
             }
+            if (Settings.enabled && Settings.flag("texCompress")) {
+                TexCompress.preInit();
+                if (loaded.contains("zombie.core.textures.TextureID")) {
+                    try (var log = new LogSink(new File(System.getProperty("user.home"), "Zomboid/PZButter/preload.log"), 1 << 20)) {
+                        log.begin(System.currentTimeMillis()).text("texCompress skipped TextureID loaded before premain").end(System.currentTimeMillis());
+                        log.flushBuf();
+                    } catch (Throwable ignored) {}
+                    TexTransform.transformState = false;
+                    TexTransform.transformReason = "TextureID loaded before premain";
+                } else {
+                    try {
+                        inst.addTransformer(new TexTransform(), false);
+                        TexTransform.transformState = true;
+                        TexTransform.transformReason = "";
+                        try (var log = new LogSink(new File(System.getProperty("user.home"), "Zomboid/PZButter/preload.log"), 1 << 20)) {
+                            log.begin(System.currentTimeMillis()).text("texCompress transform installed").end(System.currentTimeMillis());
+                            log.flushBuf();
+                        } catch (Throwable ignored) {}
+                    } catch (Throwable t) {
+                        TexTransform.transformState = false;
+                        TexTransform.transformReason = String.valueOf(t);
+                        try (var log = new LogSink(new File(System.getProperty("user.home"), "Zomboid/PZButter/preload.log"), 1 << 20)) {
+                            log.begin(System.currentTimeMillis()).text("texCompress transform " + t).end(System.currentTimeMillis());
+                            log.flushBuf();
+                        } catch (Throwable ignored) {}
+                    }
+                }
+            }
             var list = WorkerList.load(gameRevision());
             var d = decide(gameRevision(), list, Settings.num("frameThreads", 0, 0, 32), Settings.flag("luaWorkerGate"),
                     Settings.enabled, ManagementFactory.getRuntimeMXBean().getInputArguments(), inst != null, loaded);
