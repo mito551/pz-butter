@@ -43,6 +43,7 @@ public class Main {
         ShaderReuse.init();
         VehicleZones.init();
         ScriptComments.init();
+        FileKnobs.init();
         UiTiming.init();
         UiCensus.init();
         UiRetain.init();

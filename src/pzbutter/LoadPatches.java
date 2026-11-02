@@ -41,6 +41,30 @@ public final class LoadPatches {
         public static void exit() { LoadFixes.loadExitLeave(); ShaderReuse.printSummaryOnce(); ScriptComments.printSummaryOnce(); }
     }
 
+    /** TextureIDAssetManager.waitFileTask entry: true skips stock wait. */
+    public static boolean onWaitFileTask() {
+        try { return FileKnobs.onWaitFileTask(); }
+        catch (Throwable t) { FileKnobs.guard.fail(t); return false; }
+    }
+
+    @Patch(className = "zombie.core.textures.TextureIDAssetManager", methodName = "waitFileTask")
+    public static class WaitFileTask {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter() { return LoadPatches.onWaitFileTask(); }
+    }
+
+    /** FileSystemImpl constructor exit: resize executor. */
+    public static void onFileSystemCreated(Object self) {
+        try { FileKnobs.onFileSystemCreated(self); }
+        catch (Throwable t) { FileKnobs.guard.fail(t); }
+    }
+
+    @Patch(className = "zombie.fileSystem.FileSystemImpl", methodName = "<init>")
+    public static class FileSystemImplInit {
+        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
+        public static void exit(@Patch.This Object self) { LoadPatches.onFileSystemCreated(self); }
+    }
+
     @Patch(className = "zombie.core.skinnedmodel.model.Model", methodName = "CreateShader")
     public static class CreateShader {
         @Patch.OnEnter(skipOn = true)

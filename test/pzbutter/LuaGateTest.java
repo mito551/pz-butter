@@ -1343,7 +1343,7 @@ final class LuaGateTest {
     static final java.util.Set<String> VALUE_KEYS = java.util.Set.of("aimHoldMs", "bakeMipLevels", "borderlessFullscreen", "cutawayRadius", "gpuMaxFrames",
         "gridStackInterval", "lightSwitchCheckFrames", "lightingFps", "presentPacing", "roofHideDebounceFrames", "soundTickHz", "treeBakeMaxChunksPerSec", "vrr", "zoomEaseMs",
         "numberZombiesBlended", "zombieLodFixed3d", "zombieModelAddBudgetUs", "zombieSimLodTiles", "zombieSimLodSteps", "vboBatchKb", "vboSizeClasses",
-        "hotsaveIntervalSec", "chunkHandoffDivisor", "chunkHandoffFrameBudgetUs");
+        "hotsaveIntervalSec", "chunkHandoffDivisor", "chunkHandoffFrameBudgetUs", "textureBufferMb", "fileThreads");
 
     /**
      * Forced off answers stock for every key of the table: a switch is false (true for the stock-true ones), and each number or mode key
