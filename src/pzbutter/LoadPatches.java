@@ -154,4 +154,31 @@ public final class LoadPatches {
             catch (Throwable t) { ModWatch.guard.fail(t); return false; }
         }
     }
+
+    @Patch(className = "zombie.asset.FileTask_LoadPackImage", methodName = "call")
+    public static class FileTaskLoadPackImageCall {
+        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
+        public static void exit(@Patch.Return Object ret, @Patch.This Object self) {
+            try { TexCompress.onPackImageExit(self, ret); }
+            catch (Throwable t) { TexCompress.guard.fail(t); }
+        }
+    }
+
+    @Patch(className = "zombie.asset.FileTask_LoadImageData", methodName = "call")
+    public static class FileTaskLoadImageDataCall {
+        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
+        public static void exit(@Patch.Return Object ret) {
+            try { TexCompress.onImageExit(ret); }
+            catch (Throwable t) { TexCompress.guard.fail(t); }
+        }
+    }
+
+    @Patch(className = "zombie.core.textures.ImageData", methodName = "dispose")
+    public static class ImageDataDispose {
+        @Patch.OnEnter
+        public static void enter(@Patch.This Object self) {
+            try { TexCompress.onDispose(self); }
+            catch (Throwable t) { TexCompress.guard.fail(t); }
+        }
+    }
 }
