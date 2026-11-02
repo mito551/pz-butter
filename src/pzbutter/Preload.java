@@ -111,6 +111,33 @@ final class Preload {
                     }
                 }
             }
+            if (Settings.num("fileInflight", 0, 0, 256) > 0) {
+                if (loaded.contains("zombie.fileSystem.FileSystemImpl")) {
+                    try (var log = new LogSink(new File(System.getProperty("user.home"), "Zomboid/PZButter/preload.log"), 1 << 20)) {
+                        log.begin(System.currentTimeMillis()).text("fileInflight skipped FileSystemImpl loaded before premain").end(System.currentTimeMillis());
+                        log.flushBuf();
+                    } catch (Throwable ignored) {}
+                    FileTransform.transformState = false;
+                    FileTransform.transformReason = "FileSystemImpl loaded before premain";
+                } else {
+                    try {
+                        inst.addTransformer(new FileTransform(), false);
+                        FileTransform.transformState = true;
+                        FileTransform.transformReason = "";
+                        try (var log = new LogSink(new File(System.getProperty("user.home"), "Zomboid/PZButter/preload.log"), 1 << 20)) {
+                            log.begin(System.currentTimeMillis()).text("fileInflight transform installed").end(System.currentTimeMillis());
+                            log.flushBuf();
+                        } catch (Throwable ignored) {}
+                    } catch (Throwable t) {
+                        FileTransform.transformState = false;
+                        FileTransform.transformReason = String.valueOf(t);
+                        try (var log = new LogSink(new File(System.getProperty("user.home"), "Zomboid/PZButter/preload.log"), 1 << 20)) {
+                            log.begin(System.currentTimeMillis()).text("fileInflight transform " + t).end(System.currentTimeMillis());
+                            log.flushBuf();
+                        } catch (Throwable ignored) {}
+                    }
+                }
+            }
             var list = WorkerList.load(gameRevision());
             var d = decide(gameRevision(), list, Settings.num("frameThreads", 0, 0, 32), Settings.flag("luaWorkerGate"),
                     Settings.enabled, ManagementFactory.getRuntimeMXBean().getInputArguments(), inst != null, loaded);

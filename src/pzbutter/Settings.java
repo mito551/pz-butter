@@ -293,6 +293,8 @@ public final class Settings {
       + "textureBufferMb=0\n"
       + "# fileThreads: width of the file thread pool (0 = stock 2-4).\n"
       + "fileThreads=0\n"
+      + "# fileInflight: file tasks in flight at once (0 = stock 16).\n"
+      + "fileInflight=0\n"
       + "#\n"
       + "# Vehicles (Plan 10).\n"
       + "# gloveBoxFix: a vehicle whose GloveBox part has no item container no longer throws when adding a key.\n"

@@ -14,6 +14,9 @@ final class LoadTest {
         leaveFromOtherThreadKeepsFlag();
         textureBufferWaitsLikeStock();
         textureBufferStockWhenZero();
+        fileTransformRewritesOnlyInflight();
+        fileInflightStockWhenUnset();
+        fileInflightDefaultsWritten();
         filePoolResizes();
         filePoolResizeOrder();
         fileKnobsDefaultsWritten();
@@ -162,6 +165,78 @@ final class LoadTest {
         try { t = java.nio.file.Files.readString(f.toPath()); }
         catch (java.io.IOException e) { throw new RuntimeException(e); }
         assert t.contains("\ntextureBufferMb=0\n") && t.contains("\nfileThreads=0\n") : t;
+    }
+
+    static void fileTransformRewritesOnlyInflight() {
+        try {
+            java.io.InputStream in = ClassLoader.getSystemResourceAsStream("zombie/fileSystem/FileSystemImpl.class");
+            byte[] orig = in.readAllBytes(); in.close();
+            byte[] tr = FileTransform.transform(orig);
+            assert tr != null;
+            var cf = java.lang.classfile.ClassFile.of();
+            var a = cf.parse(orig); var b = cf.parse(tr);
+            assert a.methods().size() == b.methods().size();
+            for (int k = 0; k < a.methods().size(); k++) {
+                var ma = a.methods().get(k); var mb = b.methods().get(k);
+                String name = ma.methodName().stringValue() + ma.methodType().stringValue();
+                assert name.equals(mb.methodName().stringValue() + mb.methodType().stringValue()) : name;
+                java.util.List<String> ia = invokes(ma), ib = invokes(mb);
+                if (name.equals("updateAsyncTransactions()V")) {
+                    assert java.util.Collections.frequency(ib, "pzbutter/FileKnobs.inflight()I") == 2 : ib;
+                    // no bipush 16 left there
+                    assert countBipush16(mb) == 0 : ib;
+                    ia.removeIf(x -> false);
+                    // compare remaining invokes ignoring rewritten positions
+                    java.util.List<String> ia2 = new java.util.ArrayList<>(ia);
+                    java.util.List<String> ib2 = new java.util.ArrayList<>(ib);
+                    ia2.removeIf(x -> x.equals(""));
+                    // remove inflight counts from ib and bipush 16 from ia by aligning counts of other calls
+                    // simpler: strip both the original bipush isn't an invoke; invokes lists only invokes, so compare after removing inflight
+                    ib2.removeIf(x -> x.equals("pzbutter/FileKnobs.inflight()I"));
+                    // original had no FileKnobs calls; Math.min remains
+                    assert ia2.equals(ib2) : name + "\n" + ia + "\n" + ib;
+                } else {
+                    assert codeText(ma).equals(codeText(mb)) : name;   // every other method unchanged
+                }
+            }
+        } catch (Exception e) { throw new RuntimeException(e); }
+    }
+
+    static int countBipush16(java.lang.classfile.MethodModel m) {
+        int[] n = {0};
+        m.code().ifPresent(c -> { for (var e : c)
+            if (e instanceof java.lang.classfile.Instruction i && i instanceof java.lang.classfile.instruction.ConstantInstruction ci
+                    && ci.opcode() == java.lang.classfile.Opcode.BIPUSH && ci.constantValue() instanceof Integer v && v == 16) n[0]++; });
+        return n[0];
+    }
+
+    static java.util.List<String> invokes(java.lang.classfile.MethodModel m) {
+        java.util.List<String> r = new java.util.ArrayList<>();
+        m.code().ifPresent(c -> { for (var e : c) if (e instanceof java.lang.classfile.instruction.InvokeInstruction i)
+            r.add(i.owner().asInternalName() + "." + i.name().stringValue() + i.type().stringValue()); });
+        return r;
+    }
+
+    static String codeText(java.lang.classfile.MethodModel m) {
+        StringBuilder sb = new StringBuilder();
+        m.code().ifPresent(c -> { for (var e : c) if (e instanceof java.lang.classfile.Instruction i) sb.append(i).append('\n'); });
+        return sb.toString();
+    }
+
+    static void fileInflightStockWhenUnset() {
+        FileKnobs.resetForTest();
+        assert FileKnobs.inflight() == 16;
+        FileKnobs.resetForTest();
+    }
+
+    static void fileInflightDefaultsWritten() {
+        java.io.File f = SelfTest.tmp("fi.properties");
+        f.delete();
+        Settings.load(f);
+        String t = "";
+        try { t = java.nio.file.Files.readString(f.toPath()); }
+        catch (java.io.IOException e) { throw new RuntimeException(e); }
+        assert t.contains("\nfileInflight=0\n") : t;
     }
 
     static class FakeModel { public boolean isStatic; public Object effect; }

@@ -10,6 +10,7 @@ public final class FileKnobs {
 
     public static int textureBufferMb;
     public static int fileThreads;
+    public static int fileInflight;
 
     /** Package-private seam: default DirectBufferAllocator::getBytesAllocated. */
     static LongSupplier bytes = zombie.core.utils.DirectBufferAllocator::getBytesAllocated;
@@ -24,18 +25,26 @@ public final class FileKnobs {
         guard.on = false;
         textureBufferMb = 0;
         fileThreads = 0;
+        fileInflight = 0;
         try {
             if (Settings.enabled) {
                 int tb = Settings.num("textureBufferMb", 0, 0, 2048);
                 textureBufferMb = (tb <= 0) ? 0 : Math.max(16, tb);
                 fileThreads = Settings.num("fileThreads", 0, 0, 32);
+                int fi = Settings.num("fileInflight", 0, 0, 256);
+                fileInflight = (fi <= 0) ? 0 : Math.max(4, fi);
             }
-        } catch (Throwable t) { guard.fail(t); textureBufferMb = 0; fileThreads = 0; }
-        guard.on = textureBufferMb > 0 || fileThreads > 0;
+        } catch (Throwable t) { guard.fail(t); textureBufferMb = 0; fileThreads = 0; fileInflight = 0; }
+        guard.on = textureBufferMb > 0 || fileThreads > 0 || fileInflight > 0;
         if (fileThreads > 0) {
             String line = resize(zombie.GameWindow.fileSystem, fileThreads);
             if (line != null) System.out.println("[PZButter] " + line);
         }
+    }
+
+    /** The in-flight cap (stock 16 when the key is unset). Used by the rewritten FileSystemImpl. */
+    public static int inflight() {
+        return fileInflight <= 0 ? 16 : fileInflight;
     }
 
     public static long bufferCapBytes() {
@@ -81,6 +90,7 @@ public final class FileKnobs {
         guard.on = false;
         textureBufferMb = 0;
         fileThreads = 0;
+        fileInflight = 0;
         bound = false;
         executorH = null;
         bytes = zombie.core.utils.DirectBufferAllocator::getBytesAllocated;
