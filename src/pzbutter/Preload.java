@@ -123,8 +123,8 @@ final class Preload {
                 } else {
                     try {
                         inst.addTransformer(new FileTransform(), false);
-                        FileTransform.transformState = true;
-                        FileTransform.transformReason = "";
+                        FileTransform.transformState = false;   // set by the transform itself when it rewrites the class
+                        FileTransform.transformReason = "FileSystemImpl not rewritten (loaded before the transformer?)";
                         try (var log = new LogSink(new File(System.getProperty("user.home"), "Zomboid/PZButter/preload.log"), 1 << 20)) {
                             log.begin(System.currentTimeMillis()).text("fileInflight transform installed").end(System.currentTimeMillis());
                             log.flushBuf();
@@ -151,8 +151,8 @@ final class Preload {
                 } else {
                     try {
                         inst.addTransformer(new TexTransform(), true);
-                        TexTransform.transformState = true;
-                        TexTransform.transformReason = "";
+                        TexTransform.transformState = false;   // set by the transform itself when it rewrites the class
+                        TexTransform.transformReason = "TextureID not rewritten yet";
                         try (var log = new LogSink(new File(System.getProperty("user.home"), "Zomboid/PZButter/preload.log"), 1 << 20)) {
                             log.begin(System.currentTimeMillis()).text("texCompress transform installed").end(System.currentTimeMillis());
                             log.flushBuf();
