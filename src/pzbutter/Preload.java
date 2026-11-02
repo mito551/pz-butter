@@ -150,7 +150,7 @@ final class Preload {
                     TexTransform.transformReason = "TextureID loaded before premain";
                 } else {
                     try {
-                        inst.addTransformer(new TexTransform(), false);
+                        inst.addTransformer(new TexTransform(), true);
                         TexTransform.transformState = true;
                         TexTransform.transformReason = "";
                         try (var log = new LogSink(new File(System.getProperty("user.home"), "Zomboid/PZButter/preload.log"), 1 << 20)) {
