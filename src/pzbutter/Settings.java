@@ -286,9 +286,9 @@ public final class Settings {
       + "# shaderCache: a model whose shader is already built takes it without a render-thread round trip.\n"
       + "shaderCache=false\n"
       + "# loaderCpuFixes: vehicle zones are de-duplicated in one pass (debug string built only when vehicle debug is on).\n"
-      + "loaderCpuFixes=false\n"
+      + "loaderCpuFixes=true\n"
       + "# scriptParserFast: script comments are stripped in one pass, with the same result.\n"
-      + "scriptParserFast=false\n"
+      + "scriptParserFast=true\n"
       + "#\n"
       + "# Vehicles (Plan 10).\n"
       + "# gloveBoxFix: a vehicle whose GloveBox part has no item container no longer throws when adding a key.\n"
@@ -428,7 +428,8 @@ public final class Settings {
         "audioLimiterStereoFold",
         "persistentVboFrameSync",   // acts only with persistentVbo (Plan 9)
         "driveTreeCutaway", "glassTilesPerFrame", "translucentLightsPerFrame",   // stock-equivalent values (Plan 6), not passed features
-        "wake", "handoffRecalcFast");   // Plan 10b, on after the in-game check
+        "wake", "handoffRecalcFast",
+        "loaderCpuFixes", "scriptParserFast");   // Plan 11b, on after the in-game check   // Plan 10b, on after the in-game check
 
     public static boolean flag(String key) {
         if (!enabled) return false;

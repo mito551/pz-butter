@@ -96,7 +96,7 @@ final class LoadTest {
         assert Settings.render(new java.util.Properties()).contains("\nnoLoadFade=false\n");
         assert !Settings.render(new java.util.Properties()).contains("noLoadingScreen");
         assert Settings.render(new java.util.Properties()).contains("\nshaderCache=false\n");
-        assert Settings.render(new java.util.Properties()).contains("\nloaderCpuFixes=false\n");
+        assert Settings.render(new java.util.Properties()).contains("\nloaderCpuFixes=true\n");
     }
 
     static class FakeModel { public boolean isStatic; public Object effect; }
@@ -262,7 +262,7 @@ final class LoadTest {
         String t = "";
         try { t = java.nio.file.Files.readString(f.toPath()); }
         catch (java.io.IOException e) { throw new RuntimeException(e); }
-        assert t.contains("\nloaderCpuFixes=false\n") : t;
+        assert t.contains("\nloaderCpuFixes=true\n") : t;
     }
 
     /** Test-only transcription of stock stripComments, offset by offset. */
@@ -350,6 +350,6 @@ final class LoadTest {
         String t = "";
         try { t = java.nio.file.Files.readString(f.toPath()); }
         catch (java.io.IOException e) { throw new RuntimeException(e); }
-        assert t.contains("\nscriptParserFast=false\n") : t;
+        assert t.contains("\nscriptParserFast=true\n") : t;
     }
 }
