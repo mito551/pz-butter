@@ -131,9 +131,9 @@ The mod creates `~/Zomboid/PZButter.properties` on first start and reads it once
 | `shaderCache` | A model whose shader is already built takes it without a render-thread round trip. In testing it removed about 20 s of waits from the loading thread, but the load was no shorter: it then waited for clothing and animation assets instead. Off by default. |
 | `loaderCpuFixes` | Vehicle zones are de-duplicated in one pass (debug string built only when vehicle debug is on). With vehicle debug output on, the duplicate-zone lines are the same but name PZ Butter as their caller. In testing it removed about 3 s of the loading thread's work (the load itself was bounded by asset loading). On by default. |
 | `scriptParserFast` | Large script files have their comments stripped in linear time, with the same result (the game's 6.4 MB `tileGeometry.txt`: 1.2 s to about 0.03 s at boot). Small files keep the game's own code. In testing, boot was about 2 s shorter. On by default. |
-| `textureBufferMb` | Cap of the texture decode buffer in MB (0 = stock 50). |
-| `fileThreads` | Width of the file thread pool (0 = stock 2-4). |
-| `fileInflight` | File tasks in flight at once (0 = stock 16). |
+| `textureBufferMb` | Decoded texture data that may wait for upload before the decoders pause, in MB (0 = stock 50). Default `256`: together with the next two, the world load fell from about 54 s to 45 s in testing (each alone, to about 50 s). |
+| `fileThreads` | Width of the file thread pool (0 = stock: 4, or 2 on 4 cores or fewer). Default `-1`: cores minus 4, at most 8, never below stock (machines with 8 cores or fewer keep stock). |
+| `fileInflight` | File tasks in flight at once (0 = stock 16). Default `64`. Needs the preload start (one restart after a change). |
 | `frameThreads` | Width of PZ Butter's frame worker pool for the zombie update on workers. Needs `luaWorkerGate`, and one restart after it changes. `0` or `1`: no pool, no class changes. Max `32`. Nothing uses the pool yet in this version. Off by default (`0`). |
 | `devCensus` | Diagnostic. Counts, in play, which game calls a calm zombie's update reaches, and writes `Zomboid/pzbutter/census.out` once a minute. Needs the preload (one restart). Off by default. |
 | `persistentVbo` | The sprite and puddle buffers keep storage that stays mapped (OpenGL 4.4 or `GL_ARB_buffer_storage`) instead of asking the driver for new storage and a mapping every 64 KB of sprites. Off by default; stays off by itself on older drivers. |

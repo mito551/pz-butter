@@ -1385,7 +1385,7 @@ final class LuaGateTest {
             assert !NoSync.guard.on && !NoSync.check;                               // bakeNoSync: the driver answers
             assert !StreamPatches.hotsaveGuard.on;                                  // hotsaveIntervalSec: stock 0
             assert !ChunkPacer.guard.on;                                            // chunk pacing off when both keys 0
-            assert FileKnobs.textureBufferMb == 0 && !FileKnobs.guard.on;            // textureBufferMb: stock 50 MB wait
+            assert FileKnobs.textureBufferMb == 0 && !FileKnobs.onWaitFileTask();    // textureBufferMb: stock's own 50 MB wait runs
             assert !GpuTimer.guard.on && GpuTimer.loadMs(5.0) == 5.0;               // bakeBudgetGpu: the game thread's step alone
             // gpuMaxFrames (stock-off means a different number) has its own test below
         } finally {
