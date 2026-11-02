@@ -27,9 +27,10 @@ public final class TexCompress {
     public static final Map<Object, Level[]> encoded =
             Collections.synchronizedMap(new IdentityHashMap<>());
 
-    public static volatile int encodedCount;
-    public static volatile int droppedCount;
-    public static volatile int usedCount;
+    public static final java.util.concurrent.atomic.AtomicInteger encodedCount = new java.util.concurrent.atomic.AtomicInteger(),
+        droppedCount = new java.util.concurrent.atomic.AtomicInteger(), usedCount = new java.util.concurrent.atomic.AtomicInteger();
+    private static java.lang.invoke.VarHandle flagsH;   // FileTask_LoadPackImage.flags is package-private
+    private static volatile boolean flagsBound;
 
     static void preInit() { init(); }
     public static void init() {
@@ -64,49 +65,48 @@ public final class TexCompress {
 
     private static int reflectFlags(Object task) {
         if (task == null) return 0;
-        try { return task.getClass().getField("flags").getInt(task); }
-        catch (Throwable t) { return 0; }
+        if (!flagsBound) { flagsH = Game.field(zombie.asset.FileTask_LoadPackImage.class, "flags", int.class); flagsBound = true; }
+        if (flagsH == null || !(task instanceof zombie.asset.FileTask_LoadPackImage)) return 0;
+        return (int) flagsH.get(task);
     }
 
-    private static void encode(Object imageData) {
-        if (imageData == null) return;
+    /** Forces stock's mip generation and premultiply (getMipMapData caches both), then encodes every level. Pool thread. */
+    private static void encode(Object o) {
+        if (!(o instanceof zombie.core.textures.ImageData imageData)) return;
         try {
-            Class<?> c = imageData.getClass();
-            int count = (Integer) c.getMethod("getMipMapCount").invoke(imageData);
+            int count = imageData.getMipMapCount();
             if (count <= 0) return;
-            // generate mips + premultiply, then read each level
+            imageData.getMipMapData(count - 1);
             Level[] levels = new Level[count];
-            c.getMethod("getMipMapData", int.class).invoke(imageData, count - 1);
+            byte[] src = null, dst = null;
             for (int i = 0; i < count; i++) {
-                Object lvl = c.getMethod("getMipMapData", int.class).invoke(imageData, i);
-                Class<?> lc = lvl.getClass();
-                int w = lc.getField("width").getInt(lvl);
-                int h = lc.getField("height").getInt(lvl);
-                java.nio.ByteBuffer rgba = (java.nio.ByteBuffer) lc.getMethod("getBuffer").invoke(lvl);
-                java.nio.ByteBuffer rgbaDup = rgba.duplicate();
-                int n = w * h * 4;
-                byte[] src = new byte[n];
-                rgbaDup.rewind();
-                if (rgbaDup.remaining() < n) {
-                    // skip this level: not enough data
-                    throw new IllegalStateException("level buffer short");
-                }
-                rgbaDup.get(src);
-                java.nio.ByteBuffer bc3 = Bc3.encode(java.nio.ByteBuffer.wrap(src), w, h);
+                zombie.core.textures.MipMapLevel lvl = imageData.getMipMapData(i);
+                int w = lvl.width, h = lvl.height, n = w * h * 4;
+                ByteBuffer rgba = lvl.getBuffer();
+                ByteBuffer dup = rgba.duplicate();
+                dup.rewind();
+                if (dup.remaining() < n) throw new IllegalStateException("level " + i + " buffer short");
+                if (src == null || src.length < n) src = new byte[n];
+                dup.get(src, 0, n);
+                int size = Bc3.encodedSize(w, h);
+                if (dst == null || dst.length < size) dst = new byte[size];
+                Bc3.encodeTo(src, w, h, dst);
+                ByteBuffer bc3 = ByteBuffer.allocateDirect(size).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+                bc3.put(dst, 0, size).flip();
                 levels[i] = new Level(rgba, w, h, bc3);
             }
             encoded.put(imageData, levels);
-            encodedCount++;
+            encodedCount.incrementAndGet();
         } catch (Throwable t) {
             guard.fail(t);
-            encoded.remove(imageData);
+            encoded.remove(o);
         }
     }
 
     /** OnEnter of ImageData.dispose(): drop the entry (and its BC3 buffers). */
     public static void onDispose(Object imageData) {
         if (imageData == null) return;
-        if (encoded.remove(imageData) != null) droppedCount++;
+        if (encoded.remove(imageData) != null) droppedCount.incrementAndGet();
     }
 
     /** Task 3: lookup a stored level; identity + size match only. */
@@ -123,15 +123,17 @@ public final class TexCompress {
     /** Task 3: drop the entry after upload. */
     public static void used(Object imageData) {
         if (imageData == null) return;
-        if (encoded.remove(imageData) != null) usedCount++;
+        if (encoded.remove(imageData) != null) usedCount.incrementAndGet();
     }
 
     static void resetForTest() {
         guard.on = false;
         s3tc = false;
         encoded.clear();
-        encodedCount = 0;
-        droppedCount = 0;
-        usedCount = 0;
+        encodedCount.set(0);
+        droppedCount.set(0);
+        usedCount.set(0);
+        flagsBound = false;
+        flagsH = null;
     }
 }
