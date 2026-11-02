@@ -43,21 +43,36 @@ public final class ModWatch {
     private static MethodHandle registerH;
     private static VarHandle watcherH;
 
-    static void init() {
-        try {
-            guard.on = Settings.enabled && Settings.flag("modWatchAsync");
-            if (!guard.on) return;
+    /**
+     * Premain (Preload.premain, after Settings.load): the switch only. The walk this replaces runs during the boot's
+     * ZomboidFileSystem.getAllModFolders, before Main; the handles are bound on first use so premain loads no game class.
+     */
+    static void preInit() {
+        try { guard.on = Settings.enabled && Settings.flag("modWatchAsync"); }
+        catch (Throwable t) { guard.on = false; }
+    }
+
+    /** Main: the same switch again (a ZombieBuddy start without the preload reaches only this; the boot walk is then stock). */
+    static void init() { preInit(); }
+
+    private static boolean bound;
+
+    private static synchronized boolean bind() {
+        if (!bound) {
+            bound = true;
             registerH = Game.method(zombie.DebugFileWatcher.class, "registerDir", MethodType.methodType(void.class, Path.class));
             watcherH = Game.field(zombie.DebugFileWatcher.class, "watcher", java.nio.file.WatchService.class);
             if (registerH == null || watcherH == null) { guard.on = false; System.out.println("[PZButter] modWatchAsync off: DebugFileWatcher members not found"); }
-        } catch (Throwable t) { guard.fail(t); guard.on = false; }
+        }
+        return registerH != null && watcherH != null;
     }
 
     /** Seams (tests replace them): stock's private registerDir, the watcher field (null: stock stopped watching), stock's IOException reaction. */
-    static volatile Consumer<Path> register = p -> {
+    static final Consumer<Path> REAL_REGISTER = p -> {
         try { registerH.invoke(zombie.DebugFileWatcher.instance, p); }
         catch (Throwable t) { throw new RuntimeException(t); }
     };
+    static volatile Consumer<Path> register = REAL_REGISTER;
     static volatile Supplier<Object> watcherSupplier = () -> watcherH.get(zombie.DebugFileWatcher.instance);
     static volatile Runnable onIOException = () -> watcherH.set(zombie.DebugFileWatcher.instance, (java.nio.file.WatchService) null);   // registerDirRecursive 14-23
 
@@ -69,7 +84,7 @@ public final class ModWatch {
     public static boolean onAddDirectoryRecurse(String path) {
         if (!guard.on || path == null) return false;
         try {
-            if (!zombie.DebugFileWatcher.instance.isInitialized()) return false;
+            if (!zombie.DebugFileWatcher.instance.isInitialized() || (register == REAL_REGISTER && !bind())) return false;
             queue.offer(path);
             ensureWorker();
             return true;
