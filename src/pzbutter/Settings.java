@@ -335,6 +335,8 @@ public final class Settings {
       + "fileInflight=-1\n"
       + "# modWatchAsync: mod media folders are watched from a background thread; the game thread no longer walks them at boot.\n"
       + "modWatchAsync=true\n"
+      + "# texCompress: textures are BC3-encoded on the file pool instead of compressed on the render thread. Off by default.\n"
+      + "texCompress=false\n"
       + "#\n"
       + "# Vehicles (Plan 10).\n"
       + "# gloveBoxFix: a vehicle whose GloveBox part has no item container no longer throws when adding a key.\n"

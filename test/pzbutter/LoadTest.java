@@ -44,6 +44,16 @@ final class LoadTest {
         modWatchIOExceptionStopsWatching();
         modWatchGuardOffKeepsLocking();
         modWatchAsyncDefaultsWritten();
+        texCompressOffIsStock();
+        encodeOnlyWhenStockWouldCompress();
+        entryDroppedOnDispose();
+        levelForNeedsExactMatch();
+        encodeMatchesBc3();
+        packFlagsReadThroughHandle();
+        texTransformRewritesOnlyTexImage();
+        texImageFallsBackOnMismatch();
+        texImageUsesBc3OnMatch();
+        texImageGlErrorTurnsOff();
     }
 
     static void idChecksSkippedOnlyOutsideDebug() {
@@ -624,5 +634,276 @@ final class LoadTest {
         try { t = java.nio.file.Files.readString(f.toPath()); }
         catch (java.io.IOException e) { throw new RuntimeException(e); }
         assert t.contains("\nmodWatchAsync=true\n") : t;
+    }
+
+    static void texCompressOffIsStock() {
+        TexCompress.resetForTest();
+        TexCompress.s3tc = true;
+        try { zombie.core.textures.TextureID.useCompressionOption = true; } catch (Throwable t) { }
+        Object img = new Object();
+        TexCompress.onPackImageExit(new Object(), img);
+        TexCompress.onImageExit(img);
+        TexCompress.onDispose(img);
+        assert TexCompress.encoded.isEmpty();
+        assert TexCompress.encodedCount.get() == 0 : TexCompress.encodedCount.get();
+        TexCompress.resetForTest();
+    }
+
+    static void encodeOnlyWhenStockWouldCompress() {
+        TexCompress.resetForTest();
+        TexCompress.guard.on = true;
+        TexCompress.s3tc = true;
+        try {
+            zombie.core.textures.TextureID.useCompressionOption = false;
+            assert !TexCompress.wouldCompressImage();
+            assert !TexCompress.wouldCompressPack(4);
+            zombie.core.textures.TextureID.useCompressionOption = true;
+            assert TexCompress.wouldCompressImage();
+            assert TexCompress.wouldCompressPack(4);
+            assert !TexCompress.wouldCompressPack(0);
+            // guard off disables both
+            TexCompress.guard.on = false;
+            assert !TexCompress.wouldCompressImage();
+            assert !TexCompress.wouldCompressPack(4);
+        } finally {
+            TexCompress.resetForTest();
+            try { zombie.core.textures.TextureID.useCompressionOption = false; } catch (Throwable t) { }
+        }
+    }
+
+    static void entryDroppedOnDispose() {
+        TexCompress.resetForTest();
+        Object key = new Object();
+        TexCompress.encoded.put(key, new TexCompress.Entry(new TexCompress.Level[0], false));
+        TexCompress.onDispose(key);
+        assert !TexCompress.encoded.containsKey(key);
+        assert TexCompress.droppedCount.get() == 1;
+        // a second dispose is a no-op
+        TexCompress.onDispose(key);
+        assert TexCompress.droppedCount.get() == 1;
+        TexCompress.resetForTest();
+    }
+
+    static void levelForNeedsExactMatch() {
+        TexCompress.resetForTest();
+        Object id = new Object();
+        java.nio.ByteBuffer rgba = java.nio.ByteBuffer.allocateDirect(16);
+        TexCompress.Level L = new TexCompress.Level(rgba, 2, 2, java.nio.ByteBuffer.allocateDirect(16));
+        TexCompress.encoded.put(id, new TexCompress.Entry(new TexCompress.Level[] { L }, false));
+        assert TexCompress.levelFor(id, 0, rgba, 2, 2) == L;
+        assert TexCompress.levelFor(id, 0, rgba, 2, 3) == null;
+        assert TexCompress.levelFor(id, 0, java.nio.ByteBuffer.allocateDirect(16), 2, 2) == null;
+        assert TexCompress.levelFor(id, 1, rgba, 2, 2) == null;
+        assert TexCompress.levelFor(new Object(), 0, rgba, 2, 2) == null;
+        TexCompress.resetForTest();
+    }
+
+    static void encodeMatchesBc3() {
+        TexCompress.resetForTest();
+        TexCompress.guard.on = true;
+        TexCompress.s3tc = true;
+        zombie.core.textures.ImageData img = null;
+        try {
+            java.awt.image.BufferedImage bi = new java.awt.image.BufferedImage(2, 2, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+            java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
+            javax.imageio.ImageIO.write(bi, "png", bo);
+            img = new zombie.core.textures.ImageData(new java.io.ByteArrayInputStream(bo.toByteArray()), false);
+        } catch (Exception e) { throw new RuntimeException(e); }
+        try { zombie.core.textures.TextureID.useCompressionOption = true; } catch (Throwable t) { }
+        TexCompress.onImageExit(img);
+        assert TexCompress.encodedCount.get() == 1 : TexCompress.encodedCount.get();
+        // the encode leaves the ImageData as stock has it: no mips generated, base not premultiplied (stock's no-mip path uploads it raw)
+        assert !(boolean) Game.field(zombie.core.textures.ImageData.class, "preMultipliedAlphaDone", boolean.class).get(img);
+        assert Game.field(zombie.core.textures.ImageData.class, "mipMaps", zombie.core.textures.MipMapLevel[].class).get(img) == null;
+        assert TexCompress.encoded.get(img).levels().length == 1 && !TexCompress.encoded.get(img).mips();
+        assert TexCompress.packMips(64) && !TexCompress.packMips(64 | 16) && !TexCompress.packMips(4);
+        TexCompress.Level L0 = TexCompress.encoded.get(img).levels()[0];
+        java.nio.ByteBuffer copy = L0.rgba.duplicate();
+        int n = L0.w * L0.h * 4;
+        byte[] src = new byte[n];
+        copy.rewind();
+        copy.get(src);
+        java.nio.ByteBuffer expected = Bc3.encode(java.nio.ByteBuffer.wrap(src), L0.w, L0.h);
+        byte[] exp = new byte[expected.capacity()];
+        expected.duplicate().rewind().get(exp);
+        byte[] got = new byte[L0.bc3.capacity()];
+        L0.bc3.duplicate().rewind().get(got);
+        assert java.util.Arrays.equals(exp, got);
+        try { zombie.core.textures.TextureID.useCompressionOption = false; } catch (Throwable t) { }
+        TexCompress.resetForTest();
+    }
+
+    /** FileTask_LoadPackImage.flags is package-private: the pack path must read it (bit 4 encodes, 0 does not). */
+    static void packFlagsReadThroughHandle() {
+        TexCompress.resetForTest();
+        TexCompress.guard.on = true;
+        TexCompress.s3tc = true;
+        try {
+            java.lang.reflect.Field uf = sun.misc.Unsafe.class.getDeclaredField("theUnsafe");
+            uf.setAccessible(true);
+            Object task = ((sun.misc.Unsafe) uf.get(null)).allocateInstance(zombie.asset.FileTask_LoadPackImage.class);   // the constructor needs a live FileSystem
+            java.lang.invoke.VarHandle fh = Game.field(zombie.asset.FileTask_LoadPackImage.class, "flags", int.class);
+            java.awt.image.BufferedImage bi = new java.awt.image.BufferedImage(4, 4, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+            java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
+            javax.imageio.ImageIO.write(bi, "png", bo);
+            zombie.core.textures.TextureID.useCompressionOption = true;
+            fh.set(task, 0);
+            TexCompress.onPackImageExit(task, new zombie.core.textures.ImageData(new java.io.ByteArrayInputStream(bo.toByteArray()), false));
+            assert TexCompress.encodedCount.get() == 0 : TexCompress.encodedCount.get();
+            fh.set(task, 4);
+            TexCompress.onPackImageExit(task, new zombie.core.textures.ImageData(new java.io.ByteArrayInputStream(bo.toByteArray()), false));
+            assert TexCompress.encodedCount.get() == 1 : TexCompress.encodedCount.get();
+        } catch (Exception e) { throw new RuntimeException(e); }
+        finally {
+            try { zombie.core.textures.TextureID.useCompressionOption = false; } catch (Throwable t) { }
+            TexCompress.resetForTest();
+        }
+    }
+
+    static void texTransformRewritesOnlyTexImage() {
+        try {
+            java.io.InputStream in = ClassLoader.getSystemResourceAsStream("zombie/core/textures/TextureID.class");
+            byte[] orig = in.readAllBytes(); in.close();
+            byte[] tr = TexTransform.transform(orig);
+            assert tr != null;
+            var cf = java.lang.classfile.ClassFile.of();
+            var a = cf.parse(orig); var b = cf.parse(tr);
+            assert a.methods().size() == b.methods().size();
+            boolean foundGen = false;
+            for (int k = 0; k < a.methods().size(); k++) {
+                var ma = a.methods().get(k); var mb = b.methods().get(k);
+                String name = ma.methodName().stringValue() + ma.methodType().stringValue();
+                assert name.equals(mb.methodName().stringValue() + mb.methodType().stringValue()) : name;
+                java.util.List<String> ia = invokes(ma), ib = invokes(mb);
+                if (name.equals("generateHwId(Z)V")) {
+                    foundGen = true;
+                    assert java.util.Collections.frequency(ib, "pzbutter/TexCompress.texImage2D(IIIIIIIILjava/nio/ByteBuffer;)V") == 3 : ib;
+                    assert !ib.contains("org/lwjgl/opengl/GL11.glTexImage2D(IIIIIIIILjava/nio/ByteBuffer;)V") : ib;
+                } else {
+                    assert codeText(ma).equals(codeText(mb)) : name;
+                }
+            }
+            assert foundGen;
+        } catch (Exception e) { throw new RuntimeException(e); }
+    }
+
+    static void texImageFallsBackOnMismatch() {
+        TexCompress.resetForTest();
+        TexCompress.guard.on = true;
+        TexCompress.s3tc = true;
+        TexCompress.current = null;
+        class CountingGl implements TexCompress.Gl {
+            int stock = 0, comp = 0;
+            public void texImage2D(int t, int l, int ifmt, int w, int h, int b, int f, int ty, java.nio.ByteBuffer p) { stock++; }
+            public void compressedTexImage2D(int t, int l, int ifmt, int w, int h, int b, java.nio.ByteBuffer p) { comp++; }
+            public int getError() { return 0; }
+        }
+        CountingGl g = new CountingGl();
+        TexCompress.gl = g;
+        TexCompress.texImage2D(0, 0, 34030, 4, 4, 0, 6408, 5121, java.nio.ByteBuffer.allocateDirect(64));
+        assert g.stock == 1 && g.comp == 0;
+
+        TexCompress.resetForTest();
+        TexCompress.guard.on = true;
+        TexCompress.s3tc = true;
+        Object id = new Object();
+        java.nio.ByteBuffer rgba = java.nio.ByteBuffer.allocateDirect(16);
+        TexCompress.Level L2 = new TexCompress.Level(rgba, 2, 2, java.nio.ByteBuffer.allocateDirect(16));
+        TexCompress.encoded.put(id, new TexCompress.Entry(new TexCompress.Level[] { L2 }, false));
+        TexCompress.current = id;
+        CountingGl g2 = new CountingGl();
+        TexCompress.gl = g2;
+        TexCompress.texImage2D(0, 0, 34028, 2, 2, 0, 6408, 5121, rgba);
+        assert g2.stock == 1 && g2.comp == 0;
+        TexCompress.texImage2D(0, 0, 34030, 2, 2, 0, 6408, 5121, java.nio.ByteBuffer.allocateDirect(16));   // another buffer
+        TexCompress.texImage2D(0, 0, 34030, 2, 4, 0, 6408, 5121, rgba);                                     // another size
+        TexCompress.texImage2D(0, 1, 34030, 2, 2, 0, 6408, 5121, rgba);                                     // a level the entry lacks
+        assert g2.stock == 4 && g2.comp == 0 : g2.stock + " " + g2.comp;
+        assert TexCompress.fallbackMismatchCount.get() == 3 && TexCompress.fallbackFormatCount.get() == 1;
+        TexCompress.resetForTest();
+    }
+
+    static void texImageUsesBc3OnMatch() {
+        TexCompress.resetForTest();
+        TexCompress.guard.on = true;
+        TexCompress.s3tc = true;
+        zombie.core.textures.ImageData img = null;
+        try {
+            java.awt.image.BufferedImage bi = new java.awt.image.BufferedImage(2, 2, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+            java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
+            javax.imageio.ImageIO.write(bi, "png", bo);
+            img = new zombie.core.textures.ImageData(new java.io.ByteArrayInputStream(bo.toByteArray()), false);
+        } catch (Exception e) { throw new RuntimeException(e); }
+        try { zombie.core.textures.TextureID.useCompressionOption = true; } catch (Throwable t) { }
+        TexCompress.onImageExit(img);
+        Object tid = textureIdWith(img, null);   // no assetParams: flags = 4, the no-mip path the entry assumed
+        TexCompress.onGenerateEnter(tid, true);
+        assert TexCompress.current == img;
+        TexCompress.Level L0 = TexCompress.encoded.get(img).levels()[0];
+        java.nio.ByteBuffer rgba = L0.rgba;
+        final int[] comp = {0};
+        final int[] fmt = {0};
+        final java.nio.ByteBuffer[] gotBuf = {null};
+        TexCompress.Gl g = new TexCompress.Gl() {
+            public void texImage2D(int t, int l, int ifmt, int w, int h, int b, int f, int ty, java.nio.ByteBuffer p) { }
+            public void compressedTexImage2D(int t, int l, int ifmt, int w, int h, int b, java.nio.ByteBuffer p) { comp[0]++; fmt[0] = ifmt; gotBuf[0] = p; }
+            public int getError() { return 0; }
+        };
+        TexCompress.gl = g;
+        TexCompress.texImage2D(0, 0, 34030, L0.w, L0.h, 0, 6408, 5121, rgba);
+        assert comp[0] == 1 : comp[0];
+        assert fmt[0] == 0x83F3;
+        assert gotBuf[0] == L0.bc3;
+        TexCompress.onGenerateExit();
+        assert TexCompress.current == null;
+        // an entry whose path disagrees with stock's (assetParams ask for mips): dropped, current stays null
+        zombie.core.textures.TextureID.TextureIDAssetParams ap = new zombie.core.textures.TextureID.TextureIDAssetParams();
+        Game.field(zombie.core.textures.TextureID.TextureIDAssetParams.class, "flags", int.class).set(ap, 4 | 64);
+        TexCompress.onGenerateEnter(textureIdWith(img, ap), true);
+        assert TexCompress.current == null && !TexCompress.encoded.containsKey(img) && TexCompress.fallbackPathCount.get() == 1;
+        try { zombie.core.textures.TextureID.useCompressionOption = false; } catch (Throwable t) { }
+        TexCompress.resetForTest();
+    }
+
+    /** A TextureID without its constructor (it needs GL), holding data and assetParams. */
+    static Object textureIdWith(zombie.core.textures.ImageData data, zombie.core.textures.TextureID.TextureIDAssetParams ap) {
+        try {
+            java.lang.reflect.Field uf = sun.misc.Unsafe.class.getDeclaredField("theUnsafe");
+            uf.setAccessible(true);
+            zombie.core.textures.TextureID t = (zombie.core.textures.TextureID) ((sun.misc.Unsafe) uf.get(null)).allocateInstance(zombie.core.textures.TextureID.class);
+            Game.field(zombie.core.textures.TextureID.class, "data", zombie.core.textures.ImageData.class).set(t, data);
+            t.assetParams = ap;
+            return t;
+        } catch (Exception e) { throw new RuntimeException(e); }
+    }
+
+    static void texImageGlErrorTurnsOff() {
+        TexCompress.resetForTest();
+        TexCompress.guard.on = true;
+        TexCompress.s3tc = true;
+        zombie.core.textures.ImageData img = null;
+        try {
+            java.awt.image.BufferedImage bi = new java.awt.image.BufferedImage(2, 2, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+            java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
+            javax.imageio.ImageIO.write(bi, "png", bo);
+            img = new zombie.core.textures.ImageData(new java.io.ByteArrayInputStream(bo.toByteArray()), false);
+        } catch (Exception e) { throw new RuntimeException(e); }
+        try { zombie.core.textures.TextureID.useCompressionOption = true; } catch (Throwable t) { }
+        TexCompress.onImageExit(img);
+        TexCompress.current = img;
+        TexCompress.Level L0 = TexCompress.encoded.get(img).levels()[0];
+        java.nio.ByteBuffer rgba = L0.rgba;
+        final int[] stock = {0};
+        TexCompress.Gl g = new TexCompress.Gl() {
+            public void texImage2D(int t, int l, int ifmt, int w, int h, int b, int f, int ty, java.nio.ByteBuffer p) { stock[0]++; }
+            public void compressedTexImage2D(int t, int l, int ifmt, int w, int h, int b, java.nio.ByteBuffer p) { }
+            public int getError() { return 1281; }
+        };
+        TexCompress.gl = g;
+        TexCompress.texImage2D(0, 0, 34030, L0.w, L0.h, 0, 6408, 5121, rgba);
+        assert !TexCompress.guard.on;
+        assert stock[0] == 1;
+        try { zombie.core.textures.TextureID.useCompressionOption = false; } catch (Throwable t) { }
+        TexCompress.resetForTest();
     }
 }

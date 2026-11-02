@@ -135,7 +135,8 @@ public final class DeliveryBench {
             case "pacing" -> pacing();
             case "vehanim" -> vehanim();
             case "recalcmemo" -> recalcmemo();
-            default -> throw new IllegalArgumentException("... | pacing | vehanim | recalcmemo");
+            case "bc3" -> bc3();
+            default -> throw new IllegalArgumentException("... | pacing | vehanim | recalcmemo | bc3");
         }
     }
 
@@ -1800,5 +1801,33 @@ public final class DeliveryBench {
         RecalcMemo.resetForTest();
         System.out.printf("recalcmemo shim, guard off: %6.2f ns/call; window (enter, 600 squares x 15, exit): %6.2f ns/call, median of %d (skips %d of %d)%n",
             median(off), median(on), runs, skips, runs * joins * calls);
+    }
+
+    static void bc3() {
+        int w = 1024, h = 1024;
+        byte[] src = new byte[w * h * 4];
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++) {
+                int i = (y * w + x) * 4;
+                src[i] = (byte) ((x * 5 + y * 3) & 255);
+                src[i + 1] = (byte) ((x * 3 + y * 7) & 255);
+                src[i + 2] = (byte) ((x + y * 2) & 255);
+                src[i + 3] = (byte) (x < w / 2 ? 255 : 64);
+            }
+        java.nio.ByteBuffer in = java.nio.ByteBuffer.wrap(src);
+        for (int r = 0; r < 3; r++) Bc3.encode(in.duplicate(), w, h);
+        double[] ns = new double[7];
+        int bytes = w * h * 4;
+        for (int r = 0; r < 7; r++) {
+            long t0 = System.nanoTime();
+            java.nio.ByteBuffer out = Bc3.encode(in.duplicate(), w, h);
+            long dt = System.nanoTime() - t0;
+            if (out.capacity() != Bc3.encodedSize(w, h)) throw new IllegalStateException("bc3 size");
+            ns[r] = dt / 1e9;
+        }
+        java.util.Arrays.sort(ns);
+        double seconds = ns[3];
+        double mbps = (bytes / 1_000_000.0) / seconds;
+        System.out.printf("bc3: %7.2f MB/s RGBA input (median %.3f ms, %d x %d)%n", mbps, seconds * 1000.0, w, h);
     }
 }

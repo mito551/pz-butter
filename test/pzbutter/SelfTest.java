@@ -45,6 +45,7 @@ public final class SelfTest {
         CoresTest.run();
         CensusTest.run();
         GpuTest.run();
+        Bc3Test.run();
         StreamTest.run();
         LoadTest.run();
         GpuPstateTest.run();

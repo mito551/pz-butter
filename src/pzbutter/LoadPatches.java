@@ -44,7 +44,7 @@ public final class LoadPatches {
         public static void enter() { LoadFixes.loadExitEnter(); }
 
         @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
-        public static void exit() { LoadFixes.loadExitLeave(); FileKnobs.onLoadExit(); ShaderReuse.printSummaryOnce(); ScriptComments.printSummaryOnce(); ModWatch.printSummaryOnce(); }
+        public static void exit() { LoadFixes.loadExitLeave(); FileKnobs.onLoadExit(); ShaderReuse.printSummaryOnce(); ScriptComments.printSummaryOnce(); ModWatch.printSummaryOnce(); TexCompress.printSummaryOnce(); }
     }
 
     /** TextureIDAssetManager.waitFileTask entry: true skips stock wait. */
@@ -152,6 +152,47 @@ public final class LoadPatches {
         public static boolean enter(@Patch.Argument(0) String path) {
             try { return ModWatch.onAddDirectoryRecurse(path); }
             catch (Throwable t) { ModWatch.guard.fail(t); return false; }
+        }
+    }
+
+    @Patch(className = "zombie.asset.FileTask_LoadPackImage", methodName = "call")
+    public static class FileTaskLoadPackImageCall {
+        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
+        public static void exit(@Patch.Return Object ret, @Patch.This Object self) {
+            try { TexCompress.onPackImageExit(self, ret); }
+            catch (Throwable t) { TexCompress.guard.fail(t); }
+        }
+    }
+
+    @Patch(className = "zombie.asset.FileTask_LoadImageData", methodName = "call")
+    public static class FileTaskLoadImageDataCall {
+        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
+        public static void exit(@Patch.Return Object ret) {
+            try { TexCompress.onImageExit(ret); }
+            catch (Throwable t) { TexCompress.guard.fail(t); }
+        }
+    }
+
+    @Patch(className = "zombie.core.textures.ImageData", methodName = "dispose")
+    public static class ImageDataDispose {
+        @Patch.OnEnter
+        public static void enter(@Patch.This Object self) {
+            try { TexCompress.onDispose(self); }
+            catch (Throwable t) { TexCompress.guard.fail(t); }
+        }
+    }
+
+    @Patch(className = "zombie.core.textures.TextureID", methodName = "generateHwId")
+    public static class TextureIDGenerateHwId {
+        @Patch.OnEnter
+        public static void enter(@Patch.This Object self, @Patch.Argument(0) boolean arg) {
+            try { TexCompress.onGenerateEnter(self, arg); }
+            catch (Throwable t) { TexCompress.guard.fail(t); }
+        }
+        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
+        public static void exit() {
+            try { TexCompress.onGenerateExit(); }
+            catch (Throwable t) { TexCompress.guard.fail(t); }
         }
     }
 }

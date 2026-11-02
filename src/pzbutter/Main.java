@@ -53,6 +53,7 @@ public class Main {
         VehicleZones.init();
         ScriptComments.init();
         FileKnobs.init();
+        TexCompress.init();
         UiTiming.init();
         UiCensus.init();
         UiRetain.init();
