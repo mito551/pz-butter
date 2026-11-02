@@ -132,7 +132,7 @@ public final class LoadPatches {
     @Patch(className = "zombie.DebugFileWatcher", methodName = "registerDir")
     public static class DFWRegisterDir {
         @Patch.OnEnter
-        public static void enter(@Patch.Local("locked") boolean locked) { locked = ModWatch.lockEnter(); }
+        public static void enter(@Patch.Local("locked") boolean locked) { try { locked = ModWatch.lockEnter(); } catch (Throwable t) { locked = false; } }
         @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
         public static void exit(@Patch.Local("locked") boolean locked) { ModWatch.lockExit(locked); }
     }
@@ -140,31 +140,7 @@ public final class LoadPatches {
     @Patch(className = "zombie.DebugFileWatcher", methodName = "update")
     public static class DFWUpdate {
         @Patch.OnEnter
-        public static void enter(@Patch.Local("locked") boolean locked) { locked = ModWatch.lockEnter(); }
-        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
-        public static void exit(@Patch.Local("locked") boolean locked) { ModWatch.lockExit(locked); }
-    }
-
-    @Patch(className = "zombie.DebugFileWatcher", methodName = "addWatchedFile")
-    public static class DFWAddWatchedFile {
-        @Patch.OnEnter
-        public static void enter(@Patch.Local("locked") boolean locked) { locked = ModWatch.lockEnter(); }
-        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
-        public static void exit(@Patch.Local("locked") boolean locked) { ModWatch.lockExit(locked); }
-    }
-
-    @Patch(className = "zombie.DebugFileWatcher", methodName = "add")
-    public static class DFWAdd {
-        @Patch.OnEnter
-        public static void enter(@Patch.Local("locked") boolean locked) { locked = ModWatch.lockEnter(); }
-        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
-        public static void exit(@Patch.Local("locked") boolean locked) { ModWatch.lockExit(locked); }
-    }
-
-    @Patch(className = "zombie.DebugFileWatcher", methodName = "remove")
-    public static class DFWRemove {
-        @Patch.OnEnter
-        public static void enter(@Patch.Local("locked") boolean locked) { locked = ModWatch.lockEnter(); }
+        public static void enter(@Patch.Local("locked") boolean locked) { try { locked = ModWatch.lockEnter(); } catch (Throwable t) { locked = false; } }
         @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
         public static void exit(@Patch.Local("locked") boolean locked) { ModWatch.lockExit(locked); }
     }

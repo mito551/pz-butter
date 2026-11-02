@@ -42,7 +42,7 @@ final class LoadTest {
         modWatchStopsOnNullWatcher();
         modWatchOffIsStock();
         modWatchIOExceptionStopsWatching();
-        modWatchGuardOffEndsWalk();
+        modWatchGuardOffKeepsLocking();
         modWatchAsyncDefaultsWritten();
     }
 
@@ -533,10 +533,11 @@ final class LoadTest {
         java.nio.file.Path root = java.nio.file.Files.createTempDirectory("mwv");
         java.nio.file.Files.createDirectories(root.resolve("a/b"));
         java.nio.file.Files.writeString(root.resolve("file.txt"), "x");
+        java.nio.file.Files.createSymbolicLink(root.resolve("link"), root.resolve("a"));   // stock's walkFileTree does not follow links
         java.util.List<java.nio.file.Path> visited = new java.util.ArrayList<>();
         ModWatch.register = visited::add;
         ModWatch.runSync(root.toString());
-        assert visited.size() == 3 : visited;
+        assert visited.size() == 3 && !visited.contains(root.resolve("link")) : visited;
         ModWatch.resetForTest();
     }
 
@@ -548,7 +549,7 @@ final class LoadTest {
         try { root = java.nio.file.Files.createTempDirectory("mwl"); java.nio.file.Files.createDirectories(root.resolve("a/b")); }
         catch (java.io.IOException e) { throw new RuntimeException(e); }
         java.util.concurrent.atomic.AtomicInteger n = new java.util.concurrent.atomic.AtomicInteger();
-        ModWatch.register = p -> { assert ModWatch.lock.isHeldByCurrentThread(); n.incrementAndGet(); };
+        ModWatch.register = p -> { assert ModWatch.lock.getHoldCount() == 1; n.incrementAndGet(); };   // held once, per directory, not for the walk
         assert !ModWatch.lock.isHeldByCurrentThread();
         ModWatch.runSync(root.toString());
         assert n.get() == 3;
@@ -589,16 +590,23 @@ final class LoadTest {
         ModWatch.resetForTest();
     }
 
-    static void modWatchGuardOffEndsWalk() throws Exception {
+    /** A guard turned off mid-walk (modCompat at Main) no longer drops trees: the holders keep locking while the worker is active. */
+    static void modWatchGuardOffKeepsLocking() throws Exception {
         ModWatch.resetForTest();
         ModWatch.guard.on = true;
+        ModWatch.active = true;
         ModWatch.watcherSupplier = () -> new Object();
         java.nio.file.Path root = java.nio.file.Files.createTempDirectory("mwg");
         java.nio.file.Files.createDirectories(root.resolve("a/b/c"));
         int[] n = {0};
-        ModWatch.register = p -> { n[0]++; ModWatch.guard.on = false; };   // the guard fails after the first directory
+        ModWatch.register = p -> { n[0]++; ModWatch.guard.on = false; };   // the guard turns off after the first directory
         ModWatch.runSync(root.toString());
-        assert n[0] == 1 : n[0];   // the holders stop locking once the guard is off, so the worker must stop too
+        assert n[0] == 4 : n[0];                    // the tree still finishes
+        boolean locked = ModWatch.lockEnter();      // and the game-thread holders still lock while the worker is active
+        assert locked;
+        ModWatch.lockExit(locked);
+        ModWatch.active = false;
+        assert !ModWatch.lockEnter();               // once it is done, off means off
         ModWatch.resetForTest();
     }
 
