@@ -39,6 +39,8 @@ final class LoadTest {
         modWatchLockPerDirectory();
         modWatchStopsOnNullWatcher();
         modWatchOffIsStock();
+        modWatchIOExceptionStopsWatching();
+        modWatchGuardOffEndsWalk();
         modWatchAsyncDefaultsWritten();
     }
 
@@ -534,6 +536,38 @@ final class LoadTest {
         ModWatch.register = p -> n.incrementAndGet();
         ModWatch.runSync(root.toString());
         assert n.get() == 0;
+        ModWatch.resetForTest();
+    }
+
+    static void modWatchIOExceptionStopsWatching() throws Exception {
+        ModWatch.resetForTest();
+        ModWatch.guard.on = true;
+        ModWatch.watcherSupplier = () -> new Object();
+        java.nio.file.Path root = java.nio.file.Files.createTempDirectory("mwe");
+        java.nio.file.Path locked = java.nio.file.Files.createDirectories(root.resolve("a/locked"));
+        java.nio.file.Files.createDirectories(locked.resolve("inner"));
+        java.nio.file.Files.setPosixFilePermissions(locked, java.nio.file.attribute.PosixFilePermissions.fromString("---------"));
+        boolean[] dropped = {false};
+        ModWatch.onIOException = () -> dropped[0] = true;
+        try {
+            ModWatch.runSync(root.toString());
+            assert dropped[0];   // stock's registerDirRecursive sets watcher = null on the walk's IOException
+        } finally {
+            java.nio.file.Files.setPosixFilePermissions(locked, java.nio.file.attribute.PosixFilePermissions.fromString("rwx------"));
+        }
+        ModWatch.resetForTest();
+    }
+
+    static void modWatchGuardOffEndsWalk() throws Exception {
+        ModWatch.resetForTest();
+        ModWatch.guard.on = true;
+        ModWatch.watcherSupplier = () -> new Object();
+        java.nio.file.Path root = java.nio.file.Files.createTempDirectory("mwg");
+        java.nio.file.Files.createDirectories(root.resolve("a/b/c"));
+        int[] n = {0};
+        ModWatch.register = p -> { n[0]++; ModWatch.guard.on = false; };   // the guard fails after the first directory
+        ModWatch.runSync(root.toString());
+        assert n[0] == 1 : n[0];   // the holders stop locking once the guard is off, so the worker must stop too
         ModWatch.resetForTest();
     }
 
