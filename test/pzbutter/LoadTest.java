@@ -164,7 +164,9 @@ final class LoadTest {
         String t = "";
         try { t = java.nio.file.Files.readString(f.toPath()); }
         catch (java.io.IOException e) { throw new RuntimeException(e); }
-        assert t.contains("\ntextureBufferMb=0\n") && t.contains("\nfileThreads=0\n") : t;
+        assert t.contains("\ntextureBufferMb=256\n") && t.contains("\nfileThreads=-1\n") : t;
+        assert FileKnobs.autoThreads(12) == 8 && FileKnobs.autoThreads(16) == 8 && FileKnobs.autoThreads(10) == 6;
+        assert FileKnobs.autoThreads(8) == 0 && FileKnobs.autoThreads(6) == 0 && FileKnobs.autoThreads(4) == 0 && FileKnobs.autoThreads(2) == 0;   // stock kept
     }
 
     static void fileTransformRewritesOnlyInflight() {
@@ -229,7 +231,7 @@ final class LoadTest {
         String t = "";
         try { t = java.nio.file.Files.readString(f.toPath()); }
         catch (java.io.IOException e) { throw new RuntimeException(e); }
-        assert t.contains("\nfileInflight=0\n") : t;
+        assert t.contains("\nfileInflight=64\n") : t;
     }
 
     static class FakeModel { public boolean isStatic; public Object effect; }

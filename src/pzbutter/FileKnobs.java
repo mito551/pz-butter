@@ -28,10 +28,12 @@ public final class FileKnobs {
         fileInflight = 0;
         try {
             if (Settings.enabled) {
-                int tb = Settings.num("textureBufferMb", 0, 0, 2048);
+                // a key forced off by modCompat answers stock (Settings.num would give the non-stock default)
+                int tb = Settings.forcedOff.contains("textureBufferMb") ? 0 : Settings.num("textureBufferMb", TEXTURE_BUFFER_DEFAULT, 0, 2048);
                 textureBufferMb = (tb <= 0) ? 0 : Math.max(16, tb);
-                fileThreads = Settings.num("fileThreads", 0, 0, 32);
-                int fi = Settings.num("fileInflight", 0, 0, 256);
+                int ft = Settings.num("fileThreads", -1, -1, 32);
+                fileThreads = ft < 0 ? autoThreads(Runtime.getRuntime().availableProcessors()) : ft;
+                int fi = Settings.num("fileInflight", INFLIGHT_DEFAULT, 0, 256);
                 fileInflight = (fi <= 0) ? 0 : Math.max(4, fi);
             }
         } catch (Throwable t) { guard.fail(t); textureBufferMb = 0; fileThreads = 0; fileInflight = 0; }
@@ -45,6 +47,16 @@ public final class FileKnobs {
     /** The in-flight cap (stock 16 when the key is unset). Used by the rewritten FileSystemImpl. */
     public static int inflight() {
         return fileInflight <= 0 ? 16 : fileInflight;
+    }
+
+    /** Defaults from the Plan 11c sweep (12 cores): all three together cut the world load from ~54 s to ~45 s; each alone ~50 s. */
+    static final int TEXTURE_BUFFER_DEFAULT = 256, INFLIGHT_DEFAULT = 64;
+
+    /** fileThreads=-1 (auto): stock's pool (cores > 4 ? 4 : 2) widened to cores - 4, at most 8; never below stock, so 8 cores or fewer keep stock. */
+    static int autoThreads(int cores) {
+        int stock = cores > 4 ? 4 : 2;
+        int want = Math.min(8, cores - 4);
+        return want > stock ? want : 0;   // 0: leave the pool alone
     }
 
     public static long bufferCapBytes() {
