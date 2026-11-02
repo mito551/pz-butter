@@ -12,6 +12,11 @@ final class LoadTest {
         noLoadFadeOnlyInsideExit();
         flagClearedOnThrow();
         leaveFromOtherThreadKeepsFlag();
+        textureBufferWaitsLikeStock();
+        textureBufferStockWhenZero();
+        filePoolResizes();
+        filePoolResizeOrder();
+        fileKnobsDefaultsWritten();
         shaderLookupMatchesStock();
         shaderCacheOffIsStock();
         shaderCacheFailureFallsBack();
@@ -97,6 +102,66 @@ final class LoadTest {
         assert !Settings.render(new java.util.Properties()).contains("noLoadingScreen");
         assert Settings.render(new java.util.Properties()).contains("\nshaderCache=false\n");
         assert Settings.render(new java.util.Properties()).contains("\nloaderCpuFixes=true\n");
+    }
+
+    static void textureBufferWaitsLikeStock() {
+        FileKnobs.resetForTest();
+        FileKnobs.textureBufferMb = 256;
+        FileKnobs.guard.on = true;
+        long cap = 256L << 20;
+        long[] seq = {cap + 1, cap + 1, cap + 1, cap};          // above the cap three times, then at it
+        int[] i = {0}, sleeps = {0}, interrupts = {0};
+        FileKnobs.bytes = () -> seq[Math.min(i[0]++, seq.length - 1)];
+        FileKnobs.sleeper = ms -> {
+            assert ms == 20;
+            sleeps[0]++;
+            if (sleeps[0] == 2) { interrupts[0]++; throw new InterruptedException(); }   // stock loops on an interrupt
+        };
+        assert FileKnobs.onWaitFileTask();
+        assert sleeps[0] == 3 && interrupts[0] == 1 && FileKnobs.guard.on;
+        assert FileKnobs.bufferCapBytes() == cap;
+        FileKnobs.resetForTest();
+    }
+
+    static void textureBufferStockWhenZero() {
+        FileKnobs.resetForTest();
+        FileKnobs.guard.on = true;                 // e.g. fileThreads set, textureBufferMb not
+        FileKnobs.bytes = () -> { throw new AssertionError("must not run"); };
+        assert !FileKnobs.onWaitFileTask();        // stock's own loop runs
+        assert FileKnobs.bufferCapBytes() == 52428800L;
+        FileKnobs.resetForTest();
+    }
+
+    static void filePoolResizes() {
+        FileKnobs.resetForTest();
+        zombie.fileSystem.FileSystemImpl fs = new zombie.fileSystem.FileSystemImpl();
+        var h = Game.field(zombie.fileSystem.FileSystemImpl.class, "executor", java.util.concurrent.ExecutorService.class);
+        var pool = (java.util.concurrent.ThreadPoolExecutor) h.get(fs);
+        try {
+            int stock = pool.getCorePoolSize();
+            assert FileKnobs.resize(fs, 8) != null && pool.getCorePoolSize() == 8 && pool.getMaximumPoolSize() == 8;
+            assert FileKnobs.resize(fs, 2) != null && pool.getCorePoolSize() == 2 && pool.getMaximumPoolSize() == 2;   // shrink: core first
+            assert FileKnobs.resize(fs, 0) == null && pool.getCorePoolSize() == 2;                                     // 0: untouched
+            assert FileKnobs.resize(new Object(), 8) == null;
+            assert stock == (Runtime.getRuntime().availableProcessors() > 4 ? 4 : 2);
+        } finally { pool.shutdownNow(); }
+        FileKnobs.resetForTest();
+    }
+
+    static void filePoolResizeOrder() {
+        assert FileKnobs.resizeOrder(4, 8)[0] == 0;
+        assert FileKnobs.resizeOrder(8, 4)[0] == 1;
+        assert FileKnobs.resizeOrder(4, 4)[0] == 1;
+    }
+
+    static void fileKnobsDefaultsWritten() {
+        java.io.File f = SelfTest.tmp("fk.properties");
+        f.delete();
+        Settings.load(f);
+        String t = "";
+        try { t = java.nio.file.Files.readString(f.toPath()); }
+        catch (java.io.IOException e) { throw new RuntimeException(e); }
+        assert t.contains("\ntextureBufferMb=0\n") && t.contains("\nfileThreads=0\n") : t;
     }
 
     static class FakeModel { public boolean isStatic; public Object effect; }

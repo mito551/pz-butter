@@ -19,7 +19,7 @@ public final class FileKnobs {
     interface Sleeper { void sleep(long ms) throws InterruptedException; }
     static Sleeper sleeper = Thread::sleep;
 
-    /** Guard-owned parsed values; call once from Main. */
+    /** Parses the keys; resizes the file pool, which already exists (GameWindow.<clinit> 58 builds it, before any mod loads). */
     static void init() {
         guard.on = false;
         textureBufferMb = 0;
@@ -27,52 +27,52 @@ public final class FileKnobs {
         try {
             if (Settings.enabled) {
                 int tb = Settings.num("textureBufferMb", 0, 0, 2048);
-                textureBufferMb = (tb <= 0) ? 0 : Math.max(16, Math.min(2048, tb));
+                textureBufferMb = (tb <= 0) ? 0 : Math.max(16, tb);
                 fileThreads = Settings.num("fileThreads", 0, 0, 32);
             }
         } catch (Throwable t) { guard.fail(t); textureBufferMb = 0; fileThreads = 0; }
         guard.on = textureBufferMb > 0 || fileThreads > 0;
+        if (fileThreads > 0) {
+            String line = resize(zombie.GameWindow.fileSystem, fileThreads);
+            if (line != null) System.out.println("[PZButter] " + line);
+        }
     }
 
     public static long bufferCapBytes() {
         return textureBufferMb <= 0 ? 52428800L : (long) textureBufferMb * 1024L * 1024L;
     }
 
-    /** OnEnter (skipOn) of TextureIDAssetManager.waitFileTask. */
+    /** OnEnter (skipOn) of TextureIDAssetManager.waitFileTask: stock's loop (0-23) with the configured cap. */
     public static boolean onWaitFileTask() {
         if (!guard.on || textureBufferMb <= 0) return false;
         try {
             long cap = bufferCapBytes();
-            while (bytes.getAsLong() > cap) sleeper.sleep(20);
+            while (bytes.getAsLong() > cap) {
+                try { sleeper.sleep(20); }
+                catch (InterruptedException e) { }   // stock catches it and loops (19-20)
+            }
             return true;
         } catch (Throwable t) { guard.fail(t); return false; }
     }
 
     private static VarHandle executorH;
-    private static volatile boolean bound;
+    private static boolean bound;
 
-    public static void onFileSystemCreated(Object fs) {
-        if (fileThreads <= 0 || fs == null) return;
+    /** Resizes fs's ThreadPoolExecutor to target threads; returns the log line, or null when nothing was done. */
+    static String resize(Object fs, int target) {
+        if (fs == null || target <= 0) return null;
         try {
-            if (!bound) { bound = true; executorH = Game.field(fs.getClass(), "executor", java.util.concurrent.ExecutorService.class); }
-            if (executorH == null) return;
-            Object ex = executorH.get(fs);
-            if (!(ex instanceof java.util.concurrent.ThreadPoolExecutor pool)) return;
-            int current = pool.getCorePoolSize();
-            int target = fileThreads;
-            int stock = current;
-            int[] order = resizeOrder(current, target);
-            if (order.length > 0 && order[0] == 0) {
-                pool.setMaximumPoolSize(target);
-                pool.setCorePoolSize(target);
-            } else {
-                pool.setCorePoolSize(target);
-                pool.setMaximumPoolSize(target);
-            }
-            System.out.println("[PZButter] fileThreads: pool " + target + " (stock " + stock + ")");
-        } catch (Throwable t) { guard.fail(t); }
+            if (!bound) { executorH = Game.field(zombie.fileSystem.FileSystemImpl.class, "executor", java.util.concurrent.ExecutorService.class); bound = true; }
+            if (executorH == null || !(fs instanceof zombie.fileSystem.FileSystemImpl)) return null;
+            if (!(executorH.get(fs) instanceof java.util.concurrent.ThreadPoolExecutor pool)) return null;
+            int stock = pool.getCorePoolSize();
+            if (resizeOrder(stock, target)[0] == 0) { pool.setMaximumPoolSize(target); pool.setCorePoolSize(target); }
+            else { pool.setCorePoolSize(target); pool.setMaximumPoolSize(target); }
+            return "fileThreads: pool " + target + " (stock " + stock + ")";
+        } catch (Throwable t) { guard.fail(t); return null; }
     }
 
+    /** {0}: grow (set the maximum first), {1}: shrink or same (set the core first); never core > max in between. */
     public static int[] resizeOrder(int current, int target) {
         return new int[] { target > current ? 0 : 1 };
     }
