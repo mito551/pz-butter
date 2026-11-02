@@ -27,6 +27,9 @@ final class TexTransform implements ClassFileTransformer {
             if (className == null || !className.equals("zombie/core/textures/TextureID")) return null;
             byte[] out = transform(bytes, loader == null ? ClassLoader.getSystemClassLoader() : loader);
             if (out == null) { transformState = false; if (transformReason.isEmpty()) transformReason = "generateHwId not found"; }
+            // TextureID loads before ZombieBuddy's patches and is retransformed for the generateHwId holder: this transformer is
+            // retransform-capable, so it runs again there (after ZombieBuddy's, on its output)
+            System.out.println("[PZButter] texTransform: TextureID " + (out != null ? "rewritten" : "untouched: " + transformReason) + (redefining != null ? " (retransform)" : " (load)"));
             return out;
         } catch (Throwable t) {
             transformState = false;

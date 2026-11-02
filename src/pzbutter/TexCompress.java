@@ -25,6 +25,8 @@ public final class TexCompress {
     private static boolean currentCompressed;
     private static boolean firstCompressedDone, mixedLogged;
     private static int firstCompressedError;
+    /** texImage2D calls (render thread): zero with uploads happening means the rewrite is not in the running class. */
+    static int calls;
 
     public static final AtomicInteger encodedCount = new AtomicInteger(), droppedCount = new AtomicInteger(), usedCount = new AtomicInteger(),
         compressedCount = new AtomicInteger(), fallbackPathCount = new AtomicInteger(), fallbackFormatCount = new AtomicInteger(),
@@ -195,6 +197,7 @@ public final class TexCompress {
      */
     public static void texImage2D(int target, int level, int internalFormat, int w, int h, int border, int format, int type, ByteBuffer pixels) {
         boolean done = false;
+        calls++;
         try {
             Object cur = current;
             if (cur != null) {
@@ -267,7 +270,8 @@ public final class TexCompress {
         String err = !firstCompressedDone ? "n/a" : firstCompressedError == 0 ? "clean" : "0x" + Integer.toHexString(firstCompressedError);
         System.out.println("[PZButter] texCompress: " + encodedCount.get() + " encoded, " + compressedCount.get() + " compressed uploads, fallbacks: path "
             + fallbackPathCount.get() + ", format " + fallbackFormatCount.get() + ", mismatch " + fallbackMismatchCount.get() + ", no entry "
-            + fallbackNoEntryCount.get() + "; glGetError " + err + (s3tc ? "" : "; no S3TC"));
+            + fallbackNoEntryCount.get() + "; glGetError " + err + (s3tc ? "" : "; no S3TC") + "; " + calls + " texImage2D calls, rewrite "
+            + (TexTransform.transformState ? "on" : "off: " + TexTransform.transformReason));
     }
 
     static void resetForTest() {
@@ -277,6 +281,7 @@ public final class TexCompress {
         current = null;
         currentCompressed = firstCompressedDone = mixedLogged = printed = false;
         firstCompressedError = 0;
+        calls = 0;
         encoded.clear();
         for (AtomicInteger c : new AtomicInteger[] { encodedCount, droppedCount, usedCount, compressedCount, fallbackPathCount,
                 fallbackFormatCount, fallbackMismatchCount, fallbackNoEntryCount }) c.set(0);
