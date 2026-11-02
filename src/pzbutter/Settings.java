@@ -333,6 +333,8 @@ public final class Settings {
       + "fileThreads=-1\n"
       + "# fileInflight: file tasks in flight at once (0 = stock 16; needs the preload start).\n"
       + "fileInflight=64\n"
+      + "# modWatchAsync: mod media folders are watched from a background thread; the game thread no longer walks them at boot.\n"
+      + "modWatchAsync=false\n"
       + "#\n"
       + "# Vehicles (Plan 10).\n"
       + "# gloveBoxFix: a vehicle whose GloveBox part has no item container no longer throws when adding a key.\n"
