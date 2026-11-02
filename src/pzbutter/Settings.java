@@ -334,7 +334,7 @@ public final class Settings {
       + "# fileInflight: during the world load, file tasks in flight at once (0 = stock 16; -1 = 64 where fileThreads auto widens the pool, else stock; needs the preload start).\n"
       + "fileInflight=-1\n"
       + "# modWatchAsync: mod media folders are watched from a background thread; the game thread no longer walks them at boot.\n"
-      + "modWatchAsync=false\n"
+      + "modWatchAsync=true\n"
       + "#\n"
       + "# Vehicles (Plan 10).\n"
       + "# gloveBoxFix: a vehicle whose GloveBox part has no item container no longer throws when adding a key.\n"
@@ -475,7 +475,7 @@ public final class Settings {
         "persistentVboFrameSync",   // acts only with persistentVbo (Plan 9)
         "driveTreeCutaway", "glassTilesPerFrame", "translucentLightsPerFrame",   // stock-equivalent values (Plan 6), not passed features
         "wake", "handoffRecalcFast",
-        "loaderCpuFixes", "scriptParserFast");   // Plan 11b, on after the in-game check   // Plan 10b, on after the in-game check
+        "loaderCpuFixes", "scriptParserFast", "modWatchAsync");   // Plans 10b, 11b, 11d: on after their in-game checks
 
     public static boolean flag(String key) {
         if (!enabled) return false;
