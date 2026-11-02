@@ -76,6 +76,7 @@ final class Preload {
         DevAudit.report("premain");
         try {
             Settings.load();
+            ModWatch.preInit();   // the boot's mod-folder walk (getAllModFolders) runs before Main
             var inst = ZbAccess.instrumentation();
             var loaded = new HashSet<String>();
             if (inst != null) for (Class<?> c : inst.getAllLoadedClasses()) loaded.add(c.getName());   // before anything else loads

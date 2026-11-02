@@ -23,6 +23,7 @@ public final class FileKnobs {
     /** True from GameLoadingState.enter to its exit: the raised limits act only during the world load (in play they stay stock). */
     static volatile boolean inLoad;
     private static int stockPool;
+    private static boolean poolPrinted;
 
     /** Parses the keys (-1 = auto). Nothing changes until the world load starts. */
     static void init() {
@@ -61,7 +62,7 @@ public final class FileKnobs {
             inLoad = true;
             if (fileThreads > 0) {
                 String line = resize(zombie.GameWindow.fileSystem, fileThreads);
-                if (line != null && stockPool == 0) System.out.println("[PZButter] " + line);
+                if (line != null && !poolPrinted) { poolPrinted = true; System.out.println("[PZButter] " + line); }
             }
         } catch (Throwable t) { guard.fail(t); }
     }
@@ -133,6 +134,7 @@ public final class FileKnobs {
         fileInflight = 0;
         inLoad = false;
         stockPool = 0;
+        poolPrinted = false;
         bound = false;
         executorH = null;
         bytes = zombie.core.utils.DirectBufferAllocator::getBytesAllocated;
