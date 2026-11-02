@@ -39,16 +39,30 @@ final class ZbAccess {
     /** Second pass pending: classes that load while the first pass runs miss their new-load patch as well. */
     static volatile boolean secondPass;
 
+    /**
+     * One JVM retransform for all of them: a call per class (52 at Main, 2026-11-02 boot JFR) cost ~3 s of the game thread, mostly
+     * VM work per call (redefinition, deoptimization), not ZombieBuddy's transformer. If the batch throws, one call per class.
+     */
     private static int retransform(Instrumentation inst) {
-        int n = 0;
+        var batch = new java.util.ArrayList<Class<?>>();
         for (Class<?> c : inst.getAllLoadedClasses()) {
             if (!retransformTargets.contains(c.getName()) || retransformed.contains(c.getName()) || !inst.isModifiableClass(c)) continue;
             retransformed.add(c.getName());
-            try { inst.retransformClasses(c); n++; }
-            catch (Throwable t) { System.out.println("[PZButter] patches: retransform " + c.getName() + " failed: " + t); }
+            batch.add(c);
         }
         secondPass = true;
-        return n;
+        if (batch.isEmpty()) return 0;
+        try {
+            inst.retransformClasses(batch.toArray(new Class<?>[0]));
+            return batch.size();
+        } catch (Throwable all) {
+            int n = 0;
+            for (Class<?> c : batch) {
+                try { inst.retransformClasses(c); n++; }
+                catch (Throwable t) { System.out.println("[PZButter] patches: retransform " + c.getName() + " failed: " + t); }
+            }
+            return n;
+        }
     }
 
     /** First frame (main thread): re-apply to the targets loaded while the first pass ran. One flag check afterwards. */
@@ -58,9 +72,10 @@ final class ZbAccess {
         try {
             Instrumentation inst = instrumentation();
             if (inst == null || retransformTargets == null) return;
+            long t0 = System.nanoTime();
             int n = retransform(inst);
             secondPass = false;
-            System.out.println("[PZButter] patches: re-applied to " + n + " more classes at the first frame");
+            System.out.println("[PZButter] patches: re-applied to " + n + " more classes at the first frame (" + (System.nanoTime() - t0) / 1_000_000 + " ms)");
         } catch (Throwable t) {
             System.out.println("[PZButter] patches: second pass failed: " + t);
         }
