@@ -19,7 +19,9 @@ import java.util.function.Supplier;
  * Plan 11d (modWatchAsync): DebugFileWatcher.addDirectoryRecurse (ZomboidFileSystem.getAllModFoldersAux 302, 332: every installed
  * mod's media trees, ~17 s of boot with 49,507 directories) is handed to one daemon worker. It walks like stock's DebugFileWatcher$1
  * (preVisitDirectory registers, CONTINUE; no links followed) and registers each directory under {@link #lock}, which the holders on
- * DebugFileWatcher's map methods (registerDir, update, addWatchedFile, add, remove) also take while the key is on.
+ * the holders on DebugFileWatcher.registerDir and update also take: the worker shares only watchkeyMapping and watcher with the
+ * game thread, and only those two methods touch them there (add, remove and addWatchedFile do not; ShaderProgram.compile calls
+ * add/remove on the render thread, which must not wait on update's callbacks).
  */
 public final class ModWatch {
     private ModWatch() {}
@@ -30,8 +32,11 @@ public final class ModWatch {
     public static final ReentrantLock lock = new ReentrantLock();
 
     /** Holder entry: locks only while the key is on; the returned flag goes to {@link #lockExit}. */
+    /** True from the first queued tree until the worker's queue is empty and the guard is off: the holders keep locking meanwhile. */
+    static volatile boolean active;
+
     public static boolean lockEnter() {
-        if (!guard.on) return false;
+        if (!guard.on && !active) return false;
         try { lock.lock(); return true; }
         catch (Throwable t) { guard.fail(t); return false; }
     }
@@ -74,7 +79,7 @@ public final class ModWatch {
     };
     static volatile Consumer<Path> register = REAL_REGISTER;
     static volatile Supplier<Object> watcherSupplier = () -> watcherH.get(zombie.DebugFileWatcher.instance);
-    static volatile Runnable onIOException = () -> watcherH.set(zombie.DebugFileWatcher.instance, (java.nio.file.WatchService) null);   // registerDirRecursive 14-23
+    static volatile Runnable onIOException = () -> watcherH.set(zombie.DebugFileWatcher.instance, (java.nio.file.WatchService) null);   // registerDirRecursive 14-23 (stock also logs it)
 
     private static final LinkedBlockingQueue<String> queue = new LinkedBlockingQueue<>();
     private static Thread worker;
@@ -85,6 +90,7 @@ public final class ModWatch {
         if (!guard.on || path == null) return false;
         try {
             if (!zombie.DebugFileWatcher.instance.isInitialized() || (register == REAL_REGISTER && !bind())) return false;
+            active = true;
             queue.offer(path);
             ensureWorker();
             return true;
@@ -102,11 +108,15 @@ public final class ModWatch {
     private static volatile long busyNs;
 
     private static void loop() {
-        while (guard.on) {
+        while (true) {
             String path;
             try { path = queue.poll(1, TimeUnit.SECONDS); }
-            catch (InterruptedException e) { return; }
-            if (path == null) continue;
+            catch (InterruptedException e) { active = false; return; }
+            if (path == null) {
+                // a guard turned off later (modCompat at Main, failures) lets the queued trees finish first: no tree is dropped
+                if (!guard.on) { active = false; return; }
+                continue;
+            }
             long t0 = System.nanoTime();
             dirs += walk(path);
             roots++;
@@ -129,8 +139,7 @@ public final class ModWatch {
                 @Override public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
                     lock.lock();
                     try {
-                        // the guard failing (holders stop locking) or stock dropping its watcher ends the walk
-                        if (!guard.on || watcherSupplier.get() == null) return FileVisitResult.TERMINATE;
+                        if (watcherSupplier.get() == null) return FileVisitResult.TERMINATE;   // stock dropped its watcher
                         register.accept(dir);
                         n[0]++;
                     } finally { lock.unlock(); }
@@ -140,7 +149,11 @@ public final class ModWatch {
         } catch (IOException e) {
             lock.lock();
             try { onIOException.run(); } finally { lock.unlock(); }   // as stock: an unreadable tree stops all watching
-        } catch (Throwable t) { guard.fail(t); }
+            System.out.println("[PZButter] modWatchAsync: " + e + " in " + path + ": the game's file watching stops, as it would without PZ Butter");
+        } catch (Throwable t) {
+            System.out.println("[PZButter] modWatchAsync: " + t + " in " + path);
+            guard.fail(t);
+        }
         return n[0];
     }
 
@@ -150,6 +163,7 @@ public final class ModWatch {
     static void resetForTest() {
         guard.on = false;
         printed = false;
+        active = false;
         dirs = 0; roots = 0; busyNs = 0;
         queue.clear();
         register = p -> {};
