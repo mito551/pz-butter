@@ -44,7 +44,7 @@ public final class LoadPatches {
         public static void enter() { LoadFixes.loadExitEnter(); }
 
         @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
-        public static void exit() { LoadFixes.loadExitLeave(); FileKnobs.onLoadExit(); ShaderReuse.printSummaryOnce(); ScriptComments.printSummaryOnce(); }
+        public static void exit() { LoadFixes.loadExitLeave(); FileKnobs.onLoadExit(); ShaderReuse.printSummaryOnce(); ScriptComments.printSummaryOnce(); ModWatch.printSummaryOnce(); }
     }
 
     /** TextureIDAssetManager.waitFileTask entry: true skips stock wait. */

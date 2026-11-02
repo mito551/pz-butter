@@ -615,6 +615,6 @@ final class LoadTest {
         String t = "";
         try { t = java.nio.file.Files.readString(f.toPath()); }
         catch (java.io.IOException e) { throw new RuntimeException(e); }
-        assert t.contains("\nmodWatchAsync=false\n") : t;
+        assert t.contains("\nmodWatchAsync=true\n") : t;
     }
 }

@@ -98,23 +98,27 @@ public final class ModWatch {
         worker.start();
     }
 
+    private static volatile int dirs, roots;
+    private static volatile long busyNs;
+
     private static void loop() {
-        long t0 = 0;
-        int dirs = 0;
         while (guard.on) {
             String path;
-            try { path = queue.poll(250, TimeUnit.MILLISECONDS); }
+            try { path = queue.poll(1, TimeUnit.SECONDS); }
             catch (InterruptedException e) { return; }
-            if (path == null) {
-                if (dirs > 0 && !printed) {
-                    printed = true;
-                    System.out.println("[PZButter] modWatchAsync: " + dirs + " directories in " + (System.nanoTime() - t0) / 1_000_000 + " ms");
-                }
-                continue;
-            }
-            if (dirs == 0) t0 = System.nanoTime();
+            if (path == null) continue;
+            long t0 = System.nanoTime();
             dirs += walk(path);
+            roots++;
+            busyNs += System.nanoTime() - t0;
         }
+    }
+
+    /** GameLoadingState exit: what the worker has registered so far (the boot's walk is long done by then). */
+    public static void printSummaryOnce() {
+        if (!guard.on || printed || roots == 0) return;
+        printed = true;
+        System.out.println("[PZButter] modWatchAsync: " + roots + " mod media trees, " + dirs + " directories, " + busyNs / 1_000_000 + " ms on the worker");
     }
 
     /** One stock registerDirRecursive on this thread; returns the directories registered. */
@@ -146,6 +150,7 @@ public final class ModWatch {
     static void resetForTest() {
         guard.on = false;
         printed = false;
+        dirs = 0; roots = 0; busyNs = 0;
         queue.clear();
         register = p -> {};
         watcherSupplier = () -> null;
