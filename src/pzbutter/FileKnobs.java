@@ -20,7 +20,11 @@ public final class FileKnobs {
     interface Sleeper { void sleep(long ms) throws InterruptedException; }
     static Sleeper sleeper = Thread::sleep;
 
-    /** Parses the keys; resizes the file pool, which already exists (GameWindow.<clinit> 58 builds it, before any mod loads). */
+    /** True from GameLoadingState.enter to its exit: the raised limits act only during the world load (in play they stay stock). */
+    static volatile boolean inLoad;
+    private static int stockPool;
+
+    /** Parses the keys (-1 = auto). Nothing changes until the world load starts. */
     static void init() {
         guard.on = false;
         textureBufferMb = 0;
@@ -28,31 +32,54 @@ public final class FileKnobs {
         fileInflight = 0;
         try {
             if (Settings.enabled) {
-                // a key forced off by modCompat answers stock (Settings.num would give the non-stock default)
-                int tb = Settings.forcedOff.contains("textureBufferMb") ? 0 : Settings.num("textureBufferMb", TEXTURE_BUFFER_DEFAULT, 0, 2048);
-                textureBufferMb = (tb <= 0) ? 0 : Math.max(16, tb);
-                int ft = Settings.num("fileThreads", -1, -1, 32);
-                fileThreads = ft < 0 ? autoThreads(Runtime.getRuntime().availableProcessors()) : ft;
-                int fi = Settings.num("fileInflight", INFLIGHT_DEFAULT, 0, 256);
-                fileInflight = (fi <= 0) ? 0 : Math.max(4, fi);
+                int cores = Runtime.getRuntime().availableProcessors();
+                // a key forced off by modCompat answers stock (Settings.num would give the call-site default)
+                int tb = Settings.forcedOff.contains("textureBufferMb") ? 0 : Settings.num("textureBufferMb", -1, -1, 2048);
+                fileThreads = resolveThreads(Settings.num("fileThreads", -1, -1, 32), cores);
+                textureBufferMb = resolveBuffer(tb, cores);
+                fileInflight = resolveInflight(Settings.num("fileInflight", -1, -1, 256), cores);
             }
-        } catch (Throwable t) { guard.fail(t); textureBufferMb = 0; fileThreads = 0; fileInflight = 0; }
-        guard.on = textureBufferMb > 0 || fileThreads > 0 || fileInflight > 0;
-        if (fileThreads > 0) {
-            String line = resize(zombie.GameWindow.fileSystem, fileThreads);
-            if (line != null) System.out.println("[PZButter] " + line);
-        }
+            guard.on = textureBufferMb > 0 || fileThreads > 0 || fileInflight > 0;
+            if (guard.on) System.out.println("[PZButter] filePipeline (world load only): buffer " + (textureBufferMb > 0 ? textureBufferMb + " MB" : "stock")
+                + ", in flight " + (fileInflight > 0 ? fileInflight + (FileTransform.transformState ? "" : " (rewrite off: " + FileTransform.transformReason + ")") : "stock")
+                + ", pool " + (fileThreads > 0 ? fileThreads : "stock"));
+        } catch (Throwable t) { guard.fail(t); textureBufferMb = 0; fileThreads = 0; fileInflight = 0; guard.on = false; }
     }
 
-    /** The in-flight cap (stock 16 when the key is unset). Used by the rewritten FileSystemImpl. */
+    /**
+     * -1 (auto): the measured setting (12 cores: 8 threads, 64 in flight, 256 MB; the load fell from ~54 s to ~45 s) only where the
+     * pool widens; otherwise all three stay stock (never measured with a stock pool). 0: stock. Other values: as set.
+     */
+    static int resolveThreads(int raw, int cores) { return raw < 0 ? autoThreads(cores) : raw; }
+    static int resolveBuffer(int raw, int cores) { int v = raw < 0 ? (autoThreads(cores) > 0 ? 256 : 0) : raw; return v <= 0 ? 0 : Math.max(16, v); }
+    static int resolveInflight(int raw, int cores) { int v = raw < 0 ? (autoThreads(cores) > 0 ? 64 : 0) : raw; return v <= 0 ? 0 : Math.max(4, v); }
+
+    /** GameLoadingState.enter (game thread): the world load starts. */
+    public static void onLoadEnter() {
+        if (!guard.on) return;
+        try {
+            inLoad = true;
+            if (fileThreads > 0) {
+                String line = resize(zombie.GameWindow.fileSystem, fileThreads);
+                if (line != null && stockPool == 0) System.out.println("[PZButter] " + line);
+            }
+        } catch (Throwable t) { guard.fail(t); }
+    }
+
+    /** GameLoadingState.exit: back to stock for play. */
+    public static void onLoadExit() {
+        if (!inLoad) return;
+        inLoad = false;
+        try { if (fileThreads > 0 && stockPool > 0) resize(zombie.GameWindow.fileSystem, stockPool); }
+        catch (Throwable t) { guard.fail(t); }
+    }
+
+    /** The in-flight cap read by the rewritten FileSystemImpl.updateAsyncTransactions (7, 288): stock 16 outside the world load. */
     public static int inflight() {
-        return fileInflight <= 0 ? 16 : fileInflight;
+        return inLoad && fileInflight > 0 ? fileInflight : 16;
     }
 
-    /** Defaults from the Plan 11c sweep (12 cores): all three together cut the world load from ~54 s to ~45 s; each alone ~50 s. */
-    static final int TEXTURE_BUFFER_DEFAULT = 256, INFLIGHT_DEFAULT = 64;
-
-    /** fileThreads=-1 (auto): stock's pool (cores > 4 ? 4 : 2) widened to cores - 4, at most 8; never below stock, so 8 cores or fewer keep stock. */
+    /** fileThreads=-1 (auto): stock's pool (cores > 4 ? 4 : 2) widened to cores - 4, at most 8; 0 when that is not wider than stock. */
     static int autoThreads(int cores) {
         int stock = cores > 4 ? 4 : 2;
         int want = Math.min(8, cores - 4);
@@ -65,7 +92,7 @@ public final class FileKnobs {
 
     /** OnEnter (skipOn) of TextureIDAssetManager.waitFileTask: stock's loop (0-23) with the configured cap. */
     public static boolean onWaitFileTask() {
-        if (!guard.on || textureBufferMb <= 0) return false;
+        if (!guard.on || textureBufferMb <= 0 || !inLoad) return false;
         try {
             long cap = bufferCapBytes();
             while (bytes.getAsLong() > cap) {
@@ -87,6 +114,7 @@ public final class FileKnobs {
             if (executorH == null || !(fs instanceof zombie.fileSystem.FileSystemImpl)) return null;
             if (!(executorH.get(fs) instanceof java.util.concurrent.ThreadPoolExecutor pool)) return null;
             int stock = pool.getCorePoolSize();
+            if (stockPool == 0) stockPool = stock;
             if (resizeOrder(stock, target)[0] == 0) { pool.setMaximumPoolSize(target); pool.setCorePoolSize(target); }
             else { pool.setCorePoolSize(target); pool.setMaximumPoolSize(target); }
             return "fileThreads: pool " + target + " (stock " + stock + ")";
@@ -103,6 +131,8 @@ public final class FileKnobs {
         textureBufferMb = 0;
         fileThreads = 0;
         fileInflight = 0;
+        inLoad = false;
+        stockPool = 0;
         bound = false;
         executorH = null;
         bytes = zombie.core.utils.DirectBufferAllocator::getBytesAllocated;

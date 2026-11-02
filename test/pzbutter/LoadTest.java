@@ -20,6 +20,8 @@ final class LoadTest {
         filePoolResizes();
         filePoolResizeOrder();
         fileKnobsDefaultsWritten();
+        pipelineOnlyDuringLoad();
+        autoRuleResolves();
         shaderLookupMatchesStock();
         shaderCacheOffIsStock();
         shaderCacheFailureFallsBack();
@@ -118,6 +120,7 @@ final class LoadTest {
         FileKnobs.resetForTest();
         FileKnobs.textureBufferMb = 256;
         FileKnobs.guard.on = true;
+        FileKnobs.inLoad = true;
         long cap = 256L << 20;
         long[] seq = {cap + 1, cap + 1, cap + 1, cap};          // above the cap three times, then at it
         int[] i = {0}, sleeps = {0}, interrupts = {0};
@@ -158,6 +161,33 @@ final class LoadTest {
         FileKnobs.resetForTest();
     }
 
+    /** Outside GameLoadingState (enter..exit) every limit answers stock: in play nothing changes. */
+    static void pipelineOnlyDuringLoad() {
+        FileKnobs.resetForTest();
+        FileKnobs.guard.on = true;
+        FileKnobs.textureBufferMb = 256;
+        FileKnobs.fileInflight = 64;
+        FileKnobs.bytes = () -> { throw new AssertionError("stock must run outside the load"); };
+        assert !FileKnobs.onWaitFileTask() && FileKnobs.inflight() == 16;   // before the load
+        FileKnobs.onLoadEnter();
+        assert FileKnobs.inflight() == 64;
+        FileKnobs.bytes = () -> 0L;
+        assert FileKnobs.onWaitFileTask();                                 // in the load: ours (no wait below the cap)
+        FileKnobs.onLoadExit();
+        FileKnobs.bytes = () -> { throw new AssertionError("stock must run outside the load"); };
+        assert !FileKnobs.onWaitFileTask() && FileKnobs.inflight() == 16;   // after the load
+        FileKnobs.resetForTest();
+    }
+
+    /** -1: the measured setting only where the auto pool widens (more than 8 cores); otherwise stock. Explicit values stay. */
+    static void autoRuleResolves() {
+        assert FileKnobs.resolveThreads(-1, 12) == 8 && FileKnobs.resolveBuffer(-1, 12) == 256 && FileKnobs.resolveInflight(-1, 12) == 64;
+        assert FileKnobs.resolveThreads(-1, 8) == 0 && FileKnobs.resolveBuffer(-1, 8) == 0 && FileKnobs.resolveInflight(-1, 8) == 0;
+        assert FileKnobs.resolveBuffer(128, 4) == 128 && FileKnobs.resolveInflight(32, 4) == 32 && FileKnobs.resolveThreads(6, 4) == 6;
+        assert FileKnobs.resolveBuffer(0, 12) == 0 && FileKnobs.resolveInflight(0, 12) == 0 && FileKnobs.resolveThreads(0, 12) == 0;
+        assert FileKnobs.resolveBuffer(5, 12) == 16 && FileKnobs.resolveInflight(2, 12) == 4;   // the floors
+    }
+
     static void filePoolResizeOrder() {
         assert FileKnobs.resizeOrder(4, 8)[0] == 0;
         assert FileKnobs.resizeOrder(8, 4)[0] == 1;
@@ -171,7 +201,7 @@ final class LoadTest {
         String t = "";
         try { t = java.nio.file.Files.readString(f.toPath()); }
         catch (java.io.IOException e) { throw new RuntimeException(e); }
-        assert t.contains("\ntextureBufferMb=256\n") && t.contains("\nfileThreads=-1\n") : t;
+        assert t.contains("\ntextureBufferMb=-1\n") && t.contains("\nfileThreads=-1\n") : t;
         assert FileKnobs.autoThreads(12) == 8 && FileKnobs.autoThreads(16) == 8 && FileKnobs.autoThreads(10) == 6;
         assert FileKnobs.autoThreads(8) == 0 && FileKnobs.autoThreads(6) == 0 && FileKnobs.autoThreads(4) == 0 && FileKnobs.autoThreads(2) == 0;   // stock kept
     }
@@ -184,6 +214,7 @@ final class LoadTest {
             assert tr != null;
             var cf = java.lang.classfile.ClassFile.of();
             var a = cf.parse(orig); var b = cf.parse(tr);
+            assert FileTransform.sites(a.methods().stream().filter(mm -> mm.methodName().equalsString("updateAsyncTransactions")).findFirst().get()) == 2;   // exactly the two in-flight sites
             assert a.methods().size() == b.methods().size();
             for (int k = 0; k < a.methods().size(); k++) {
                 var ma = a.methods().get(k); var mb = b.methods().get(k);
@@ -238,7 +269,7 @@ final class LoadTest {
         String t = "";
         try { t = java.nio.file.Files.readString(f.toPath()); }
         catch (java.io.IOException e) { throw new RuntimeException(e); }
-        assert t.contains("\nfileInflight=64\n") : t;
+        assert t.contains("\nfileInflight=-1\n") : t;
     }
 
     static class FakeModel { public boolean isStatic; public Object effect; }

@@ -39,6 +39,14 @@ final class FileTransform implements ClassFileTransformer {
         }
     }
 
+    /** The bipush 16 sites in the method (stock 42.21: 7 = Math.min(inProgress.size(), 16), 288 = 16 - inProgress.size()). */
+    static int sites(MethodModel mm) {
+        int[] n = {0};
+        mm.code().ifPresent(c -> { for (var e : c)
+            if (e instanceof ConstantInstruction ci && ci.opcode() == Opcode.BIPUSH && ci.constantValue() instanceof Integer i && i == 16) n[0]++; });
+        return n[0];
+    }
+
     static byte[] transform(byte[] classFile) {
         return transform(classFile, ClassLoader.getSystemClassLoader());
     }
@@ -50,7 +58,14 @@ final class FileTransform implements ClassFileTransformer {
 
         java.util.function.Predicate<MethodModel> methodPred = mm ->
             mm.methodName().equalsString("updateAsyncTransactions") && mm.methodType().equalsString("()V");
-        if (m.methods().stream().noneMatch(methodPred)) return null;
+        var target = m.methods().stream().filter(methodPred).findFirst();
+        if (target.isEmpty()) return null;
+        int sites = sites(target.get());
+        if (sites != 2) {   // a game update moved the limit: rewrite nothing
+            transformState = false;
+            transformReason = sites + " in-flight constants in updateAsyncTransactions, expected 2";
+            return null;
+        }
         CodeTransform ct = new CodeTransform() {
             @Override public void accept(java.lang.classfile.CodeBuilder cb, CodeElement e) {
                 if (e instanceof ConstantInstruction ci
@@ -63,6 +78,7 @@ final class FileTransform implements ClassFileTransformer {
                 }
             }
         };
+        transformState = true;
         return WorkerTransform.classFile(loader).transformClass(m, ClassTransform.transformingMethodBodies(methodPred, ct));
     }
 }

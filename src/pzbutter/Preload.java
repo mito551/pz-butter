@@ -112,7 +112,7 @@ final class Preload {
                     }
                 }
             }
-            if (Settings.num("fileInflight", FileKnobs.INFLIGHT_DEFAULT, 0, 256) > 0) {
+            if (Settings.enabled && FileKnobs.resolveInflight(Settings.num("fileInflight", -1, -1, 256), Runtime.getRuntime().availableProcessors()) > 0) {
                 if (loaded.contains("zombie.fileSystem.FileSystemImpl")) {
                     try (var log = new LogSink(new File(System.getProperty("user.home"), "Zomboid/PZButter/preload.log"), 1 << 20)) {
                         log.begin(System.currentTimeMillis()).text("fileInflight skipped FileSystemImpl loaded before premain").end(System.currentTimeMillis());
