@@ -183,17 +183,10 @@ final class LoadTest {
                 java.util.List<String> ia = invokes(ma), ib = invokes(mb);
                 if (name.equals("updateAsyncTransactions()V")) {
                     assert java.util.Collections.frequency(ib, "pzbutter/FileKnobs.inflight()I") == 2 : ib;
-                    // no bipush 16 left there
-                    assert countBipush16(mb) == 0 : ib;
-                    ia.removeIf(x -> false);
-                    // compare remaining invokes ignoring rewritten positions
-                    java.util.List<String> ia2 = new java.util.ArrayList<>(ia);
+                    assert countBipush16(mb) == 0 : ib;   // no bipush 16 left there
                     java.util.List<String> ib2 = new java.util.ArrayList<>(ib);
-                    ia2.removeIf(x -> x.equals(""));
-                    // remove inflight counts from ib and bipush 16 from ia by aligning counts of other calls
-                    // simpler: strip both the original bipush isn't an invoke; invokes lists only invokes, so compare after removing inflight
                     ib2.removeIf(x -> x.equals("pzbutter/FileKnobs.inflight()I"));
-                    // original had no FileKnobs calls; Math.min remains
+                    java.util.List<String> ia2 = ia;
                     assert ia2.equals(ib2) : name + "\n" + ia + "\n" + ib;
                 } else {
                     assert codeText(ma).equals(codeText(mb)) : name;   // every other method unchanged
