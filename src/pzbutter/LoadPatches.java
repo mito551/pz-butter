@@ -32,13 +32,19 @@ public final class LoadPatches {
         public static boolean enter() { return LoadPatches.onLoadFade(); }
     }
 
+    @Patch(className = "zombie.gameStates.GameLoadingState", methodName = "enter")
+    public static class GameLoadingEnter {
+        @Patch.OnEnter
+        public static void enter() { try { FileKnobs.onLoadEnter(); } catch (Throwable t) { FileKnobs.guard.fail(t); } }
+    }
+
     @Patch(className = "zombie.gameStates.GameLoadingState", methodName = "exit")
     public static class GameLoadingExit {
         @Patch.OnEnter
         public static void enter() { LoadFixes.loadExitEnter(); }
 
         @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
-        public static void exit() { LoadFixes.loadExitLeave(); ShaderReuse.printSummaryOnce(); ScriptComments.printSummaryOnce(); }
+        public static void exit() { LoadFixes.loadExitLeave(); FileKnobs.onLoadExit(); ShaderReuse.printSummaryOnce(); ScriptComments.printSummaryOnce(); }
     }
 
     /** TextureIDAssetManager.waitFileTask entry: true skips stock wait. */
