@@ -21,6 +21,7 @@ public final class DevMarks {
     static int key;
 
     static void init() {
+        markJvmStart();
         guard.on = Settings.flag("devMark");
         if (!guard.on) return;
         String name = Settings.text("devMarkKey", "F9");
@@ -48,6 +49,18 @@ public final class DevMarks {
     public static void write(String name, String note) {
         Path marks = new File(System.getProperty("user.home"), "Zomboid/pzbutter/marks.out").toPath();
         write(marks, line(name, System.currentTimeMillis(), note));
+    }
+
+    /** A mark with the caller's own time: ab.py's boot is menu.ready - jvm.start. */
+    static void writeAt(String name, long epochMs) {
+        write(defaultMarksFile(), line(name, epochMs, null));
+    }
+
+    /** Written once per process, whether or not a dev key is on: the run script's boot measurement needs it. */
+    private static void markJvmStart() {
+        try {
+            writeAt("jvm.start", java.lang.management.ManagementFactory.getRuntimeMXBean().getStartTime());
+        } catch (Throwable ignored) { }
     }
 
     /** The marks file the scene driver writes to when no seam is set, in one place. */

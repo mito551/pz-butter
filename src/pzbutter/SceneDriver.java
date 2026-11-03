@@ -137,6 +137,7 @@ public final class SceneDriver {
 
     public static void onWorldReady() {
         DevAudit.report("world");
+        DevMarks.writeAt("world.ready", System.currentTimeMillis());
         try {
             if (action != null && phase != Phase.IDLE && phase != Phase.DONE) {
                 try { action.stop(); } catch (Throwable t) { guard.fail(t); }
@@ -378,6 +379,7 @@ public final class SceneDriver {
                 autoContinued = true;
                 return;
             }
+            DevMarks.writeAt("menu.ready", System.currentTimeMillis());
             Object[] r = zombie.Lua.LuaManager.caller.pcall(zombie.Lua.LuaManager.thread, fn, mode, world);
             if (r == null || r.length == 0 || !Boolean.TRUE.equals(r[0]))
                 System.out.println("[PZButter] devAutoContinue: continueLatestSave failed: " + (r != null && r.length > 1 ? r[1] : "no result"));

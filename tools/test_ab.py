@@ -1,0 +1,67 @@
+import os
+import sys
+import unittest
+
+sys.path.insert(0, os.path.dirname(__file__))
+
+import ab
+import frames
+
+
+class AbTest(unittest.TestCase):
+    def test_abOrderABBAAB(self):
+        self.assertEqual(ab.order_for(3), ["A", "B", "B", "A", "A", "B"])
+
+    def test_abResumesWithoutRepeating(self):
+        plan = ab.order_for(3)
+        self.assertEqual(ab.remaining(plan, 2), ["B", "A", "A", "B"])
+        self.assertEqual(ab.remaining(plan, len(plan)), [])
+
+    def test_abShortArmMarked(self):
+        record = {
+            "arms": [{"name": "off", "props": ""}, {"name": "on", "props": ""}],
+            "runs_per_arm": 3,
+            "order": ab.order_for(3),
+            "done": [
+                {"arm": "off", "boot_s": 40.0},
+                {"arm": "on", "boot_s": 30.0},
+                {"arm": "on", "boot_s": 32.0},
+            ],
+        }
+        text = ab.summary_text(record)
+        self.assertIn("arm off SHORT (1/3)", text)
+        self.assertIn("arm on SHORT (2/3)", text)
+        self.assertIn("median 31.0", text)
+
+    def test_bootFromMarks(self):
+        marks = frames.read_marks(["mark jvm.start 1000", "mark menu.ready 39000"])
+        self.assertEqual(ab.boot_seconds(marks), 38.0)
+
+    def test_loadFromMarks(self):
+        marks = frames.read_marks(["mark menu.ready 39000", "mark world.ready 60000"])
+        self.assertEqual(ab.load_seconds(marks), 21.0)
+        self.assertIsNone(ab.boot_seconds(marks))
+
+    def test_gameLoadingFromConsole(self):
+        self.assertEqual(ab.game_loading_seconds("INFO: game loading took 12.5 seconds\n"), 12.5)
+        self.assertIsNone(ab.game_loading_seconds("nothing"))
+
+    def test_overlap(self):
+        record = {
+            "arms": [{"name": "off", "props": ""}, {"name": "on", "props": ""}],
+            "runs_per_arm": 2,
+            "order": ab.order_for(2),
+            "done": [
+                {"arm": "off", "boot_s": 52.0},
+                {"arm": "on", "boot_s": 36.0},
+                {"arm": "off", "boot_s": 54.0},
+                {"arm": "on", "boot_s": 38.0},
+            ],
+        }
+        text = ab.summary_text(record)
+        self.assertIn("boot ranges do not overlap", text)
+        self.assertNotIn("SHORT", text)
+
+
+if __name__ == "__main__":
+    unittest.main()
