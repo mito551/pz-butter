@@ -396,7 +396,23 @@ public final class Settings {
 + "# serverTickLog: one line per server tick in Zomboid/pzbutter/ticks.out (same columns as frames.out); a minute line gives p50/p99/max.\n"
 + "serverTickLog=false\n"
 + "# serverLuaSample: diagnostic; a watchdog samples the server main thread when a tick runs long and writes Zomboid/pzbutter/hitches.out.\n"
-+ "serverLuaSample=false\n";
++ "serverLuaSample=false\n"
++ "# containerSendGuard: skip sendAddItemToContainer calls that have no character, parent object or world item to send to (stock returns without sending).\n"
++ "containerSendGuard=true\n"
++ "# processItemsMerge: batch adds to a cell's process items in one pass; only batches of 128 or more, never on a multiplayer client.\n"
++ "processItemsMerge=false\n"
++ "# serverPrewarm: first server tick loads the animation sets and action groups the first player, vehicle, zombie and every animal would load.\n"
++ "serverPrewarm=false\n"
++ "# serverClassPrewarm: first server tick loads the game classes our patches target, so ZombieBuddy weaving happens before the first join.\n"
++ "serverClassPrewarm=false\n"
++ "# hostZombieBuddy: carry the client's ZombieBuddy agent into a game hosted from the menu, only when its agent arguments allow no prompt.\n"
++ "hostZombieBuddy=false\n"
++ "# hostJvmArgs: pass a small jvm.args file (<=4 KB, ASCII, <=16 lines) to the hosted server after the game's -Xms/-Xmx.\n"
++ "hostJvmArgs=false\n"
++ "# vehicleEarlyParse (MP client): off, verify (keep the packet the game dropped and compare it with the server's answer), or on (also parse it early).\n"
++ "vehicleEarlyParse=off\n"
++ "# chunkRefill (MP client): request a dropped chunk slot again while the player stays in one chunk; at most 6 per pass, one pass every 3 s.\n"
++ "chunkRefill=false\n";
 
     public static volatile boolean enabled;
     public static volatile boolean frameLog;
@@ -500,7 +516,8 @@ public final class Settings {
         "persistentVboFrameSync",   // acts only with persistentVbo (Plan 9)
         "driveTreeCutaway", "glassTilesPerFrame", "translucentLightsPerFrame",   // stock-equivalent values (Plan 6), not passed features
         "wake", "handoffRecalcFast",
-        "loaderCpuFixes", "scriptParserFast", "modWatchAsync", "texCompress");   // Plans 10b, 11b, 11d, 11e: on after their in-game checks
+        "loaderCpuFixes", "scriptParserFast", "modWatchAsync", "texCompress",   // Plans 10b, 11b, 11d, 11e: on after their in-game checks
+        "containerSendGuard");   // Plan 18: stock drops these calls anyway
 
     public static boolean flag(String key) {
         if (!enabled) return false;

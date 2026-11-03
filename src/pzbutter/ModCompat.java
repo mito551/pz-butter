@@ -43,7 +43,8 @@ final class ModCompat {
     /** The classes whose nested classes are PZ Butter's holders. */
     static final Class<?>[] OUTERS = {Patches.class, DeliveryPatches.class, LuaPatches.class, UiPatches.class, MapPatches.class,
         SoundPatches.class, WorldPatches.class, ChunkPatches.class, LogPatches.class, ZombiePatches.class, GpuPatches.class, CensusPatches.class,
-        VehiclePatches.class, StreamPatches.class, LoadPatches.class, RuntimePatches.class, DevPatches.class, CameraPatches.class, ClockPatches.class};
+        VehiclePatches.class, StreamPatches.class, LoadPatches.class, RuntimePatches.class, DevPatches.class, CameraPatches.class, ClockPatches.class,
+        ServerPatches.class};
 
     private static final String PATCH = "Lme/zed_0xff/zombie_buddy/Patch;";
     private static final String ON_ENTER = "Lme/zed_0xff/zombie_buddy/Patch$OnEnter;";
@@ -255,7 +256,15 @@ Map.entry("LoadPatches.WaitFileTask", k("textureBufferMb")),
         Map.entry("ChunkPatches.Plan", k("bakeScheduler", "treeBakeMaxChunksPerSec")),
         Map.entry("ChunkPatches.BakeGate", k("bakeScheduler", "treeBakeMaxChunksPerSec")),
         Map.entry("ChunkPatches.ZoomScroll", k("zoomEaseMs")),
-        Map.entry("ChunkPatches.ZoomUpdate", k("zoomEaseMs")));
+        Map.entry("ChunkPatches.ZoomUpdate", k("zoomEaseMs")),
+        // server (Plan 18)
+        Map.entry("ServerPatches.TickStart", k("serverTickLog", "serverLuaSample", "serverPrewarm", "serverClassPrewarm")),
+        Map.entry("ServerPatches.NetDone", k("serverTickLog", "serverLuaSample")),
+        Map.entry("ServerPatches.TickEnd", k("serverTickLog", "serverLuaSample")),
+        Map.entry("ServerPatches.StopOnExit", k("serverTickLog", "serverLuaSample")),
+        Map.entry("ServerPatches.StopOnClose", k("serverTickLog", "serverLuaSample")),
+        Map.entry("ServerPatches.SendGuard", k("containerSendGuard")),
+        Map.entry("ServerPatches.ProcessItems", k("processItemsMerge")));
 
     // ---- reading @Patch annotations without loading the class ----
 

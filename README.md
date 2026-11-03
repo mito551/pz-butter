@@ -154,6 +154,19 @@ The mod creates `~/Zomboid/PZButter.properties` on first start and reads it once
 | `bakeBudgetGpu` | With `bakeBudgetAdaptive`: the bake budget also counts the GPU's time for the frame, from GPU timestamps read three frames later. It never waits for the GPU. Off by default. |
 | `gpuStats` | Diagnostic. Once a minute the console gets what the Plan 9 keys did: mappings saved, storage waits, uploads and storage changes, textures given back, names from the pool, answers from the records, GPU time per frame. With `frameLog`, the same as one line a minute in `Zomboid/pzbutter/gpu.out`. Off by default. |
 
+### Server and hosting (Plan 18)
+
+These keys act only on a dedicated server or a game hosted from the menu; on a client they stay off with one console line.
+
+| Key | What it does |
+|---|---|
+| `serverTickLog` | One line per server tick in `Zomboid/pzbutter/ticks.out`, in the same five columns as `frames.out`; once a minute a line gives p50, p99 and max. A tick over 100 ms also names its largest stage (net, Lua event or world). Off by default. |
+| `serverLuaSample` | Diagnostic. A watchdog samples the server main thread when a tick runs long and writes `Zomboid/pzbutter/hitches.out`. Off by default. |
+| `containerSendGuard` | Skips `sendAddItemToContainer` calls that have no character, parent object or world item to send to; the game returns without sending in exactly those cases. Every working call still goes through. On by default. |
+| `processItemsMerge` | Adds a batch of 128 or more items to a cell's process list in one pass instead of scanning the list once per item; the same list and order. Never on a multiplayer client. Off by default. |
+| `serverPrewarm` | First server tick loads the animation sets and action groups the first player, vehicle, zombie and every animal would load, and logs the extra heap. Off by default. |
+| `serverClassPrewarm` | First server tick loads the game classes PZ Butter patches, so ZombieBuddy's weaving happens before the first join rather than during it. Off by default. |
+
 ### Dev keys
 
 | Key | What it does |

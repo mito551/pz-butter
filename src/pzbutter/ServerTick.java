@@ -55,7 +55,7 @@ public final class ServerTick {
     }
 
     /** Tick start: PoolCaps.updateServerCaps, the first server call after the loop's nanoTime. */
-    public static void begin() { beginAt(System.nanoTime()); }
+    public static void begin() { ServerFixes.prewarmOnce(); beginAt(System.nanoTime()); }
 
     static void beginAt(long nowNs) { beginAt(nowNs, cpu()); }
 

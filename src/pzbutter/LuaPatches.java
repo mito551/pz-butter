@@ -153,6 +153,7 @@ public final class LuaPatches {
         try {
             KahluaTableImpl t = new KahluaTableImpl(new java.util.HashMap<>());
             t.rawset("uiLuaFast", uiLuaFast);
+            t.rawset("containerSendGuard", Settings.flag("containerSendGuard"));
             zombie.Lua.LuaManager.env.rawset("PZButter", t);
         } catch (Throwable x) { System.out.println("[PZButter] Lua settings table not set: " + x); }
     }

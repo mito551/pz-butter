@@ -1,6 +1,11 @@
 package pzbutter;
 
+import java.util.ArrayList;
+
 import me.zed_0xff.zombie_buddy.Patch;
+import zombie.inventory.InventoryItem;
+import zombie.inventory.ItemContainer;
+import zombie.iso.IsoCell;
 
 /**
  * Server tick log seams (Plan 18), inside GameServer.startServer's loop:
@@ -45,5 +50,28 @@ public final class ServerPatches {
     public static class StopOnClose {
         @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
         public static void exit() { ServerTick.stop(); }
+    }
+
+    /** sendAddItemToContainer with no destination at all: stock would return without sending. */
+    @Patch(className = "zombie.network.GameServer", methodName = "sendAddItemToContainer")
+    public static class SendGuard {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(ItemContainer c, InventoryItem item) { return ServerFixes.skipSend(c); }
+    }
+
+    /** Batch process-item adds in one pass; stock scans the whole list once per item. */
+    @Patch(className = "zombie.iso.IsoCell", methodName = "addToProcessItems", strictMatch = true)
+    public static class ProcessItems {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This IsoCell self, @Patch.Argument(0) ArrayList<InventoryItem> list) {
+            if (!Settings.flag("processItemsMerge") || zombie.network.GameClient.client
+                || list == null || !ServerFixes.batch(list.size())) return false;
+            try {
+                ServerFixes.mergeProcessItems(self.getProcessItems(), list, self.getProcessItemsRemove());
+                return true;
+            } catch (Throwable t) {
+                return false;   // stock runs on any doubt
+            }
+        }
     }
 }
