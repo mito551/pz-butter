@@ -49,13 +49,11 @@ if [[ "$LIST" != "bare" && "$LIST" != "full" ]]; then echo "list must be bare or
 case "$SCENE" in
     S2) SCENE_PROPS="devScene=stand devSceneSettleSec=0 devSceneSec=20" ;;
     S3) SCENE_PROPS="devScene=stand devSceneSec=60" ;;
-    S4) SCENE_PROPS="devScene=walk devSceneSec=90"
-        if [[ "$PROPS" != *devRoute=* ]]; then echo "S4 requires --props devRoute=..."; exit 2; fi ;;
+    S4) SCENE_PROPS="devScene=walk devSceneSec=90" ;;
     S5) SCENE_PROPS="devScene=drive devSceneSec=60 devDriveKmh=120" ;;
     S6) SCENE_PROPS="devScene=stand devPopulation=200 devSceneSec=60" ;;
     S7) SCENE_PROPS="devScene=off devMark=true" ;;
-    S8) SCENE_PROPS="devScene=walk devSceneSec=60 devWeather=storm devHour=22"
-        if [[ "$PROPS" != *devRoute=* ]]; then echo "S8 requires --props devRoute=..."; exit 2; fi ;;
+    S8) SCENE_PROPS="devScene=walk devSceneSec=60 devWeather=storm devHour=22" ;;
     *) echo "unknown scene: $SCENE"; exit 2 ;;
 esac
 
@@ -189,6 +187,21 @@ parse_props_string() {
 parse_props_string "enabled=true frameLog=true devAutoContinue=true devSceneQuit=true"
 parse_props_string "$SCENE_PROPS"
 if [[ -n "$PROPS" ]]; then parse_props_string "$PROPS"; fi
+
+# walk scenes: S4/S8 take devRoute from tools/routes.txt when --props has none (explicit --props wins)
+case "$SCENE" in
+    S4|S8)
+        if ! printf '%s\n' "${PROPS_ENTRIES[@]}" | grep -q '^devRoute='; then
+            ROUTE_LINE="$(grep -v '^#' "$TOOLS/routes.txt" 2>/dev/null | grep -m1 "^[[:space:]]*$MODE/$SAVE_NAME[[:space:]]." | awk '{print $2}')"
+            if [[ -z "$ROUTE_LINE" ]]; then
+                echo "$SCENE requires --props devRoute=... (or a $MODE/$SAVE line in tools/routes.txt)"
+                exit 2
+            fi
+            add_prop_entry "$ROUTE_LINE"
+        fi
+        ;;
+esac
+
 PROPS_LINE="${PROPS_ENTRIES[*]}"
 
 # default timeout (unless provided or S7)

@@ -17,6 +17,8 @@ public final class SceneWalk implements SceneDriver.Action {
         Result update();
         void cancel();
         boolean dead();
+        double x(); // current player x, NaN when unavailable
+        double y();
     }
 
     static int next(int index, int size) {
@@ -26,6 +28,13 @@ public final class SceneWalk implements SceneDriver.Action {
         return n;
     }
 
+    static final long STUCK_WINDOW_MS = 3_000;
+
+    /** Stuck: less than one tile moved over a window of STUCK_WINDOW_MS. */
+    static boolean stuck(double movedTiles, long windowMs) {
+        return windowMs >= STUCK_WINDOW_MS && movedTiles < 1.0;
+    }
+
     public static int[][] parseRoute(String s) { return SceneDriver.parseRoute(s); }
 
     public static class Fake implements Walker {
@@ -33,6 +42,7 @@ public final class SceneWalk implements SceneDriver.Action {
         public Fake() { this.first = Result.FAILED; }
         public Fake(Result first) { this.first = first; }
         private boolean once = false;
+        public double x, y;
         public Result lastUpdate() { return first; }
         public void pathTo(int x, int y, int z) { }
         public Result update() {
@@ -41,6 +51,8 @@ public final class SceneWalk implements SceneDriver.Action {
         }
         public void cancel() { }
         public boolean dead() { return false; }
+        public double x() { return x; }
+        public double y() { return y; }
     }
 
     private final Walker walker;
@@ -48,6 +60,8 @@ public final class SceneWalk implements SceneDriver.Action {
     private int originX, originY, originZ;
     private int index;
     private boolean hasRoute;
+    private double stuckX = Double.NaN, stuckY;
+    private long stuckMs = -1;
 
     @Override
     public void start() {
@@ -67,6 +81,8 @@ public final class SceneWalk implements SceneDriver.Action {
                 originZ = (int) Math.floor(p.getZ());
             }
             index = 0;
+            stuckX = Double.NaN;
+            stuckMs = -1;
             walker.pathTo(originX + route[0][0], originY + route[0][1], originZ);
         } catch (Throwable t) { SceneDriver.guard.fail(t); }
     }
@@ -82,8 +98,20 @@ public final class SceneWalk implements SceneDriver.Action {
                 walker.pathTo(originX + route[index][0], originY + route[index][1], originZ);
             } else if (r == Result.FAILED) {
                 SceneDriver.end("path failed");
+                return;
             }
+            checkStuck(nowMs);
         } catch (Throwable t) { SceneDriver.guard.fail(t); }
+    }
+
+    private void checkStuck(long nowMs) {
+        double x = walker.x(), y = walker.y();
+        if (Double.isNaN(stuckX)) { stuckX = x; stuckY = y; stuckMs = nowMs; return; }
+        long gap = nowMs - stuckMs;
+        if (gap < STUCK_WINDOW_MS) return;
+        double moved = Math.hypot(x - stuckX, y - stuckY);
+        if (stuck(moved, gap)) { SceneDriver.end("stuck"); return; }
+        stuckX = x; stuckY = y; stuckMs = nowMs;
     }
 
     @Override
@@ -128,6 +156,14 @@ public final class SceneWalk implements SceneDriver.Action {
                 if (p == null) return true;
                 return p.isDead();
             } catch (Throwable t) { SceneDriver.guard.fail(t); return false; }
+        }
+        public double x() {
+            zombie.characters.IsoPlayer p = zombie.characters.IsoPlayer.getInstance();
+            return p == null ? Double.NaN : p.getX();
+        }
+        public double y() {
+            zombie.characters.IsoPlayer p = zombie.characters.IsoPlayer.getInstance();
+            return p == null ? Double.NaN : p.getY();
         }
     }
 }

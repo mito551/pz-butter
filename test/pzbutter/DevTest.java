@@ -26,6 +26,7 @@ final class DevTest {
         routeBadIsNull();
         walkNextWaypoint();
         walkFailedEndsScene();
+        walkEndsWhenStuck();
         virtualKeyHold();
         virtualKeysReleasedOnEnd();
         steerChoice();
@@ -307,6 +308,49 @@ final class DevTest {
         java.util.List<String> lines = java.nio.file.Files.readAllLines(f);
         assert lines.size() == 2 : lines;
         assert lines.get(1).contains("failed: path failed") : lines.get(1);
+        Settings.load(SelfTest.write("enabled=true\n"));
+        SceneDriver.resetForTest();
+    }
+
+    static void walkEndsWhenStuck() throws Exception {
+        assert SceneWalk.stuck(0.9, 3_000);
+        assert !SceneWalk.stuck(1.0, 3_000);
+        assert !SceneWalk.stuck(0.5, 2_000); // window not elapsed yet
+        // a frozen position for 3000 ms ends the scene with reason stuck
+        Settings.load(SelfTest.write("enabled=true\ndevScene=walk\ndevRoute=1,0\n"));
+        SceneDriver.resetForTest();
+        SceneDriver.init();
+        SceneWalk.Fake fake = new SceneWalk.Fake(SceneWalk.Result.RUNNING);
+        SceneDriver.action = new SceneWalk(fake);
+        Path f = SelfTest.tmp("scene/walkstuck.out").toPath();
+        SceneDriver.marksFile = f;
+        SceneDriver.onWorldReady();
+        SceneDriver.tick(1_000);
+        SceneDriver.tick(21_000);
+        for (long now = 21_100; now <= 24_100; now += 100) { // fake stands still at 0,0
+            SceneDriver.tick(now);
+        }
+        java.util.List<String> lines = java.nio.file.Files.readAllLines(f);
+        assert lines.get(1).contains("failed: stuck") : lines.get(1);
+        Settings.load(SelfTest.write("enabled=true\n"));
+        SceneDriver.resetForTest();
+        // walking 1.5 tiles per second never gets stuck; the scene ends normally
+        Settings.load(SelfTest.write("enabled=true\ndevScene=walk\ndevRoute=1,0\n"));
+        SceneDriver.resetForTest();
+        SceneDriver.init();
+        SceneWalk.Fake mover = new SceneWalk.Fake(SceneWalk.Result.RUNNING);
+        SceneDriver.action = new SceneWalk(mover);
+        Path g = SelfTest.tmp("scene/walkmove.out").toPath();
+        SceneDriver.marksFile = g;
+        SceneDriver.onWorldReady();
+        SceneDriver.tick(1_000);
+        SceneDriver.tick(21_000);
+        for (int i = 1; i <= 60; i++) {
+            mover.x = 1.5 * i;
+            SceneDriver.tick(21_000 + i * 1_000L);
+        }
+        lines = java.nio.file.Files.readAllLines(g);
+        assert lines.get(1).contains("failed: stuck") == false : lines.get(1);
         Settings.load(SelfTest.write("enabled=true\n"));
         SceneDriver.resetForTest();
     }
