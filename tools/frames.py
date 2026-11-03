@@ -9,6 +9,7 @@ step_ms cpu_ms``. marks file lines are ``mark <name> <epoch_ms> [note...]``.
 
 import argparse
 import os
+import re
 import sys
 
 
@@ -81,6 +82,16 @@ def window_bounds(marks, name):
     if end is not None and end < start:
         end = None
     return (start, end)
+
+
+def manual_window(marks):
+    """--window manual: the first two mark lines of the default mark key (w<N>.start/.end, written per press) name the window."""
+    key = [(m[0], m[1]) for m in marks if re.match(r"^w\d+\.(start|end)$", m[0])]
+    if len(key) < 2:
+        raise SystemExit(2)
+    used = key[0][1], key[1][1]
+    note = "%d marks, used 1-2" % len(key) if len(key) != 2 else None
+    return used[0], used[1], note
 
 
 def _nearest_rank(sorted_vals, p):
@@ -184,11 +195,21 @@ def main(argv=None):
     scene_failed_note = None
 
     if args.window is not None:
-        try:
-            start, end = window_bounds(marks, args.window)
-        except SystemExit:
-            print("missing start mark for window %s" % args.window, file=sys.stderr)
-            raise SystemExit(2)
+        if args.window == "manual":
+            try:
+                start, end, manual_note = manual_window(marks)
+            except SystemExit:
+                print("need 2 marks (window manual)", file=sys.stderr)
+                raise SystemExit(2)
+            if manual_note is not None:
+                print(manual_note)
+        else:
+            manual_note = None
+            try:
+                start, end = window_bounds(marks, args.window)
+            except SystemExit:
+                print("missing start mark for window %s" % args.window, file=sys.stderr)
+                raise SystemExit(2)
         if end is None:
             incomplete = True
             end = intervals[-1][0] if intervals else start
