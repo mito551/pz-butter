@@ -15,7 +15,41 @@ final class SpikeTest {
         classifyPrecedence();
         streamBurstCounted();
         offIsOneFlagCheck();
+        sampleThreshold();
+        collapseSkipsPlumbing();
+        luaSlowFrameRateLimited();
         SpikeContext.resetForTest();
+    }
+
+    // a hitch starts at median + 10 ms and never below 25 ms
+    static void sampleThreshold() {
+        assert HitchSampler.shouldSample(30, 10);
+        assert !HitchSampler.shouldSample(24, 5);
+        assert !HitchSampler.shouldSample(19, 10);
+    }
+
+    // plumbing frames are skipped; the deepest three game frames come back in order
+    static void collapseSkipsPlumbing() {
+        StackTraceElement[] st = {
+            new StackTraceElement("zombie.iso.IsoCell", "render", "IsoCell.java", 900),
+            new StackTraceElement("zombie.iso.IsoGridSquare", "draw", "IsoGridSquare.java", 300),
+            new StackTraceElement("zombie.core.Core", "logic", "Core.java", 120),
+            new StackTraceElement("se.krka.kahlua.vm.KahluaThread", "luaMainloop", "KahluaThread.java", 55),
+            new StackTraceElement("pzbutter.Guard", "fail", "Guard.java", 9),
+            new StackTraceElement("java.lang.Thread", "run", "Thread.java", -1),
+        };
+        assert HitchSampler.collapse(st).equals("zombie.iso.IsoCell.render:900 zombie.iso.IsoGridSquare.draw:300 zombie.core.Core.logic:120")
+            : HitchSampler.collapse(st);
+    }
+
+    // two 60 ms frames 200 ms apart print once; a 300 ms frame always prints
+    static void luaSlowFrameRateLimited() {
+        LuaTiming.resetSlowPrintForTest();
+        long t = 5_000_000L;
+        assert LuaTiming.allowSlowPrint(60, t);
+        assert !LuaTiming.allowSlowPrint(60, t + 200);
+        assert LuaTiming.allowSlowPrint(300, t + 200);
+        LuaTiming.resetSlowPrintForTest();
     }
 
     // driving beats moving beats chunk beats menu; nothing recent is uncat

@@ -37,6 +37,7 @@ public class Main {
         pzbutter.luabudget.Budget.init();
         LuaFast.init();
         LuaTiming.init();
+        HitchSampler.init();
         LuaGate.init();
         FrameBatch.init();
         LuaFiles.init();

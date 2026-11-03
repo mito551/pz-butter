@@ -27,6 +27,7 @@ final class LuaTiming {
         final int line;
         final String event;
         long ns, calls;
+        long frameStamp = -1, frameNs;
 
         Stat(String file, int line, String event) { this.file = file; this.line = line; this.event = event; }
     }
@@ -37,15 +38,21 @@ final class LuaTiming {
     private static final Object[] events = new Object[MAX_DEPTH];
     private static int depth, eventDepth;
     private static long windowStartNs;
+    private static long lastSeenFrameNo = -1, curFrame = 1, lastSlowPrintMs;
 
     private LuaTiming() {}
 
-    static void init() { guard.on = Settings.flag("luaTiming"); }
+    static void init() {
+        guard.on = Settings.flag("luaTiming");
+        lastSeenFrameNo = FrameClock.frameNo;
+        curFrame = 1;
+    }
 
     private static boolean mainThread() { return Thread.currentThread() == FrameClock.mainThread; }
 
     static void eventEnter(Object event) {
         if (!mainThread()) return;
+        noteFrame();
         if (eventDepth < MAX_DEPTH) events[eventDepth] = event;
         eventDepth++;
     }
@@ -59,6 +66,7 @@ final class LuaTiming {
     /** A call starts; a skipped call is pushed too (without timing), so every exit pops one. */
     static void callEnter(Object fn, boolean skipped) {
         if (!mainThread()) return;
+        noteFrame();
         if (depth < MAX_DEPTH) { fns[depth] = skipped ? null : fn; starts[depth] = System.nanoTime(); }
         depth++;
     }
@@ -85,7 +93,59 @@ final class LuaTiming {
         }
         s.ns += ns;
         s.calls++;
+        long frame = curFrame;
+        if (s.frameStamp != frame) {
+            s.frameStamp = frame;
+            s.frameNs = 0;
+        }
+        s.frameNs += ns;
     }
+
+    /** A new frame: the first Lua activity of a frame names the previous frame's top functions when it was slow. */
+    private static void noteFrame() {
+        long f = FrameClock.frameNo;
+        if (f == lastSeenFrameNo) return;
+        lastSeenFrameNo = f;
+        curFrame++;
+        slowFrame(curFrame - 1, FrameClock.intervalMs, System.currentTimeMillis());
+    }
+
+    /** At most one slow-frame line a second, unless the frame was over 250 ms. */
+    static boolean allowSlowPrint(double ms, long nowMs) {
+        if (lastSlowPrintMs != 0 && nowMs - lastSlowPrintMs < 1000 && ms <= 250) return false;
+        lastSlowPrintMs = nowMs;
+        return true;
+    }
+
+    /** The frame's five slowest handlers; the minute totals are untouched. */
+    private static void slowFrame(long frame, double ms, long nowMs) {
+        if (ms <= 50 || !allowSlowPrint(ms, nowMs)) return;
+        List<Stat> top = new ArrayList<>();
+        for (Stat s : stats.values()) if (s.frameStamp == frame && s.frameNs > 0) top.add(s);
+        if (top.isEmpty()) return;
+        top.sort((a, b) -> Long.compare(b.frameNs, a.frameNs));
+        StringBuilder sb = new StringBuilder("[PZButter] lua slow frame ").append(Math.round(ms)).append(" ms:");
+        for (int i = 0; i < Math.min(5, top.size()); i++) {
+            Stat s = top.get(i);
+            sb.append(String.format(Locale.ROOT, " %s:%d %.1f ms;", s.file, s.line, s.frameNs / 1e6));
+        }
+        System.out.println(sb);
+    }
+
+    /** The running Lua handler (deepest non-skipped call), as file:line; "-" outside Lua. */
+    static String currentFunction() {
+        for (int i = Math.min(depth, MAX_DEPTH) - 1; i >= 0; i--) {
+            Object fn = fns[i];
+            if (fn instanceof LuaClosure c && c.prototype != null) {
+                Prototype p = c.prototype;
+                String file = p.filename != null ? p.filename : p.file != null ? p.file : "?";
+                return file + ":" + (p.lines != null && p.lines.length > 0 ? p.lines[0] : 0);
+            }
+        }
+        return "-";
+    }
+
+    static void resetSlowPrintForTest() { lastSlowPrintMs = 0; }
 
     private static void report(long now) {
         List<String> lines = reportLines(stats.values(), now - windowStartNs);

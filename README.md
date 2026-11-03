@@ -164,6 +164,7 @@ The mod creates `~/Zomboid/PZButter.properties` on first start and reads it once
 | `spikeContext` | Diagnostic for the frame log. Each frame over `spikeThresholdMs` is classified by what the player was doing (driving, moving, chunk, menu, uncat) and appended to `Zomboid/pzbutter/spikes.out`; once a minute the counts go to the console (`[PZButter] spikes: ...`). Off by default. |
 | `spikeThresholdMs` | Dev. With `spikeContext`, a frame longer than this many ms is a spike (default `50`). |
 | `spikeContextWindowMs` | Dev. With `spikeContext`, a chunk load or a context menu this many ms before a spike names it (default `750`). |
+| `hitchSampler` | Diagnostic for the frame log. A watchdog outside the frame samples the game and render threads while a frame runs far past its recent median, and writes one line per hitch (`frame ms`, main frames, LuaTiming's current function, whether the game thread waits for the render thread, the render thread's deepest frames) to `Zomboid/pzbutter/hitches.out`. Off by default. |
 | `devAutoContinue` | Dev. On the main menu, presses Continue once per process. Off by default. |
 | `devScene` | Dev. `off`/`stand`/`walk`/`drive` scene driver that writes scene.start and scene.end marks; needs a scene. Off by default. |
 | `devSceneSettleSec` | Dev. Seconds after world ready before `scene.start` (default 20); needs devScene. |
