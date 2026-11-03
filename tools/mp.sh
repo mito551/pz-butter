@@ -109,6 +109,14 @@ SERVER_READY=0
 BENCH_CREATED=0
 INI_CREATED=0
 
+snmp_sample() {
+    local out="$1"
+    {
+        echo "epoch $(date +%s)"
+        grep '^Udp:' /proc/net/snmp 2>/dev/null || true
+    } > "$out"
+}
+
 stop_server() {
     [[ -n "$SERVER_PID" ]] || return 0
     if (( SERVER_READY )); then
@@ -213,6 +221,7 @@ devSceneSec=90"
     echo "devSceneQuit=true"
     echo "devMark=true"
     echo "serverTickLog=true"
+    echo "netStats=true"
     printf '%s\n' "$SCENE_PROPS"
     if [[ -n "$PROPS" ]]; then
         printf '%s\n' "$PROPS" | tr ',' '\n'
@@ -351,6 +360,7 @@ echo "[mp] client: $CLIENT_LINE"
     exec timeout --foreground "$TIMEOUT" "${CLIENT_CMD[@]}" "${CLIENT_ARGS[@]}"
 ) > "$RUN/client/console.txt" 2>&1 &
 CLIENT_PID=$!
+snmp_sample "$RUN/snmp.start"
 wait "$CLIENT_PID"
 CLIENT_RC=$?
 CLIENT_PID=""
@@ -363,6 +373,7 @@ else
     rc=0
 fi
 (( rc == 0 )) || echo "see $RUN/client/console.txt" >&2
+snmp_sample "$RUN/snmp.end"
 
 # --- stop server, restore, verify -------------------------------------------
 
@@ -376,6 +387,8 @@ done
 for f in ticks.out hitches.out; do
     [[ -f "$Z/pzbutter/$f" ]] && cp "$Z/pzbutter/$f" "$RUN/server/$f" 2>/dev/null || true
 done
+[[ -f "$Z/pzbutter/net.out" ]] && cp "$Z/pzbutter/net.out" "$RUN/client/net.out" 2>/dev/null || true
+[[ -f "$Z/pzbutter/net-server.out" ]] && cp "$Z/pzbutter/net-server.out" "$RUN/server/net.out" 2>/dev/null || true
 
 restore_file "$CLIENT_MOD_LIST" "$BAK" default.txt
 restore_file "$Z/PZButter.properties" "$BAK" PZButter.properties

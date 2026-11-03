@@ -269,6 +269,8 @@ public final class Settings {
       + "# hitchSampler: diagnostic for the frame log. A watchdog outside the frame samples the game and render threads while a\n"
       + "# frame runs far past its recent median, and writes one line per hitch to Zomboid/pzbutter/hitches.out.\n"
       + "hitchSampler=false\n"
+      + "# netStats: diagnostic. Per-packet-type counts and bytes once a second in Zomboid/pzbutter/net.out (client) or net-server.out (server).\n"
+      + "netStats=false\n"
       + "# stallProbe: diagnostic. A sleeper outside the game threads writes Zomboid/pzbutter/stalls.out when a 2 ms sleep returns\n"
       + "# 50 ms or more late, with safepoint, GC and page-fault deltas.\n"
       + "stallProbe=false\n"

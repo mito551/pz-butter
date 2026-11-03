@@ -191,6 +191,7 @@ These keys act only on a multiplayer client; on a server they stay off.
 | `spikeThresholdMs` | Dev. With `spikeContext`, a frame longer than this many ms is a spike (default `50`). |
 | `spikeContextWindowMs` | Dev. With `spikeContext`, a chunk load or a context menu this many ms before a spike names it (default `750`). |
 | `hitchSampler` | Diagnostic for the frame log. A watchdog outside the frame samples the game and render threads while a frame runs far past its recent median, and writes one line per hitch (`frame ms`, main frames, LuaTiming's current function, whether the game thread waits for the render thread, the render thread's deepest frames) to `Zomboid/pzbutter/hitches.out`. Off by default. |
+| `netStats` | Diagnostic. Writes per-packet-type counts and bytes once a second to `Zomboid/pzbutter/net.out` on a client and `net-server.out` on a server. Off by default. |
 | `stallProbe` | Diagnostic. A sleeper outside the game threads writes one line to `Zomboid/pzbutter/stalls.out` when a 2 ms sleep returns 50 ms or more late: how late, safepoint count/time deltas, GC collection deltas per collector, major page-fault delta and `MemAvailable`. Off by default. |
 | `devAutoContinue` | Dev. On the main menu, presses Continue once per process. Off by default. |
 | `devScene` | Dev. `off`/`stand`/`walk`/`drive` scene driver that writes scene.start and scene.end marks; needs a scene. Off by default. |

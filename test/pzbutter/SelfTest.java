@@ -54,6 +54,7 @@ public final class SelfTest {
         ServerTest.run();
         HostTest.run();
         MpClientTest.run();
+        NetStatsTest.run();
         delete(DIR);
         System.out.println("ok");
     }
