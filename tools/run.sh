@@ -2,11 +2,11 @@
 # PZ Butter: one measurement run.
 set -u
 
-die() { echo "run.sh: aborting: $*" >&2; exit 1; }
-
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TOOLS="$SCRIPT_DIR"
+# shellcheck source=tools/runlib.sh
+source "$TOOLS/runlib.sh"
 PZ_DIR="${PZ_DIR:-/home/mitori/Sonic/SteamLibrary/steamapps/common/ProjectZomboid}"
 Z="${Z:-$HOME/Zomboid}"
 
@@ -68,23 +68,10 @@ if [[ -z "$MODE" || -z "$SAVE_NAME" || "$MODE" == "$SAVE" ]]; then echo "save mu
 SRC_SAVE="$Z/Saves/$MODE/$SAVE_NAME"
 [[ -n $MODE && -n $SAVE_NAME && -d $SRC_SAVE ]] || die "no save at $SRC_SAVE (--save MODE/SAVE)"
 
-mod_ids() {
-    python3 - "$1" <<'PY'
-import re, sys
-try:
-    s = open(sys.argv[1]).read()
-except FileNotFoundError:
-    print("")
-    sys.exit(0)
-ids = re.findall(r'mod\s*=\s*([^,\s}]+)', s)
-print(",".join(sorted(set(ids))))
-PY
-}
-
 # build checks (before step 3)
 BUILD_MOD="$REPO_ROOT/build/mod/PZButter"
-BUILD_JAR="$BUILD_MOD/42/media/java/client/PZButter.jar"
-INSTALLED_JAR="$Z/mods/PZButter/42/media/java/client/PZButter.jar"
+BUILD_JAR="$BUILD_MOD/42/media/java/common/PZButter.jar"
+INSTALLED_JAR="$Z/mods/PZButter/42/media/java/common/PZButter.jar"
 echo "[build] signed-build check"
 if ! find "$BUILD_MOD" -name '*.zbs' -print -quit 2>/dev/null | grep -q .; then
     if (( DRY )); then echo "[build] signed-build check: FAIL"; fi
@@ -242,9 +229,9 @@ BENCH_NAME="pzbutter-bench-${RUN_STAMP}"
 BENCH_SAVE="$Z/Saves/$MODE/$BENCH_NAME"
 echo "[step4] manifest write $SRC_SAVE"
 if (( DRY )); then
-    echo "+ python3 $TOOLS/manifest.py write $SRC_SAVE $RUN_DIR/source.manifest.json (dry-run: skipped)"
+    echo "+ manifest write $SRC_SAVE $RUN_DIR/source.manifest.json (dry-run: skipped)"
 else
-    python3 "$TOOLS/manifest.py" write "$SRC_SAVE" "$RUN_DIR/source.manifest.json" || die "manifest write failed"
+    manifest_write "$SRC_SAVE" "$RUN_DIR/source.manifest.json" || die "manifest write failed"
     cp -a "$SRC_SAVE" "$BENCH_SAVE" || die "save copy failed"
     BENCH_CREATED=1
     printf '%s\n%s\n' "$BENCH_NAME" "$MODE" > "$Z/latestSave.ini" || die "latestSave update failed"
@@ -466,7 +453,7 @@ WORKERS_LINE="$(grep '\[PZButter\] workers:' "$RUN_DIR/console.txt" 2>/dev/null 
 
 # step 10 manifest check + delete bench copy
 echo "[step10] checking source save against manifest"
-python3 "$TOOLS/manifest.py" check "$SRC_SAVE" "$RUN_DIR/source.manifest.json"; rc=$?
+manifest_check "$SRC_SAVE" "$RUN_DIR/source.manifest.json"; rc=$?
 if (( rc != 0 )); then echo "source save differs (listed above)"; fi
 if [[ "$BENCH_CREATED" -eq 1 ]]; then rm -rf "$BENCH_SAVE"; BENCH_CREATED=0; fi
 
