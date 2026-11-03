@@ -273,7 +273,10 @@ public final class LuaPatches {
     @Patch(className = "zombie.Lua.LuaEventManager", methodName = "triggerEvent")
     public static class TriggerEvent {
         @Patch.OnEnter
-        public static void enter(@Patch.Local("g") boolean g) { g = gateEnterEvent(); }
+        public static void enter(@Patch.Argument(0) String event, @Patch.Local("g") boolean g) {
+            SpikeContext.noteEvent(event);
+            g = gateEnterEvent();
+        }
 
         @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
         public static void exit(@Patch.Local("g") boolean g) { if (g) gateExit(); }

@@ -161,6 +161,9 @@ The mod creates `~/Zomboid/PZButter.properties` on first start and reads it once
 | `devCensus` | Diagnostic. Counts, in play, which game calls a calm zombie's update reaches, and writes `Zomboid/pzbutter/census.out` once a minute. Needs the preload (one restart). Off by default. |
 | `devMark` | Diagnostic. A key writes window marks (`mark <name> <epoch ms>`) to `Zomboid/pzbutter/marks.out` next to `frames.out`, for use with the frame log. Key: `devMarkKey` (default `F9`). Off by default. |
 | `devMarkKey` | Dev. Key for `devMark` (default `F9`). |
+| `spikeContext` | Diagnostic for the frame log. Each frame over `spikeThresholdMs` is classified by what the player was doing (driving, moving, chunk, menu, uncat) and appended to `Zomboid/pzbutter/spikes.out`; once a minute the counts go to the console (`[PZButter] spikes: ...`). Off by default. |
+| `spikeThresholdMs` | Dev. With `spikeContext`, a frame longer than this many ms is a spike (default `50`). |
+| `spikeContextWindowMs` | Dev. With `spikeContext`, a chunk load or a context menu this many ms before a spike names it (default `750`). |
 | `devAutoContinue` | Dev. On the main menu, presses Continue once per process. Off by default. |
 | `devScene` | Dev. `off`/`stand`/`walk`/`drive` scene driver that writes scene.start and scene.end marks; needs a scene. Off by default. |
 | `devSceneSettleSec` | Dev. Seconds after world ready before `scene.start` (default 20); needs devScene. |

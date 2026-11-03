@@ -87,7 +87,7 @@ Map.entry("LoadPatches.WaitFileTask", k("textureBufferMb")),
         Map.entry("LoadPatches.TextureIDGenerateHwId", k("texCompress")),
         Map.entry("Patches.Frame", k("luaWorkerGate", "luaFileWriteThrottle", "logDedupe", "luaBudget", "luaTiming", "frameStartGate",
             "presentPacing", "reflexSleep", "bakeScheduler", "lightSwitchCheckFrames", "gridStackInterval", "roofHideDebounceFrames",
-            "soundTickHz", "mapStreetMemo", "mapStreetCache", "textWidthCache", "uiTiming", "uiCensus", "uiRetained", "uiRetainCheck", "entityTiming")),
+            "soundTickHz", "mapStreetMemo", "mapStreetCache", "textWidthCache", "uiTiming", "uiCensus", "uiRetained", "uiRetainCheck", "entityTiming", "spikeContext", "spikeThresholdMs", "spikeContextWindowMs")),
         // frame delivery
         Map.entry("DeliveryPatches.Step", k("limiterSleep", "reflexSleep")),
         Map.entry("DeliveryPatches.InvokeWake", k("limiterSleep", "reflexSleep")),

@@ -17,6 +17,7 @@ public class Main {
         }
         ModCompat.init();   // before any feature init reads its key: modCompat=auto answers stock for the keys it switches off
         FrameClock.init();
+        SpikeContext.init();
         PresentLog.init();
         LimiterSleep.init();
         RenderIdle.init();
