@@ -16,6 +16,7 @@ SAVE=""
 PROPS=""
 PERF=0
 MANGO=0
+APITRACE=0
 JFR_PERIOD=10
 OUT="${HOME}/Zomboid/pzbutter-runs"
 DRY=0
@@ -31,6 +32,7 @@ while [[ $# -gt 0 ]]; do
         --props) PROPS="$2"; shift 2 ;;
         --perf) PERF=1; shift ;;
         --mangohud) MANGO=1; shift ;;
+        --apitrace) APITRACE=1; shift ;;
         --jfr-period) JFR_PERIOD="$2"; shift 2 ;;
         --out) OUT="$2"; shift 2 ;;
         --dry-run) DRY=1; shift ;;
@@ -41,7 +43,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "$SCENE" || -z "$LIST" || -z "$SAVE" ]]; then
-    echo "usage: run.sh --scene NAME --list bare|full --save MODE/SAVE [--props \"k=v ...\"] [--perf] [--mangohud] [--jfr-period MS] [--out DIR] [--dry-run] [--timeout SEC] [--jvm \"...\"]"; exit 2
+    echo "usage: run.sh --scene NAME --list bare|full --save MODE/SAVE [--props \"k=v ...\"] [--perf] [--mangohud] [--apitrace] [--jfr-period MS] [--out DIR] [--dry-run] [--timeout SEC] [--jvm \"...\"]"; exit 2
 fi
 if [[ "$LIST" != "bare" && "$LIST" != "full" ]]; then echo "list must be bare or full"; exit 2; fi
 
@@ -60,6 +62,11 @@ esac
 if (( PERF == 1 )) && [[ $SCENE == S7 ]]; then echo "--perf is incompatible with S7"; exit 2; fi
 if (( MANGO == 1 )); then
     command -v mangohud >/dev/null 2>&1 || die "mangohud is not on PATH"
+fi
+if (( APITRACE == 1 )); then
+    if ! command -v apitrace >/dev/null 2>&1; then
+        if (( DRY )); then echo "[apitrace] not on PATH (would refuse in real run)"; else die "apitrace is not on PATH (dnf install apitrace)"; fi
+    fi
 fi
 
 MODE="${SAVE%%/*}"
@@ -315,10 +322,12 @@ LAUNCH_ENV=""
 if (( MANGO )); then
     LAUNCH_ENV="MANGOHUD=1 "
 fi
+TRACE_PREFIX=""
+if (( APITRACE )); then TRACE_PREFIX="apitrace trace --api=gl --output=$RUN_DIR/game.trace "; fi
 if (( MANGO )); then
-    LAUNCH_LINE="mangohud $PZ_DIR/projectzomboid.sh -javaagent:ZombieBuddy.jar $JVM_STR --"
+    LAUNCH_LINE="${TRACE_PREFIX}mangohud $PZ_DIR/projectzomboid.sh -javaagent:ZombieBuddy.jar $JVM_STR --"
 else
-    LAUNCH_LINE="$PZ_DIR/projectzomboid.sh -javaagent:ZombieBuddy.jar $JVM_STR --"
+    LAUNCH_LINE="${TRACE_PREFIX}$PZ_DIR/projectzomboid.sh -javaagent:ZombieBuddy.jar $JVM_STR --"
 fi
 
 echo "[step7] jvm: $JVM_STR"
@@ -347,6 +356,7 @@ chosen_mods=$CHOSEN_IDS
 bench_mods=$BENCH_IDS
 jvm=$JVM_STR
 jvm_extra=$JVM_EXTRA
+apitrace=$APITRACE
 timeout=$TIMEOUT_VALUE
 launch=$LAUNCH_LINE
 pz_rev=$PZ_REV
@@ -383,7 +393,13 @@ if (( MANGO )); then
     export MANGOHUD_CONFIG="output_folder=$RUN_DIR,autostart_log=1,log_interval=0"
 fi
 cd "$Z" 2>/dev/null || true
-if (( MANGO )); then
+if (( APITRACE )); then
+    if (( MANGO )); then
+        apitrace trace --api=gl --output="$RUN_DIR/game.trace" mangohud "$PZ_DIR/projectzomboid.sh" -javaagent:ZombieBuddy.jar $JVM_STR -- > "$RUN_DIR/stdout.txt" 2>&1 &
+    else
+        apitrace trace --api=gl --output="$RUN_DIR/game.trace" "$PZ_DIR/projectzomboid.sh" -javaagent:ZombieBuddy.jar $JVM_STR -- > "$RUN_DIR/stdout.txt" 2>&1 &
+    fi
+elif (( MANGO )); then
     mangohud "$PZ_DIR/projectzomboid.sh" -javaagent:ZombieBuddy.jar $JVM_STR -- > "$RUN_DIR/stdout.txt" 2>&1 &
 else
     "$PZ_DIR/projectzomboid.sh" -javaagent:ZombieBuddy.jar $JVM_STR -- > "$RUN_DIR/stdout.txt" 2>&1 &
@@ -469,6 +485,7 @@ props=$PROPS_LINE
 chosen_mods=$CHOSEN_IDS
 bench_mods=$BENCH_IDS
 jvm=$JVM_STR
+apitrace=$APITRACE
 launch=$LAUNCH_LINE
 pz_rev=$PZ_REV
 zombiebuddy_sha256=$ZB_SHA2
