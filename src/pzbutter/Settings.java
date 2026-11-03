@@ -335,7 +335,7 @@ public final class Settings {
       + "fileInflight=-1\n"
       + "# modWatchAsync: mod media folders are watched from a background thread; the game thread no longer walks them at boot.\n"
       + "modWatchAsync=true\n"
-      + "# texCompress: textures are BC3-encoded on the file pool instead of compressed on the render thread. Acts only with the game's texture compression on.\n"
+      + "# texCompress: textures are BC3-encoded on the file pool instead of compressed on the render thread. Acts only with the game's texture compression on, where the driver compresses to S3TC itself. Needs one restart after a change.\n"
       + "texCompress=true\n"
       + "#\n"
       + "# Vehicles (Plan 10).\n"

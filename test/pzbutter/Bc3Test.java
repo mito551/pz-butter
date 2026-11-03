@@ -10,6 +10,7 @@ final class Bc3Test {
         bc3EdgesPadded();
         bc3ErrorBounded();
         bc3NearWhiteNoWrap();
+        bc3AntiCorrelatedColours();
     }
 
     static int[] expand(int v) {
@@ -129,16 +130,38 @@ final class Bc3Test {
         assert (dst[1] & 255) == 0;
     }
 
+
+    /** Colours that move in opposite channels (red/green, red/blue): the endpoints follow the block's colour line, not the box's main diagonal. */
+    static void bc3AntiCorrelatedColours() {
+        int[][][] cases = { { {255, 0, 0}, {0, 255, 0} }, { {200, 0, 0}, {0, 0, 200} }, { {0, 40, 220}, {230, 200, 10} } };
+        for (int[][] c : cases) {
+            byte[] src = new byte[16 * 4];
+            for (int i = 0; i < 16; i++) {
+                int[] p = c[((i >> 2) + i) & 1];
+                src[i * 4] = (byte) p[0]; src[i * 4 + 1] = (byte) p[1]; src[i * 4 + 2] = (byte) p[2]; src[i * 4 + 3] = (byte) 255;
+            }
+            byte[] dst = new byte[16];
+            Bc3.encodeTo(src, 4, 4, dst);
+            byte[] dec = decode(dst, 4, 4);
+            int max = 0;
+            for (int i = 0; i < 64; i++) if ((i & 3) != 3) max = Math.max(max, Math.abs((dec[i] & 255) - (src[i] & 255)));
+            assert max <= 20 : "anti-correlated max error " + max + " for " + java.util.Arrays.deepToString(c);
+        }
+    }
     static void bc3EdgesPadded() throws Exception {
         for (int[] wh : new int[][] { {3, 5}, {1, 1}, {2, 2}, {2, 4} }) {
             int w = wh[0], h = wh[1];
             byte[] src = new byte[w * h * 4];
-            for (int i = 0; i < src.length; i++) src[i] = (byte) ((i * 37) & 255);
+            for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) {
+                int i = (y * w + x) * 4;
+                src[i] = (byte) (40 + x * 9); src[i + 1] = (byte) (200 - y * 7); src[i + 2] = (byte) 100; src[i + 3] = (byte) (255 - x * 20);
+            }
             byte[] dst = new byte[Bc3.encodedSize(w, h)];
             Bc3.encodeTo(src, w, h, dst);
             assert dst.length == ((w + 3) / 4) * ((h + 3) / 4) * 16;
             byte[] dec = decode(dst, w, h);
             assert dec.length == w * h * 4;
+            for (int i = 0; i < dec.length; i++) assert Math.abs((dec[i] & 255) - (src[i] & 255)) <= 16 : w + "x" + h + " byte " + i + ": " + (dec[i] & 255) + " vs " + (src[i] & 255);
         }
     }
 

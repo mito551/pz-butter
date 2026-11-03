@@ -3,7 +3,10 @@ package pzbutter;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
-/** BC3 (DXT5) encoder for 4x4 blocks of premultiplied RGBA8 (variant round V11e: variant A's shape, 1.7x ours). */
+/**
+ * BC3 (DXT5) encoder for 4x4 blocks of RGBA8, as stock uploads it (premultiplied on the mip path, straight on the no-mip path).
+ * Colour endpoints span the block's box along its colour line (variant round V11e: variant A's shape, 1.7x ours).
+ */
 public final class Bc3 {
     private Bc3() {}
 
@@ -71,6 +74,7 @@ public final class Bc3 {
                 // alpha endpoints
                 int aMin = 255, aMax = 0;
                 int rMin = 255, rMax = 0, gMin = 255, gMax = 0, bMin = 255, bMax = 0;
+                int sr = 0, sg = 0, sb = 0, srg = 0, srb = 0, sgb = 0;
                 for (int i = 0; i < 16; i++) {
                     int v = pix[i];
                     int a = v >>> 24;
@@ -85,7 +89,11 @@ public final class Bc3 {
                     if (g > gMax) gMax = g;
                     if (bb < bMin) bMin = bb;
                     if (bb > bMax) bMax = bb;
+                    sr += r; sg += g; sb += bb;
+                    srg += r * g; srb += r * bb; sgb += g * bb;
                 }
+                // the colour line's direction: against the widest channel, a channel whose covariance is negative runs the other way
+                int covRG = 16 * srg - sr * sg, covRB = 16 * srb - sr * sb, covGB = 16 * sgb - sg * sb;
 
                 int inset;
                 int rExt = rMax - rMin;
@@ -111,8 +119,16 @@ public final class Bc3 {
                             (2 * a0 + 3 * a1) / 5, (a0 + 4 * a1) / 5, 0, 255 };
                 }
 
-                int c0 = ((ROUND5[rMax] & 255) << 11) | ((ROUND6[gMax] & 255) << 5) | (ROUND5[bMax] & 255);
-                int c1 = ((ROUND5[rMin] & 255) << 11) | ((ROUND6[gMin] & 255) << 5) | (ROUND5[bMin] & 255);
+                boolean flipR, flipG, flipB;
+                if (rExt >= gExt && rExt >= bExt) { flipR = false; flipG = covRG < 0; flipB = covRB < 0; }
+                else if (gExt >= bExt) { flipG = false; flipR = covRG < 0; flipB = covGB < 0; }
+                else { flipB = false; flipR = covRB < 0; flipG = covGB < 0; }
+                int rHi = flipR ? rMin : rMax, rLo = flipR ? rMax : rMin;
+                int gHi = flipG ? gMin : gMax, gLo = flipG ? gMax : gMin;
+                int bHi = flipB ? bMin : bMax, bLo = flipB ? bMax : bMin;
+                int c0 = ((ROUND5[rHi] & 255) << 11) | ((ROUND6[gHi] & 255) << 5) | (ROUND5[bHi] & 255);
+                int c1 = ((ROUND5[rLo] & 255) << 11) | ((ROUND6[gLo] & 255) << 5) | (ROUND5[bLo] & 255);
+                if (c0 < c1) { int t = c0; c0 = c1; c1 = t; }   // c0 > c1 keeps 4-colour mode on decoders that apply DXT1's rule; indices are picked after
 
                 int[] e0 = expand(c0);
                 int[] e1 = expand(c1);

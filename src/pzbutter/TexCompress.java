@@ -16,19 +16,25 @@ public final class TexCompress {
     private TexCompress() {}
 
     public static final Guard guard = new Guard("texCompress");
-    /** GL_EXT_texture_compression_s3tc, read at the first generateHwId (render thread); false: nothing is encoded. */
+    /**
+     * The upload can take the blocks, decided at the first generateHwId (render thread) by {@link #decideReady}: the rewrite is in,
+     * the GPU has S3TC, and the driver itself stores GL_COMPRESSED_RGBA as S3TC. false: nothing is encoded.
+     */
     public static volatile boolean s3tc = false;
     private static volatile boolean s3tcKnown = false;
+    /** Why {@link #s3tc} is false, for the summary; the driver's format for GL_COMPRESSED_RGBA (0: not probed). */
+    static volatile String offReason = "not decided";
+    static volatile int probedFormat;
     /** The ImageData generateHwId is uploading when its entry fits stock's path; render thread only. */
     static Object current;
     /** Whether a level of {@link #current} already went up compressed (the mixed-format check). */
     private static boolean currentCompressed;
-    private static boolean firstCompressedDone, mixedLogged;
+    private static boolean firstCompressedDone, smallChecked, mixedLogged;
     private static int firstCompressedError;
     /** texImage2D calls (render thread): zero with uploads happening means the rewrite is not in the running class. */
     static int calls;
 
-    public static final AtomicInteger encodedCount = new AtomicInteger(), droppedCount = new AtomicInteger(), usedCount = new AtomicInteger(),
+    public static final AtomicInteger encodedCount = new AtomicInteger(), droppedCount = new AtomicInteger(),
         compressedCount = new AtomicInteger(), fallbackPathCount = new AtomicInteger(), fallbackFormatCount = new AtomicInteger(),
         fallbackMismatchCount = new AtomicInteger(), fallbackNoEntryCount = new AtomicInteger();
     private static volatile boolean printed;
@@ -60,6 +66,8 @@ public final class TexCompress {
         void texImage2D(int target, int level, int internalformat, int w, int h, int border, int format, int type, ByteBuffer pixels);
         void compressedTexImage2D(int target, int level, int internalformat, int w, int h, int border, ByteBuffer pixels);
         int getError();
+        /** The internal format the driver gives a 4x4 GL_COMPRESSED_RGBA texture (GL context current). */
+        int probeCompressedFormat();
     }
     static final Gl REAL_GL = new Gl() {
         public void texImage2D(int target, int level, int internalformat, int w, int h, int border, int format, int type, ByteBuffer pixels) {
@@ -69,6 +77,18 @@ public final class TexCompress {
             org.lwjgl.opengl.GL13.glCompressedTexImage2D(target, level, internalformat, w, h, border, pixels);
         }
         public int getError() { return org.lwjgl.opengl.GL11.glGetError(); }
+        public int probeCompressedFormat() {
+            int prev = org.lwjgl.opengl.GL11.glGetInteger(0x8069);   // GL_TEXTURE_BINDING_2D
+            int t = org.lwjgl.opengl.GL11.glGenTextures();
+            try {
+                org.lwjgl.opengl.GL11.glBindTexture(0x0DE1, t);
+                org.lwjgl.opengl.GL11.glTexImage2D(0x0DE1, 0, 34030, 4, 4, 0, 6408, 5121, ByteBuffer.allocateDirect(64));
+                return org.lwjgl.opengl.GL11.glGetTexLevelParameteri(0x0DE1, 0, 0x1003);   // GL_TEXTURE_INTERNAL_FORMAT
+            } finally {
+                org.lwjgl.opengl.GL11.glDeleteTextures(t);
+                org.lwjgl.opengl.GL11.glBindTexture(0x0DE1, prev);
+            }
+        }
     };
     static volatile Gl gl = REAL_GL;
 
@@ -81,14 +101,14 @@ public final class TexCompress {
 
     /** Policy + state: is a pack texture (flags bit 4) to be encoded? */
     public static boolean wouldCompressPack(int flags) {
-        if (!guard.on || !s3tc) return false;
+        if (!guard.on || !s3tc || !TexTransform.transformState) return false;
         try { if (!zombie.core.textures.TextureID.useCompressionOption) return false; } catch (Throwable t) { return false; }
         return (flags & 4) != 0;
     }
 
     /** Policy + state: is a plain ImageData to be encoded? (its TextureID's flags are checked at upload) */
     public static boolean wouldCompressImage() {
-        if (!guard.on || !s3tc) return false;
+        if (!guard.on || !s3tc || !TexTransform.transformState) return false;
         try { return zombie.core.textures.TextureID.useCompressionOption; } catch (Throwable t) { return false; }
     }
 
@@ -171,7 +191,16 @@ public final class TexCompress {
         currentCompressed = false;
         if (!s3tcKnown) {
             s3tcKnown = true;
-            try { s3tc = org.lwjglx.opengl.Display.capabilities.GL_EXT_texture_compression_s3tc; } catch (Throwable t) { s3tc = false; }
+            boolean caps = false;
+            String capsErr = null;
+            if (guard.on) {
+                try {
+                    var c = org.lwjglx.opengl.Display.capabilities;
+                    caps = c.GL_ARB_texture_compression && c.GL_EXT_texture_compression_s3tc;   // stock needs the first for 34030
+                } catch (Throwable t) { capsErr = String.valueOf(t); }
+            }
+            s3tc = decideReady(caps);
+            if (capsErr != null && offReason.equals("no S3TC")) offReason = capsErr;
         }
         if (!guard.on || !s3tc || encoded.isEmpty() || !(textureId instanceof zombie.core.textures.TextureID tid) || !bindUpload()) return;
         Object data = dataH.get(tid);
@@ -188,6 +217,32 @@ public final class TexCompress {
         current = data;
     }
 
+    /**
+     * Once, render thread, GL context current. On only when the blocks replace work the driver would do: the rewrite is in, the GPU
+     * has S3TC, and the driver stores GL_COMPRESSED_RGBA as S3TC itself (a driver may keep it uncompressed, and glGetError
+     * cannot tell). The probe is one 4x4 texture; the binding is restored.
+     */
+    static boolean decideReady(boolean caps) {
+        try {
+            if (!guard.on) { offReason = "key off"; return false; }
+            if (!TexTransform.transformState) { offReason = "rewrite off"; return false; }
+            if (!caps) { offReason = "no S3TC"; return false; }
+            drainErrors();
+            probedFormat = gl.probeCompressedFormat();
+            drainErrors();
+            if (probedFormat != 0x83F3 && probedFormat != 0x83F2) {   // DXT5, DXT3
+                offReason = "the driver keeps GL_COMPRESSED_RGBA as 0x" + Integer.toHexString(probedFormat);
+                return false;
+            }
+            return true;
+        } catch (Throwable t) {
+            offReason = String.valueOf(t);
+            return false;
+        }
+    }
+
+    private static void drainErrors() { for (int k = 0; k < 8 && gl.getError() != 0; k++) { } }
+
     /** OnExit of generateHwId (also on a throw). */
     public static void onGenerateExit() { current = null; currentCompressed = false; }
 
@@ -196,7 +251,7 @@ public final class TexCompress {
      * same buffer object and size, as GL_COMPRESSED_RGBA from RGBA8; everything else is the stock call with the same arguments.
      */
     public static void texImage2D(int target, int level, int internalFormat, int w, int h, int border, int format, int type, ByteBuffer pixels) {
-        boolean done = false;
+        boolean stock = true;
         calls++;
         try {
             Object cur = current;
@@ -211,32 +266,34 @@ public final class TexCompress {
                         // path check should make this unreachable; if the log ever shows it, encode-or-skip a whole texture at enter.
                         if (currentCompressed && !mixedLogged) { mixedLogged = true; System.out.println("[PZButter] texCompress: level " + level + " fell back after a compressed level (mixed formats in one texture)"); }
                     } else {
-                        boolean first = !firstCompressedDone;
-                        if (first) gl.getError();   // drain errors left by earlier GL calls
+                        // glGetError after the first compressed upload, and after the first one below 4x4 (a stricter driver may refuse those)
+                        boolean small = w < 4 || h < 4, check = !firstCompressedDone || (small && !smallChecked);
+                        if (check) drainErrors();
                         gl.compressedTexImage2D(target, level, 0x83F3, w, h, border, L.bc3);
-                        done = true;
-                        if (first) {
+                        stock = false;
+                        if (check) {
+                            int err = gl.getError();
+                            if (!firstCompressedDone || err != 0) firstCompressedError = err;
                             firstCompressedDone = true;
-                            firstCompressedError = gl.getError();
-                            if (firstCompressedError != 0) {
-                                System.out.println("[PZButter] texCompress off: glCompressedTexImage2D gave GL error 0x" + Integer.toHexString(firstCompressedError));
+                            if (small) smallChecked = true;
+                            if (err != 0) {
+                                System.out.println("[PZButter] texCompress off: glCompressedTexImage2D (" + w + "x" + h + ") gave GL error 0x" + Integer.toHexString(err));
                                 guard.on = false;
                                 current = null;
-                                gl.texImage2D(target, level, internalFormat, w, h, border, format, type, pixels);
-                                return;
+                                stock = true;   // this level again the stock way, so the texture is complete
                             }
                         }
-                        compressedCount.incrementAndGet();
-                        currentCompressed = true;
-                        return;
+                        if (!stock) {
+                            compressedCount.incrementAndGet();
+                            currentCompressed = true;
+                        }
                     }
                 }
             }
         } catch (Throwable t) {
             guard.fail(t);
-            if (done) return;
         }
-        gl.texImage2D(target, level, internalFormat, w, h, border, format, type, pixels);
+        if (stock) gl.texImage2D(target, level, internalFormat, w, h, border, format, type, pixels);
     }
 
     /** OnEnter of ImageData.dispose(): drop the entry (and its BC3 buffers). */
@@ -257,12 +314,6 @@ public final class TexCompress {
         return L;
     }
 
-    /** Drop the entry after upload. */
-    public static void used(Object imageData) {
-        if (imageData == null) return;
-        if (encoded.remove(imageData) != null) usedCount.incrementAndGet();
-    }
-
     /** GameLoadingState exit: the counts so far. */
     public static void printSummaryOnce() {
         if (printed || !(guard.on || encodedCount.get() > 0)) return;
@@ -270,7 +321,8 @@ public final class TexCompress {
         String err = !firstCompressedDone ? "n/a" : firstCompressedError == 0 ? "clean" : "0x" + Integer.toHexString(firstCompressedError);
         System.out.println("[PZButter] texCompress: " + encodedCount.get() + " encoded, " + compressedCount.get() + " compressed uploads, fallbacks: path "
             + fallbackPathCount.get() + ", format " + fallbackFormatCount.get() + ", mismatch " + fallbackMismatchCount.get() + ", no entry "
-            + fallbackNoEntryCount.get() + "; glGetError " + err + (s3tc ? "" : "; no S3TC") + "; " + calls + " texImage2D calls, rewrite "
+            + fallbackNoEntryCount.get() + "; glGetError " + err + (s3tc ? "" : "; off: " + offReason)
+            + (probedFormat != 0 ? "; driver format 0x" + Integer.toHexString(probedFormat) : "") + "; " + calls + " texImage2D calls, rewrite "
             + (TexTransform.transformState ? "on" : "off: " + TexTransform.transformReason));
     }
 
@@ -279,11 +331,14 @@ public final class TexCompress {
         s3tc = false;
         s3tcKnown = true;   // tests have no GL context; they set s3tc themselves
         current = null;
-        currentCompressed = firstCompressedDone = mixedLogged = printed = false;
+        currentCompressed = firstCompressedDone = smallChecked = mixedLogged = printed = false;
+        offReason = "not decided";
+        probedFormat = 0;
+        TexTransform.transformState = true;   // tests run without the class rewrite; the gate's own test sets it false
         firstCompressedError = 0;
         calls = 0;
         encoded.clear();
-        for (AtomicInteger c : new AtomicInteger[] { encodedCount, droppedCount, usedCount, compressedCount, fallbackPathCount,
+        for (AtomicInteger c : new AtomicInteger[] { encodedCount, droppedCount, compressedCount, fallbackPathCount,
                 fallbackFormatCount, fallbackMismatchCount, fallbackNoEntryCount }) c.set(0);
         flagsBound = false;
         flagsH = null;
