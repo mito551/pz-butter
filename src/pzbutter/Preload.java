@@ -141,30 +141,21 @@ final class Preload {
             }
             if (Settings.enabled && Settings.flag("texCompress")) {
                 TexCompress.preInit();
-                if (loaded.contains("zombie.core.textures.TextureID")) {
+                try {
+                    TexTransform.transformState = false;   // set by the transform itself when it rewrites the class (at load, or on ZombieBuddy's retransform when TextureID loaded first)
+                    TexTransform.transformReason = "TextureID not rewritten yet";
+                    inst.addTransformer(new TexTransform(), true);
                     try (var log = new LogSink(new File(System.getProperty("user.home"), "Zomboid/PZButter/preload.log"), 1 << 20)) {
-                        log.begin(System.currentTimeMillis()).text("texCompress skipped TextureID loaded before premain").end(System.currentTimeMillis());
+                        log.begin(System.currentTimeMillis()).text("texCompress transform registered").end(System.currentTimeMillis());
                         log.flushBuf();
                     } catch (Throwable ignored) {}
+                } catch (Throwable t) {
                     TexTransform.transformState = false;
-                    TexTransform.transformReason = "TextureID loaded before premain";
-                } else {
-                    try {
-                        inst.addTransformer(new TexTransform(), true);
-                        TexTransform.transformState = false;   // set by the transform itself when it rewrites the class
-                        TexTransform.transformReason = "TextureID not rewritten yet";
-                        try (var log = new LogSink(new File(System.getProperty("user.home"), "Zomboid/PZButter/preload.log"), 1 << 20)) {
-                            log.begin(System.currentTimeMillis()).text("texCompress transform installed").end(System.currentTimeMillis());
-                            log.flushBuf();
-                        } catch (Throwable ignored) {}
-                    } catch (Throwable t) {
-                        TexTransform.transformState = false;
-                        TexTransform.transformReason = String.valueOf(t);
-                        try (var log = new LogSink(new File(System.getProperty("user.home"), "Zomboid/PZButter/preload.log"), 1 << 20)) {
-                            log.begin(System.currentTimeMillis()).text("texCompress transform " + t).end(System.currentTimeMillis());
-                            log.flushBuf();
-                        } catch (Throwable ignored) {}
-                    }
+                    TexTransform.transformReason = String.valueOf(t);
+                    try (var log = new LogSink(new File(System.getProperty("user.home"), "Zomboid/PZButter/preload.log"), 1 << 20)) {
+                        log.begin(System.currentTimeMillis()).text("texCompress transform " + t).end(System.currentTimeMillis());
+                        log.flushBuf();
+                    } catch (Throwable ignored) {}
                 }
             }
             var list = WorkerList.load(gameRevision());

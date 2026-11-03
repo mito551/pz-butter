@@ -54,6 +54,9 @@ final class LoadTest {
         texImageFallsBackOnMismatch();
         texImageUsesBc3OnMatch();
         texImageGlErrorTurnsOff();
+        texCompressReadyNeedsRewriteAndDriverS3tc();
+        texImageChecksFirstSmallLevel();
+        packMipChainEncoded();
     }
 
     static void idChecksSkippedOnlyOutsideDebug() {
@@ -761,6 +764,96 @@ final class LoadTest {
         }
     }
 
+
+    /** Review I1/I3: nothing is encoded unless the rewrite is in, the GPU has S3TC and the driver itself compresses GL_COMPRESSED_RGBA to S3TC. */
+    static void texCompressReadyNeedsRewriteAndDriverS3tc() {
+        TexCompress.resetForTest();
+        final int[] fmt = {0x8058};
+        TexCompress.gl = new TexCompress.Gl() {
+            public void texImage2D(int t, int l, int ifmt, int w, int h, int b, int f, int ty, java.nio.ByteBuffer p) { }
+            public void compressedTexImage2D(int t, int l, int ifmt, int w, int h, int b, java.nio.ByteBuffer p) { }
+            public int getError() { return 0; }
+            public int probeCompressedFormat() { return fmt[0]; }
+        };
+        assert !TexCompress.decideReady(true) && TexCompress.offReason.equals("key off");
+        TexCompress.guard.on = true;
+        TexTransform.transformState = false;
+        assert !TexCompress.decideReady(true) && TexCompress.offReason.equals("rewrite off");
+        TexCompress.s3tc = true;
+        try { zombie.core.textures.TextureID.useCompressionOption = true; } catch (Throwable t) { }
+        assert !TexCompress.wouldCompressImage() && !TexCompress.wouldCompressPack(4);   // the rewrite went away after the decision
+        TexTransform.transformState = true;
+        assert !TexCompress.decideReady(false) && TexCompress.offReason.equals("no S3TC");
+        assert !TexCompress.decideReady(true) && TexCompress.offReason.contains("0x8058") : TexCompress.offReason;   // stored uncompressed (RGBA8)
+        fmt[0] = 0x83F3;
+        assert TexCompress.decideReady(true) && TexCompress.probedFormat == 0x83F3;
+        try { zombie.core.textures.TextureID.useCompressionOption = false; } catch (Throwable t) { }
+        TexCompress.resetForTest();
+    }
+
+    /** Review M1: the first compressed level below 4x4 is checked too; an error there turns the key off and redoes that level stock. */
+    static void texImageChecksFirstSmallLevel() {
+        TexCompress.resetForTest();
+        TexCompress.guard.on = true;
+        TexCompress.s3tc = true;
+        Object id = new Object();
+        java.nio.ByteBuffer b4 = java.nio.ByteBuffer.allocateDirect(64), b2 = java.nio.ByteBuffer.allocateDirect(16);
+        TexCompress.encoded.put(id, new TexCompress.Entry(new TexCompress.Level[] {
+            new TexCompress.Level(b4, 4, 4, java.nio.ByteBuffer.allocateDirect(16)), new TexCompress.Level(b2, 2, 2, java.nio.ByteBuffer.allocateDirect(16)) }, true));
+        TexCompress.current = id;
+        final int[] n = {0, 0, 4};   // stock, compressed, last compressed width
+        TexCompress.gl = new TexCompress.Gl() {
+            public void texImage2D(int t, int l, int ifmt, int w, int h, int b, int f, int ty, java.nio.ByteBuffer p) { n[0]++; }
+            public void compressedTexImage2D(int t, int l, int ifmt, int w, int h, int b, java.nio.ByteBuffer p) { n[1]++; n[2] = w; }
+            public int getError() { return n[2] < 4 ? 1281 : 0; }
+            public int probeCompressedFormat() { return 0x83F3; }
+        };
+        TexCompress.texImage2D(0, 0, 34030, 4, 4, 0, 6408, 5121, b4);
+        assert TexCompress.guard.on && n[0] == 0 && n[1] == 1;
+        TexCompress.texImage2D(0, 1, 34030, 2, 2, 0, 6408, 5121, b2);
+        assert !TexCompress.guard.on && n[0] == 1 && n[1] == 2 && TexCompress.compressedCount.get() == 1 : n[0] + " " + n[1];
+        TexCompress.resetForTest();
+    }
+
+    /** Review M5: a pack with mips (flags 4|64; call() ran initMipMaps) gets every level, the level buffers stock uploads, and stays as it was. */
+    static void packMipChainEncoded() {
+        TexCompress.resetForTest();
+        TexCompress.guard.on = true;
+        TexCompress.s3tc = true;
+        try {
+            java.lang.reflect.Field uf = sun.misc.Unsafe.class.getDeclaredField("theUnsafe");
+            uf.setAccessible(true);
+            Object task = ((sun.misc.Unsafe) uf.get(null)).allocateInstance(zombie.asset.FileTask_LoadPackImage.class);
+            Game.field(zombie.asset.FileTask_LoadPackImage.class, "flags", int.class).set(task, 4 | 64);
+            java.awt.image.BufferedImage bi = new java.awt.image.BufferedImage(8, 8, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+            for (int y = 0; y < 8; y++) for (int x = 0; x < 8; x++) bi.setRGB(x, y, ((x * 30) << 24) | (y * 30 << 16) | 0x4080);
+            java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
+            javax.imageio.ImageIO.write(bi, "png", bo);
+            zombie.core.textures.ImageData img = new zombie.core.textures.ImageData(new java.io.ByteArrayInputStream(bo.toByteArray()), false);
+            img.initMipMaps();   // what call() does for flags 64
+            Object mips = Game.field(zombie.core.textures.ImageData.class, "mipMaps", zombie.core.textures.MipMapLevel[].class).get(img);
+            byte[] base = new byte[img.getMipMapData(0).width * img.getMipMapData(0).height * 4];
+            img.getMipMapData(0).getBuffer().duplicate().rewind().get(base);
+            zombie.core.textures.TextureID.useCompressionOption = true;
+            TexCompress.onPackImageExit(task, img);
+            TexCompress.Entry e = TexCompress.encoded.get(img);
+            assert e != null && e.mips() && e.levels().length == img.getMipMapCount() && img.getMipMapCount() > 1 : e;
+            for (int i = 0; i < e.levels().length; i++) {
+                zombie.core.textures.MipMapLevel lvl = img.getMipMapData(i);
+                TexCompress.Level L = e.levels()[i];
+                assert L.rgba == lvl.getBuffer() && L.w == lvl.width && L.h == lvl.height : i;
+                assert TexCompress.levelFor(img, i, lvl.getBuffer(), lvl.width, lvl.height) == L : i;
+            }
+            assert Game.field(zombie.core.textures.ImageData.class, "mipMaps", zombie.core.textures.MipMapLevel[].class).get(img) == mips;
+            byte[] after = new byte[base.length];
+            img.getMipMapData(0).getBuffer().duplicate().rewind().get(after);
+            assert java.util.Arrays.equals(base, after);
+        } catch (Exception e) { throw new RuntimeException(e); }
+        finally {
+            try { zombie.core.textures.TextureID.useCompressionOption = false; } catch (Throwable t) { }
+            TexCompress.resetForTest();
+        }
+    }
     static void texTransformRewritesOnlyTexImage() {
         try {
             java.io.InputStream in = ClassLoader.getSystemResourceAsStream("zombie/core/textures/TextureID.class");
@@ -798,6 +891,7 @@ final class LoadTest {
             public void texImage2D(int t, int l, int ifmt, int w, int h, int b, int f, int ty, java.nio.ByteBuffer p) { stock++; }
             public void compressedTexImage2D(int t, int l, int ifmt, int w, int h, int b, java.nio.ByteBuffer p) { comp++; }
             public int getError() { return 0; }
+            public int probeCompressedFormat() { return 0x83F3; }
         }
         CountingGl g = new CountingGl();
         TexCompress.gl = g;
@@ -849,6 +943,7 @@ final class LoadTest {
             public void texImage2D(int t, int l, int ifmt, int w, int h, int b, int f, int ty, java.nio.ByteBuffer p) { }
             public void compressedTexImage2D(int t, int l, int ifmt, int w, int h, int b, java.nio.ByteBuffer p) { comp[0]++; fmt[0] = ifmt; gotBuf[0] = p; }
             public int getError() { return 0; }
+            public int probeCompressedFormat() { return 0x83F3; }
         };
         TexCompress.gl = g;
         TexCompress.texImage2D(0, 0, 34030, L0.w, L0.h, 0, 6408, 5121, rgba);
@@ -899,6 +994,7 @@ final class LoadTest {
             public void texImage2D(int t, int l, int ifmt, int w, int h, int b, int f, int ty, java.nio.ByteBuffer p) { stock[0]++; }
             public void compressedTexImage2D(int t, int l, int ifmt, int w, int h, int b, java.nio.ByteBuffer p) { }
             public int getError() { return 1281; }
+            public int probeCompressedFormat() { return 0x83F3; }
         };
         TexCompress.gl = g;
         TexCompress.texImage2D(0, 0, 34030, L0.w, L0.h, 0, 6408, 5121, rgba);
