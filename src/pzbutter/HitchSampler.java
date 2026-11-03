@@ -71,6 +71,63 @@ final class HitchSampler {
             || (c.equals("se.krka.kahlua.vm.KahluaThread") && m.equals("luaMainloop"));
     }
 
+    /** serverLuaSample: the same sampler, watching the server main thread against ServerTick's tick start. */
+    static void initServer(Thread watched) {
+        if (watched == null) return;
+        Thread t = new Thread(() -> serverLoop(watched), "PZButter lua sample");
+        t.setDaemon(true);
+        t.start();
+    }
+
+    private static void serverLoop(Thread watched) {
+        long lastTick = -1;
+        boolean sampling = false;
+        long nextSampleNs = 0;
+        double peakMs = 0;
+        String frames = "";
+        while (ServerTick.luaGuard.on) {
+            try { Thread.sleep(1); } catch (InterruptedException e) { return; }
+            try {
+                long tick = ServerTick.tickNo;
+                if (tick != lastTick) {
+                    if (sampling) writeServer(lastTick, peakMs, frames);
+                    sampling = false;
+                    lastTick = tick;
+                }
+                long start = ServerTick.tickStartNs;
+                if (start == 0) continue;
+                long now = System.nanoTime();
+                double runningMs = (now - start) / 1e6;
+                if (!sampling && runningMs >= 20) {
+                    sampling = true;
+                    peakMs = 0;
+                    nextSampleNs = 0;
+                }
+                if (sampling) {
+                    if (runningMs > peakMs) peakMs = runningMs;
+                    if (now >= nextSampleNs) {
+                        nextSampleNs = now + SAMPLE_MS * 1_000_000;
+                        frames = collapse(stack(watched), MAIN_FRAMES);
+                    }
+                }
+            } catch (Throwable t) { ServerTick.luaGuard.fail(t); }
+        }
+    }
+
+    /** One line per long server period; the running Lua function comes from LuaTiming, as on the client. */
+    private static void writeServer(long tickNo, double periodMs, String mainFrames) {
+        try {
+            if (periodMs < 100) return;   // the spec's floor: a busy stretch over 100 ms
+            String line = System.currentTimeMillis() + " " + tickNo + " " + Math.round(periodMs) + "ms"
+                + " lua=" + LuaTiming.currentFunction()
+                + " main=" + mainFrames;
+            Path f = hitchesPath;
+            if (f == null) f = new File(System.getProperty("user.home"), "Zomboid/pzbutter/hitches.out").toPath();
+            Files.createDirectories(f.getParent());
+            try (FileWriter w = new FileWriter(f.toFile(), true)) { w.write(line + "\n"); }
+        } catch (Throwable t) { ServerTick.luaGuard.fail(t); }
+    }
+
     private static void loop() {
         long lastFrame = -1;
         boolean sampling = false, pendingPush = false;

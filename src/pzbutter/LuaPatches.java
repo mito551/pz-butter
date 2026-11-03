@@ -274,12 +274,13 @@ public final class LuaPatches {
     public static class TriggerEvent {
         @Patch.OnEnter
         public static void enter(@Patch.Argument(0) String event, @Patch.Local("g") boolean g) {
+            ServerTick.luaEnter();
             SpikeContext.noteEvent(event);
             g = gateEnterEvent();
         }
 
         @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
-        public static void exit(@Patch.Local("g") boolean g) { if (g) gateExit(); }
+        public static void exit(@Patch.Local("g") boolean g) { if (g) gateExit(); ServerTick.luaExit(); }
     }
 
     @Patch(className = "zombie.Lua.LuaHookManager", methodName = "TriggerHook")

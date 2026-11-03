@@ -390,7 +390,13 @@ public final class Settings {
 + "#\n"
 + "# Hot save (Plan 10a). Stock queues hot saves at most once a second.\n"
 + "# hotsaveIntervalSec: hot-save interval in seconds (0 = stock 1 s; 30 = 30 s). A crash can lose at least that many seconds of the world, and several times that when many chunks changed (the game writes at most about 10 chunks per hot save). Saving and quitting always write everything.\n"
-+ "hotsaveIntervalSec=0\n";
++ "hotsaveIntervalSec=0\n"
++ "#\n"
++ "# Server and hosting (Plan 18). Server keys are inert in single player and on a multiplayer client.\n"
++ "# serverTickLog: one line per server tick in Zomboid/pzbutter/ticks.out (same columns as frames.out); a minute line gives p50/p99/max.\n"
++ "serverTickLog=false\n"
++ "# serverLuaSample: diagnostic; a watchdog samples the server main thread when a tick runs long and writes Zomboid/pzbutter/hitches.out.\n"
++ "serverLuaSample=false\n";
 
     public static volatile boolean enabled;
     public static volatile boolean frameLog;
