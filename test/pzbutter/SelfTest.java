@@ -52,6 +52,7 @@ public final class SelfTest {
         GpuPstateTest.run();
         SideTest.run();
         ServerTest.run();
+        HostTest.run();
         delete(DIR);
         System.out.println("ok");
     }

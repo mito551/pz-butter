@@ -44,7 +44,7 @@ final class ModCompat {
     static final Class<?>[] OUTERS = {Patches.class, DeliveryPatches.class, LuaPatches.class, UiPatches.class, MapPatches.class,
         SoundPatches.class, WorldPatches.class, ChunkPatches.class, LogPatches.class, ZombiePatches.class, GpuPatches.class, CensusPatches.class,
         VehiclePatches.class, StreamPatches.class, LoadPatches.class, RuntimePatches.class, DevPatches.class, CameraPatches.class, ClockPatches.class,
-        ServerPatches.class};
+        ServerPatches.class, HostPatches.class};
 
     private static final String PATCH = "Lme/zed_0xff/zombie_buddy/Patch;";
     private static final String ON_ENTER = "Lme/zed_0xff/zombie_buddy/Patch$OnEnter;";
@@ -264,7 +264,8 @@ Map.entry("LoadPatches.WaitFileTask", k("textureBufferMb")),
         Map.entry("ServerPatches.StopOnExit", k("serverTickLog", "serverLuaSample")),
         Map.entry("ServerPatches.StopOnClose", k("serverTickLog", "serverLuaSample")),
         Map.entry("ServerPatches.SendGuard", k("containerSendGuard")),
-        Map.entry("ServerPatches.ProcessItems", k("processItemsMerge")));
+        Map.entry("ServerPatches.ProcessItems", k("processItemsMerge")),
+        Map.entry("HostPatches.Args", k("hostJvmArgs", "hostZombieBuddy")));
 
     // ---- reading @Patch annotations without loading the class ----
 

@@ -166,6 +166,8 @@ These keys act only on a dedicated server or a game hosted from the menu; on a c
 | `processItemsMerge` | Adds a batch of 128 or more items to a cell's process list in one pass instead of scanning the list once per item; the same list and order. Never on a multiplayer client. Off by default. |
 | `serverPrewarm` | First server tick loads the animation sets and action groups the first player, vehicle, zombie and every animal would load, and logs the extra heap. Off by default. |
 | `serverClassPrewarm` | First server tick loads the game classes PZ Butter patches, so ZombieBuddy's weaving happens before the first join rather than during it. Off by default. |
+| `hostZombieBuddy` | Carries a ZombieBuddy `-javaagent:` entry into the hosted server's child JVM, but only when that agent already runs a non-interactive policy (`deny-new` or `allow-all`); an untrusted headless child would otherwise wait on a console prompt. Off by default. |
+| `hostJvmArgs` | Uses `Zomboid/PZButter-host.args` as an extra `@file` in the hosted server's child JVM, after the game's `-Xms/-Xmx`. The file is ignored unless it is at most 4 KB, ASCII and 16 lines of blanks, comments, a small `-Xms` or a plain `-Xlog` line. Off by default. |
 
 ### Dev keys
 
