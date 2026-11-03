@@ -38,6 +38,7 @@ public class Main {
         LuaFast.init();
         LuaTiming.init();
         HitchSampler.init();
+        StallProbe.init();
         LuaGate.init();
         FrameBatch.init();
         LuaFiles.init();

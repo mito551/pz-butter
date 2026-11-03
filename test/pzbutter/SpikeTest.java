@@ -18,7 +18,72 @@ final class SpikeTest {
         sampleThreshold();
         collapseSkipsPlumbing();
         luaSlowFrameRateLimited();
+        hsperfParsesCounters();
+        hsperfBadMagic();
+        hsperfLiveSelfTest();
+        stallLineHasDeltas();
         SpikeContext.resetForTest();
+    }
+
+    // a hand-built perfdata file: 32-byte prologue, then entries with a name and a long
+    static java.nio.ByteBuffer hsperf(java.util.Map<String, Long> values) {
+        int n = values.size();
+        java.nio.ByteBuffer b = java.nio.ByteBuffer.allocate(1024).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        b.put(0, (byte) 0xca); b.put(1, (byte) 0xfe); b.put(2, (byte) 0xc0); b.put(3, (byte) 0xc0);   // magic, big-endian bytes
+        b.put(4, (byte) 1); b.put(5, (byte) 2); b.put(6, (byte) 0); b.put(7, (byte) 1);               // byte order, version, accessible
+        b.putInt(8, 0); b.putInt(12, 0); b.putInt(16, 0); b.putInt(20, 0);
+        b.putInt(24, n);
+        int pos = 32;
+        for (java.util.Map.Entry<String, Long> e : values.entrySet()) {
+            byte[] name = e.getKey().getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+            int dataOff = 20 + name.length + 1;
+            int len = ((dataOff + 8) + 7) & ~7;
+            b.putInt(pos, len);
+            b.putInt(pos + 4, 20);       // name offset
+            b.putInt(pos + 8, 1);        // vector length
+            b.putInt(pos + 12, 0);
+            b.putInt(pos + 16, dataOff); // data offset
+            for (int i = 0; i < name.length; i++) b.put(pos + 20 + i, name[i]);
+            b.put(pos + 20 + name.length, (byte) 0);
+            b.putLong(pos + dataOff, e.getValue());
+            pos += len;
+        }
+        return b;
+    }
+
+    static void hsperfParsesCounters() {
+        java.util.Map<String, Long> m = HsPerf.read(hsperf(java.util.Map.of("sun.rt.safepoints", 1234L, "sun.rt.safepointTime", 5678L)));
+        assert m.get("sun.rt.safepoints") == 1234L && m.get("sun.rt.safepointTime") == 5678L : m;
+    }
+
+    static void hsperfBadMagic() {
+        java.nio.ByteBuffer b = hsperf(java.util.Map.of("sun.rt.safepoints", 1L));
+        b.putInt(0, 0);
+        assert HsPerf.read(b).isEmpty();
+    }
+
+    // the live JVM's own file has the counter the probe reads
+    static void hsperfLiveSelfTest() throws Exception {
+        Path p = StallProbe.hsPerfFile();
+        assert Files.exists(p) : "no perfdata for this JVM: " + p;
+        java.util.Map<String, Long> m = HsPerf.read(java.nio.ByteBuffer.wrap(Files.readAllBytes(p)));
+        assert m.containsKey("sun.rt.safepoints") : m.keySet();
+    }
+
+    // two snapshots: the line carries the deltas and the memory reading
+    static void stallLineHasDeltas() {
+        StallProbe.Sample prev = new StallProbe.Sample();
+        prev.safepoints = 100; prev.safepointTime = 50; prev.safepointSyncTime = 10; prev.majorFaults = 7;
+        prev.gc = java.util.Map.of("G1 Young Generation", 5L);
+        StallProbe.Sample now = new StallProbe.Sample();
+        now.safepoints = 110; now.safepointTime = 80; now.safepointSyncTime = 14; now.majorFaults = 9;
+        now.gc = java.util.Map.of("G1 Young Generation", 8L);
+        String line = StallProbe.line(1_000_000L, 52, prev, now, 1234);
+        assert line.contains("52 ms late") && line.contains("safepoints +10") && line.contains("safepointTime +30")
+            && line.contains("safepointSync +4") && line.contains("G1 Young Generation +3") && line.contains("majorFaults +2")
+            && line.contains("1234 kB") : line;
+        StallProbe.Sample none = new StallProbe.Sample();
+        assert StallProbe.line(0, 60, none, none, -1).contains("n/a");
     }
 
     // a hitch starts at median + 10 ms and never below 25 ms
