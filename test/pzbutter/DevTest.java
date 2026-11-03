@@ -35,6 +35,10 @@ final class DevTest {
         ringOnCircle();
         populationOnce();
         populationOffNoSpawn();
+        weatherOffCallsNothing();
+        stormAndHourSetOnce();
+        hourOutOfRangeIgnored();
+        weatherAppliedOnce();
     }
 
     static void markNames() {
@@ -81,6 +85,8 @@ final class DevTest {
         assert t.contains("\ndevSceneQuit=false\n") : t;
         assert t.contains("\ndevPopulation=0\n") : t;
         assert t.contains("\ndevRoute=\n") : t;
+        assert t.contains("\ndevWeather=off\n") : t;
+        assert t.contains("\ndevHour=-1\n") : t;
     }
 
     static void scenePhases() {
@@ -440,6 +446,71 @@ final class DevTest {
         SceneDriver.onWorldReady();
         SceneDriver.tick(1_000);
         assert calls[0] == 0 : calls[0];
+        Settings.load(SelfTest.write("enabled=true\n"));
+        SceneDriver.resetForTest();
+    }
+
+    /** Records what apply() called, never touching the game. */
+    static final class FakeWeather implements SceneWeather.Weather {
+        int storms, hours;
+        int lastHour = -99;
+
+        public void storm() { storms++; }
+        public void setHour(int h) { hours++; lastHour = h; }
+    }
+
+    static void weatherOffCallsNothing() {
+        FakeWeather w = new FakeWeather();
+        String t = SceneWeather.apply("off", -1, w);
+        assert w.storms == 0 && w.hours == 0 : w.storms + "," + w.hours;
+        assert t.equals("") : t;
+        Settings.load(SelfTest.write("enabled=true\n"));
+        SceneDriver.resetForTest();
+    }
+
+    static void stormAndHourSetOnce() {
+        FakeWeather w = new FakeWeather();
+        String t = SceneWeather.apply("storm", 22, w);
+        assert w.storms == 1 : w.storms;
+        assert w.hours == 1 : w.hours;
+        assert w.lastHour == 22 : w.lastHour;
+        assert t.contains("storm") && t.contains("22") : t;
+        Settings.load(SelfTest.write("enabled=true\n"));
+        SceneDriver.resetForTest();
+    }
+
+    static void hourOutOfRangeIgnored() {
+        FakeWeather w = new FakeWeather();
+        String t = SceneWeather.apply("off", 24, w);
+        assert w.storms == 0 && w.hours == 0 : w.storms + "," + w.hours;
+        assert t.contains("24") && t.contains("ignored") : t;
+        Settings.load(SelfTest.write("enabled=true\n"));
+        SceneDriver.resetForTest();
+    }
+
+    static void weatherAppliedOnce() throws Exception {
+        // the scene driver applies the hour/weather once per scene, at the settle-start hook
+        Settings.load(SelfTest.write("enabled=true\ndevScene=stand\ndevHour=22\n"));
+        SceneDriver.resetForTest();
+        SceneDriver.init();
+        final int[] calls = {0};
+        SceneWeather.weather = new SceneWeather.Weather() {
+            public void storm() { }
+            public void setHour(int h) { calls[0]++; }
+        };
+        Path f = SelfTest.tmp("scene/wx.out").toPath();
+        SceneDriver.marksFile = f;
+        SceneDriver.onWorldReady();
+        SceneDriver.tick(1_000);
+        int afterFirst = calls[0];
+        assert afterFirst == 1 : afterFirst;
+        SceneDriver.tick(1_010);
+        SceneDriver.tick(1_000 + 20_000);
+        SceneDriver.tick(1_000 + 80_000);
+        // a second world load is a new scene: the hour is applied again, once
+        SceneDriver.onWorldReady();
+        SceneDriver.tick(2_000);
+        assert calls[0] == 2 : calls[0];
         Settings.load(SelfTest.write("enabled=true\n"));
         SceneDriver.resetForTest();
     }

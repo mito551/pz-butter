@@ -54,7 +54,8 @@ case "$SCENE" in
     S5) SCENE_PROPS="devScene=drive devSceneSec=60 devDriveKmh=120" ;;
     S6) SCENE_PROPS="devScene=stand devPopulation=200 devSceneSec=60" ;;
     S7) SCENE_PROPS="devScene=off devMark=true" ;;
-    S8) echo 'S8: not built (no weather key); use S4 in a storm save'; exit 2 ;;
+    S8) SCENE_PROPS="devScene=walk devSceneSec=60 devWeather=storm devHour=22"
+        if [[ "$PROPS" != *devRoute=* ]]; then echo "S8 requires --props devRoute=..."; exit 2; fi ;;
     *) echo "unknown scene: $SCENE"; exit 2 ;;
 esac
 
