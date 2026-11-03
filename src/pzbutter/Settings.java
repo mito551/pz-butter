@@ -297,8 +297,8 @@ public final class Settings {
       + "fileInflight=-1\n"
       + "# modWatchAsync: mod media folders are watched from a background thread; the game thread no longer walks them at boot.\n"
       + "modWatchAsync=true\n"
-      + "# texCompress: textures are BC3-encoded on the file pool instead of compressed on the render thread. Off by default.\n"
-      + "texCompress=false\n"
+      + "# texCompress: textures are BC3-encoded on the file pool instead of compressed on the render thread. Acts only with the game's texture compression on.\n"
+      + "texCompress=true\n"
       + "#\n"
       + "# Vehicles (Plan 10).\n"
       + "# gloveBoxFix: a vehicle whose GloveBox part has no item container no longer throws when adding a key.\n"
@@ -439,7 +439,7 @@ public final class Settings {
         "persistentVboFrameSync",   // acts only with persistentVbo (Plan 9)
         "driveTreeCutaway", "glassTilesPerFrame", "translucentLightsPerFrame",   // stock-equivalent values (Plan 6), not passed features
         "wake", "handoffRecalcFast",
-        "loaderCpuFixes", "scriptParserFast", "modWatchAsync");   // Plans 10b, 11b, 11d: on after their in-game checks
+        "loaderCpuFixes", "scriptParserFast", "modWatchAsync", "texCompress");   // Plans 10b, 11b, 11d, 11e: on after their in-game checks
 
     public static boolean flag(String key) {
         if (!enabled) return false;
