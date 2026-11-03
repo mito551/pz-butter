@@ -416,14 +416,20 @@ echo "[step8] game pid=$GAME_PID_ACTUAL"
 python3 "$TOOLS/sysmon.py" "$RUN_DIR/sysmon.csv" --pid "$GAME_PID_ACTUAL" &
 SYSMON_PID=$!
 if (( PERF )); then
+    PERF_SECONDS=30
+    for e in "${PROPS_ENTRIES[@]}"; do
+        case "$e" in
+            devSceneSec=*) s="${e#*=}"; [[ "$s" =~ ^[0-9]+$ ]] && (( s < PERF_SECONDS )) && PERF_SECONDS=$s ;;
+        esac
+    done
+fi
+if (( PERF )); then
     (
       while kill -0 "$GAME_PID_ACTUAL" 2>/dev/null; do
         if [[ -f "$Z/pzbutter/marks.out" ]] && grep -q 'scene.start' "$Z/pzbutter/marks.out" 2>/dev/null; then break; fi
         sleep 1
       done
-      if kill -0 "$GAME_PID_ACTUAL" 2>/dev/null; then
-        perf record -g --call-graph dwarf -p "$GAME_PID_ACTUAL" -o "$RUN_DIR/perf.data" -- sleep 30
-      fi
+      perf record -g --call-graph dwarf -p "$GAME_PID_ACTUAL" -o "$RUN_DIR/perf.data" -- sleep "$PERF_SECONDS"
     ) &
     PERF_PID=$!
 fi
@@ -494,4 +500,6 @@ if [[ $SCENE != S7 ]] && ! grep -q "^mark scene.start " "$RUN_DIR/marks.out" 2>/
     echo "result=failed (no scene.start)" >> "$RUN_DIR/run.opts"
     exit 3
 fi
+echo "[coverage]"
+python3 "$TOOLS/coverage.py" "$RUN_DIR" || true
 echo "run complete: $RUN_DIR"
