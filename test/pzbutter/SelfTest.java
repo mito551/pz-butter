@@ -53,6 +53,7 @@ public final class SelfTest {
         SideTest.run();
         ServerTest.run();
         HostTest.run();
+        MpClientTest.run();
         delete(DIR);
         System.out.println("ok");
     }

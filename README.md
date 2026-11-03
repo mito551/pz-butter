@@ -169,7 +169,18 @@ These keys act only on a dedicated server or a game hosted from the menu; on a c
 | `hostZombieBuddy` | Carries a ZombieBuddy `-javaagent:` entry into the hosted server's child JVM, but only when that agent already runs a non-interactive policy (`deny-new` or `allow-all`); an untrusted headless child would otherwise wait on a console prompt. Off by default. |
 | `hostJvmArgs` | Uses `Zomboid/PZButter-host.args` as an extra `@file` in the hosted server's child JVM, after the game's `-Xms/-Xmx`. The file is ignored unless it is at most 4 KB, ASCII and 16 lines of blanks, comments, a small `-Xms` or a plain `-Xlog` line. Off by default. |
 
+### Multiplayer client (Plan 18)
+
+These keys act only on a multiplayer client; on a server they stay off.
+
+| Key | What it does |
+|---|---|
+| `vehicleEarlyParse` | `off`, `verify` or `on`. A full vehicle update can arrive before its chunk, in which case the game drops it and the car pops in later. `verify` keeps the bytes and compares the next answer without ever placing the car early; `on` also places it at the end of the client update and removes it before a different answer. Off by default. |
+| `chunkRefill` | Asks again for a chunk slot whose load failed while the player stays in one place, since the streamer keeps the dead entry until the player moves away. A hole is due after 4 s quiet or 25 s busy, at most 6 asks every 3 s, with 15-120 s backoff. Off by default. |
+
 ### Dev keys
+
+
 
 | Key | What it does |
 |---|---|

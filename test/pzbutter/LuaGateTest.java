@@ -1343,7 +1343,8 @@ final class LuaGateTest {
     static final java.util.Set<String> VALUE_KEYS = java.util.Set.of("aimHoldMs", "bakeMipLevels", "borderlessFullscreen", "corePlacement", "cutawayRadius", "devScene", "gpuMaxFrames",
         "gridStackInterval", "lightSwitchCheckFrames", "lightingFps", "presentPacing", "roofHideDebounceFrames", "soundTickHz", "treeBakeMaxChunksPerSec", "vrr", "zoomEaseMs",
         "numberZombiesBlended", "zombieLodFixed3d", "zombieModelAddBudgetUs", "zombieSimLodTiles", "zombieSimLodSteps", "vboBatchKb", "vboSizeClasses",
-        "hotsaveIntervalSec", "chunkHandoffDivisor", "chunkHandoffFrameBudgetUs", "textureBufferMb", "spikeThresholdMs", "spikeContextWindowMs");
+        "hotsaveIntervalSec", "chunkHandoffDivisor", "chunkHandoffFrameBudgetUs", "textureBufferMb", "spikeThresholdMs", "spikeContextWindowMs",
+        "vehicleEarlyParse");
 
     /**
      * Forced off answers stock for every key of the table: a switch is false (true for the stock-true ones), and each number or mode key
@@ -1377,6 +1378,7 @@ final class LuaGateTest {
             assert AimHold.holdMs == 150 && Cutaways.radius == 0 && GridGate.interval == 0 && GridGate.roofFrames == 0 && ZoomEase.ms == 0;
             assert BakeMisc.mipLevels == 0 && ChunkTrees.maxPerSec == 0 && !SoundPatches.tickGuard.on && LightChecks.switchTtl == 0 && LightChecks.lightingFps == 0;
             assert SwapHold.pacing.equals("off") && Vrr.mode.equals("off") && Vrr.fullscreenWindow.equals("off") && !Vrr.guard.on;
+            assert MpClient.mode().equals("off");                                // vehicleEarlyParse: stock drops the early packet
             assert ZombieLod.blended == 0 && ZombieLod.cap == 0 && ZombieLod.budgetNs == 0 && !ZombieLod.blendGuard.on && !ZombieLod.capGuard.on && !ZombieLod.budgetGuard.on;
             assert ZombieLod.simTiles == 0 && ZombieLod.simSteps == 1 && !ZombieLod.simGuard.on;
             assert BatchSize.kb == 0 && !BatchSize.guard.on;                       // vboBatchKb: stock 4 KB, nothing installed
