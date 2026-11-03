@@ -2,12 +2,7 @@
 
 PZ Butter is a Project Zomboid Build 42 mod that aims for smoother frames. It is Java code, loaded by [ZombieBuddy](https://github.com/zed-0xff/ZombieBuddy) and patching the game at runtime. It ships no game code: no modified or decompiled game classes, only patches.
 
-**Status: early.** Version 0.1 contains the foundation only:
-- a settings file;
-- a frame clock that times every frame;
-- an optional per-frame log.
-
-The optimizations come next, one at a time. Each one is off by default until it has passed a check in a real game run.
+**Status: 1.0.** Version 1.0 is the first release. Its features are described below, one at a time. Each one is off by default until it has passed a check in a real game run, except the handful marked "On by default" that passed theirs.
 
 ## Requirements
 
@@ -153,6 +148,36 @@ The mod creates `~/Zomboid/PZButter.properties` on first start and reads it once
 | `bakeNoSyncCheck` | Diagnostic for `bakeNoSync`: every 256th answer is checked against the driver and up to five mismatches go to the console. Off by default. |
 | `bakeBudgetGpu` | With `bakeBudgetAdaptive`: the bake budget also counts the GPU's time for the frame, from GPU timestamps read three frames later. It never waits for the GPU. Off by default. |
 | `gpuStats` | Diagnostic. Once a minute the console gets what the Plan 9 keys did: mappings saved, storage waits, uploads and storage changes, textures given back, names from the pool, answers from the records, GPU time per frame. With `frameLog`, the same as one line a minute in `Zomboid/pzbutter/gpu.out`. Off by default. |
+| `limiterSleep` | The frame limiter sleeps until 0.2 ms before the frame instead of spinning. On by default. |
+| `renderIdleWait` | The render thread waits for the next frame instead of spinning. Off by default. |
+| `presentPacing` | Hold each swap to a steady time after the game moment it shows (`auto` with VRR, `off`, `on`). Off by default. |
+| `presentPacingMaxPct` | With `presentPacing`: the longest hold, as a percentage of a frame (default `100`). |
+| `presentPacingMarginPct` | With `presentPacing`: a margin added to the hold (default `0`). |
+| `vrr` | Variable refresh rate (`auto` detects it from the display driver; `off`/`on` force it). Off by default. |
+| `vrrCap` | With VRR: uncapped, or above the panel maximum cap at refresh minus refresh squared over 3600. `false` by default. |
+| `borderlessFullscreen` | Make the borderless window a fullscreen window at the desktop mode (`auto` with VRR). Off by default. |
+| `vsyncAdaptive` | Use swap interval -1, so a late frame tears instead of waiting a refresh. On by default. |
+| `gpuMaxFrames` | At most this many frames queued for the GPU (`0` = off). Acts only when the GPU falls behind (default `2`). |
+| `reflexSleep` | Measure each frame's queue wait and start the next frame that much later. On by default. |
+| `reflexBoost` | Use NVIDIA's prefer-maximum-performance mode while in a world. Off by default. |
+| `reflexCapFps` | With vsync: the frame cap (`0` = automatic, refresh minus refresh squared over 3600). |
+| `vblankLock` | With vsync: start frames a measured time before vblank (X11 and NVIDIA only). Off by default. |
+| `luaBudget` | The merged LuaBudget mod. Its rules stay in `Zomboid/LuaBudget.properties`; with no rules it has no effect. On by default. |
+| `luaSkipEmpty` | Do not call Lua functions with an empty body (`function() end`). On by default. |
+| `luaTiming` | Diagnostic. Once a minute, the ten slowest Lua event handlers go to the console, and to `lua.out` with `frameLog`. Off by default. |
+| `luaRawgetFast` | Lua table reads do one hash lookup instead of two. Measured slower than stock, so off by default. |
+| `luaInternConstants` | Intern the string constants of loaded Lua, so table lookups match by identity first. On by default. |
+| `uiTickStagger` | Run each window's ten-per-second Lua update in its own slot instead of all in one frame. On by default. |
+| `uiLuaFast` | The inventory item list skips its second drawing pass when nothing is dragged. On by default. |
+| `textWidthCache` | Keep measured text widths; context menus otherwise re-measure every option on every opening. On by default. |
+| `mapStreetMemo` | Keep street lengths and names per view and language, and one index map per label sort. On by default. |
+| `mapStreetCache` | Reuse the street-label layout while the map view is unchanged. On by default. |
+| `mapVisitedFast` | Build the explored-area texture a row at a time. On by default. |
+| `inputLatch` | Poll fresh input when the frame starts. On by default. |
+| `keyboardFresh` | Read the keyboard from the poll this frame swapped in. On by default. |
+| `frameStartGate` | Wait for the render thread before reading input. On by default. |
+| `cursorLatch` | Move the cursor to the newest pointer position just before the frame is drawn. Off by default. |
+| `aimHoldMs` | Right-button hold before aiming starts, in ms (default `150`; `0` aims at once). |
 
 ### Server and hosting (Plan 18)
 
@@ -234,24 +259,38 @@ Values can be `true`/`false`, `yes`/`no`, `on`/`off` or `1`/`0`. If the file can
 
 **CI.** Every push builds the mod and runs the self-tests on GitHub Actions; it can also be started by hand (Actions → Build → Run workflow). **Releases.** Bump `modversion` in `mod/PZButter/42/mod.info`, then push a commit to `main` whose message contains `[build]`. GitHub Actions downloads the free Project Zomboid dedicated server (cached) to compile against, builds the mod, runs the self-tests, and publishes a release `v<modversion>` with `PZButter-<modversion>.zip`. Only the newest commit of a push is checked. If that version already has a release, the run fails.
 
+## Recommended JVM flags (optional)
+
+No JVM flag is recommended yet. The arms that compare G1, Shenandoah, a larger heap and `-Xms`/`-XX:+AlwaysPreTouch` against the stock ZGC collector have not run, so this section will name a flag only after a measured gain in p99 or the worst GC pause. The game's bundled JRE already starts with ZGC.
+
+If you want to try flags yourself, put them in the Steam launch options before `--`, or in `vmArgs` in the launcher JSON. A game update can change the bundled JRE, so recheck any flag after an update.
+
 ## Mods that inspire PZ Butter
 
 PZ Butter is inspired by the mods below and aims to cover what they do, in one mod. It is a clean-room project: it contains none of their code. It is written from behaviour descriptions of each mod and from the game's own bytecode.
 
-| Mod | Author | Workshop |
-|---|---|---|
-| PZ_Optimization (pzopt) | xD3I | [3805285544](https://steamcommunity.com/sharedfiles/filedetails/?id=3805285544) |
-| [B42] PZ Optimization Preloader | Antikristianos | [3818209799](https://steamcommunity.com/sharedfiles/filedetails/?id=3818209799) |
-| Undying Optimizer | Mister K | [3777958977](https://steamcommunity.com/sharedfiles/filedetails/?id=3777958977) |
-| Viewpoint - Smooth Frames | EhChad | [3816784011](https://steamcommunity.com/sharedfiles/filedetails/?id=3816784011) |
-| Viewpoint Turbo | Fatalitiko | [3812559973](https://steamcommunity.com/sharedfiles/filedetails/?id=3812559973) |
-| Viewpoint Fixes | zirmango | [3817842243](https://steamcommunity.com/sharedfiles/filedetails/?id=3817842243) |
-| Viewpoint PZO Shader Compatibility | Hesin | [3815225881](https://steamcommunity.com/sharedfiles/filedetails/?id=3815225881) |
-| VRAM Steady | VRAM Steady authors | [3819844505](https://steamcommunity.com/sharedfiles/filedetails/?id=3819844505) |
-| Character Texture VRAM Leak Fix [ZombieBuddy] | syeon | [3821525282](https://steamcommunity.com/sharedfiles/filedetails/?id=3821525282) |
-| Project Zomboid Optimiser (PZO) | prop11 | [3787481250](https://steamcommunity.com/sharedfiles/filedetails/?id=3787481250) |
-| Tempo - A Performance & FPS Optimizer | Vyper | [3736629791](https://steamcommunity.com/sharedfiles/filedetails/?id=3736629791) |
-| Lua Budget | mito551 | not on the Workshop; merged into PZ Butter (its rules stay in `Zomboid/LuaBudget.properties`; remove the LuaBudget mod from the mod list) |
+| Mod | Author | Licence | Workshop |
+|---|---|---|---|
+| PZ_Optimization (pzopt) | xD3I | none stated | [3805285544](https://steamcommunity.com/sharedfiles/filedetails/?id=3805285544) |
+| [B42] PZ Optimization Preloader | Antikristianos | not stated | [3818209799](https://steamcommunity.com/sharedfiles/filedetails/?id=3818209799) |
+| Undying Optimizer | Mister K | not stated | [3777958977](https://steamcommunity.com/sharedfiles/filedetails/?id=3777958977) |
+| Viewpoint - Smooth Frames | EhChad | MIT | [3816784011](https://steamcommunity.com/sharedfiles/filedetails/?id=3816784011) |
+| Viewpoint Turbo | not stated | not stated | [3812559973](https://steamcommunity.com/sharedfiles/filedetails/?id=3812559973) |
+| Viewpoint Fixes | not stated | not stated | [3817842243](https://steamcommunity.com/sharedfiles/filedetails/?id=3817842243) |
+| Viewpoint PZO Shader Compatibility | not stated | not stated | [3815225881](https://steamcommunity.com/sharedfiles/filedetails/?id=3815225881) |
+| VRAM Steady | "VRAM Steady authors" | MIT | [3819844505](https://steamcommunity.com/sharedfiles/filedetails/?id=3819844505) |
+| Character Texture VRAM Leak Fix [ZombieBuddy] | syeon | not stated | [3821525282](https://steamcommunity.com/sharedfiles/filedetails/?id=3821525282) |
+| Project Zomboid Optimiser (PZO) | prop11 | not stated | [3787481250](https://steamcommunity.com/sharedfiles/filedetails/?id=3787481250) |
+| Tempo - A Performance & FPS Optimizer | Vyper | not stated | [3736629791](https://steamcommunity.com/sharedfiles/filedetails/?id=3736629791) |
+| ZombieBuddy | see page | not stated | [3619862853](https://steamcommunity.com/sharedfiles/filedetails/?id=3619862853) |
+| Oz's Fast Boot & Loading Screens (OzFastBoot) | Oz (Oz Server Modpack) | not stated | [3819476262](https://steamcommunity.com/sharedfiles/filedetails/?id=3819476262) |
+| Zed's Better FPS KA | zed_0xff, Kaoeutsu | not stated | [3793137588](https://steamcommunity.com/sharedfiles/filedetails/?id=3793137588) |
+| PzPerformanceFixes (formerly Alex Perf Fixes) | Alex | not stated | [3826630779](https://steamcommunity.com/sharedfiles/filedetails/?id=3826630779) |
+| Smooth Performance Optimizer by Erunest (Lua, Java, Vehicles) | Erunest | not stated | [3826681202](https://steamcommunity.com/sharedfiles/filedetails/?id=3826681202) |
+| ZPH Hotfix Pack [B42.20 MP] (ZPHFixes) | ZomboiderPH | none stated | [3806264950](https://steamcommunity.com/sharedfiles/filedetails/?id=3806264950) |
+| SmoothRide MP [B42] | druid | none stated | [3827367565](https://steamcommunity.com/sharedfiles/filedetails/?id=3827367565) |
+| Viewpoint GPU Fix | not stated | none stated | [3828842183](https://steamcommunity.com/sharedfiles/filedetails/?id=3828842183) |
+| Lua Budget | mito551 | not stated | not on the Workshop; merged into PZ Butter (its rules stay in `Zomboid/LuaBudget.properties`; remove the LuaBudget mod from the mod list) |
 
 The table lists what the project aims to cover; not everything each mod does is covered yet. The Viewpoint add-ons above need the Viewpoint mod itself ([3809306528](https://steamcommunity.com/sharedfiles/filedetails/?id=3809306528)). PZ Butter covers what the add-ons do, not Viewpoint.
 
