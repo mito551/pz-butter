@@ -19,7 +19,8 @@ public final class Side {
 
     /** Keys that run on both sides: the master switch, the frame log and the loader fixes. */
     private static final java.util.Set<String> BOTH = java.util.Set.of(
-            "enabled", "frameLog", "modCompat", "loaderCpuFixes", "scriptParserFast", "modWatchAsync");
+            "enabled", "frameLog", "modCompat", "loaderCpuFixes", "scriptParserFast", "modWatchAsync",
+            "handlerCensus");
 
     private static final java.util.Set<String> told = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
