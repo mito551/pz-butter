@@ -63,6 +63,34 @@ class CoverageTest(unittest.TestCase):
         self.assertEqual(r, 0)
         self.assertFalse(any(name == "mangohud" for name, _ in rows))
 
+    def test_zinkRunWithoutZinkRendererInvalid(self):
+        d = make_dir()
+        open(os.path.join(d, "run.opts"), "a").write("renderer=zink\n")
+        open(os.path.join(d, "console.txt"), "w").write(
+            "LOG: GraphicsCard: NVIDIA Corporation NVIDIA GeForce RTX 3080/PCIe/SSE2\n")
+        with JFR_OK:
+            rows = coverage.coverage(d)
+        self.assertIn(("renderer", "zink renderer not seen"), rows)
+        self.assertNotEqual(coverage.main(["coverage.py", d]), 0)
+
+    def test_zinkRunWithZinkRendererValid(self):
+        d = make_dir()
+        open(os.path.join(d, "run.opts"), "a").write("renderer=zink\n")
+        open(os.path.join(d, "console.txt"), "w").write(
+            "LOG: GraphicsCard: Mesa zink (Intel)\n")
+        with JFR_OK:
+            rows = coverage.coverage(d)
+        self.assertIn(("renderer", "ok"), rows)
+
+    def test_nvidiaRunUnaffected(self):
+        d = make_dir()
+        open(os.path.join(d, "run.opts"), "a").write("renderer=nvidia\n")
+        open(os.path.join(d, "console.txt"), "w").write("LOG: GraphicsCard: NVIDIA\n")
+        with JFR_OK:
+            rows = dict(coverage.coverage(d))
+        self.assertNotIn("renderer", rows)
+        self.assertEqual(rows["game.jfr"], "ok")
+
     def test_noMarksIsAnError(self):
         d = make_dir(marks=False, frames=False, sysmon=False)
         rows = coverage.coverage(d)

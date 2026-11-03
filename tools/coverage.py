@@ -151,6 +151,35 @@ def _first_last_epoch_ms(path):
     return (first, last)
 
 
+def _opts(run_dir):
+    out = {}
+    try:
+        with open(os.path.join(run_dir, "run.opts")) as f:
+            for line in f:
+                k, sep, v = line.rstrip("\n").partition("=")
+                if sep:
+                    out[k] = v
+    except OSError:
+        pass
+    return out
+
+
+def renderer_row(run_dir):
+    """A Zink run is valid only when the console names a zink GL renderer."""
+    renderer = _opts(run_dir).get("renderer", "")
+    if renderer != "zink":
+        return None  # nvidia/auto/older runs are unaffected
+    try:
+        text = open(os.path.join(run_dir, "console.txt"), errors="replace").read()
+    except OSError:
+        return ("renderer", "missing console.txt")
+    for line in text.splitlines():
+        low = line.lower()
+        if "graphicscard:" in low and "zink" in low:
+            return ("renderer", "ok")
+    return ("renderer", "zink renderer not seen")
+
+
 def _status(rec_start, rec_end, win_start, win_end):
     parts = []
     if rec_start is not None and rec_start > win_start:
@@ -198,6 +227,9 @@ def coverage(run_dir):
             rows.append(("mangohud", _status(mh[0], mh[1], ws, we)))
     except ValueError as exc:
         rows.append(("mangohud", f"unreadable ({exc})"))
+    r = renderer_row(run_dir)
+    if r is not None:
+        rows.append(r)
     return rows
 
 

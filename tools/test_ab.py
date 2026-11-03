@@ -1,5 +1,7 @@
 import os
+import stat
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, os.path.dirname(__file__))
@@ -16,6 +18,33 @@ class AbTest(unittest.TestCase):
         plan = ab.order_for(3)
         self.assertEqual(ab.remaining(plan, 2), ["B", "A", "A", "B"])
         self.assertEqual(ab.remaining(plan, len(plan)), [])
+
+    def test_armRunArgsReachRunSh(self):
+        d = tempfile.mkdtemp()
+        out = os.path.join(d, "runs")
+        log = os.path.join(d, "argv.log")
+        run_sh = os.path.join(d, "fake-run.sh")
+        with open(run_sh, "w") as f:
+            f.write("""#!/bin/sh
+echo "$@" >> '%s'
+out=""
+while [ $# -gt 0 ]; do
+  [ "$1" = "--out" ] && { shift; out="$1"; }
+  shift
+done
+mkdir -p "$out/run$(wc -l < '%s')"
+""" % (log, log))
+        os.chmod(run_sh, os.stat(run_sh).st_mode | stat.S_IXUSR)
+        ab.main(["--scene", "S3", "--list", "bare", "--save", "M/S",
+                 "--arm", "A=x=1", "--arm", "B=x=2",
+                 "--arm-run-args", "A=--renderer zink", "--runs", "1",
+                 "--order", "AB", "--out", out, "--json", os.path.join(d, "ab.json"),
+                 "--run-sh", run_sh])
+        with open(log) as f:
+            lines = f.read().splitlines()
+        self.assertEqual(len(lines), 2)
+        self.assertIn("--renderer zink", lines[0])
+        self.assertNotIn("--renderer", lines[1])
 
     def test_abShortArmMarked(self):
         record = {

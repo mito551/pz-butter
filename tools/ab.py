@@ -16,6 +16,7 @@ import argparse
 import json
 import os
 import re
+import shlex
 import statistics
 import subprocess
 import sys
@@ -150,10 +151,11 @@ def _same_plan(old, new):
     return all(old.get(k) == new.get(k) for k in keys)
 
 
-def run_once(run_sh, scene, list_name, save, props, out_dir):
+def run_once(run_sh, scene, list_name, save, props, out_dir, run_args=""):
     before = set(os.listdir(out_dir)) if os.path.isdir(out_dir) else set()
-    proc = subprocess.run([run_sh, "--scene", scene, "--list", list_name, "--save", save,
-                           "--props", props, "--out", out_dir])
+    argv = [run_sh, "--scene", scene, "--list", list_name, "--save", save,
+            "--props", props, "--out", out_dir] + shlex.split(run_args)
+    proc = subprocess.run(argv)
     if proc.returncode != 0:
         raise SystemExit("run.sh failed with %d" % proc.returncode)
     os.makedirs(out_dir, exist_ok=True)
@@ -169,6 +171,8 @@ def main(argv=None):
     ap.add_argument("--list", required=True)
     ap.add_argument("--save", required=True)
     ap.add_argument("--arm", action="append", required=True, help="NAME=PROPS, two arms")
+    ap.add_argument("--arm-run-args", action="append", default=[], metavar="NAME=ARGS",
+                    help="extra run.sh arguments for one arm, e.g. A='--renderer nvidia'")
     ap.add_argument("--runs", type=int, default=3)
     ap.add_argument("--order", default="ABBA")
     ap.add_argument("--out", default=os.path.join(os.path.expanduser("~"), "Zomboid/pzbutter-runs"))
@@ -179,7 +183,14 @@ def main(argv=None):
     arms = []
     for spec in args.arm:
         name, _, props = spec.partition("=")
-        arms.append({"name": name.strip(), "props": props.strip()})
+        arms.append({"name": name.strip(), "props": props.strip(), "run_args": ""})
+    by_name = {a["name"]: a for a in arms}
+    for spec in args.arm_run_args:
+        name, _, extra = spec.partition("=")
+        arm = by_name.get(name.strip())
+        if arm is None:
+            raise SystemExit("--arm-run-args names unknown arm: %s" % name.strip())
+        arm["run_args"] = extra.strip()
 
     record = {"scene": args.scene, "list": args.list, "save": args.save, "arms": arms,
               "runs_per_arm": args.runs, "order": order_for(args.runs, args.order), "done": []}
@@ -200,7 +211,8 @@ def main(argv=None):
     for i, arm_name in enumerate(todo, start=len(record["done"])):
         arm = next(a for a in arms if a["name"] == arm_name)
         props = BASE_PROPS + ((" " + arm["props"]) if arm["props"] else "")
-        run_dir = run_once(args.run_sh, args.scene, args.list, args.save, props, args.out)
+        run_dir = run_once(args.run_sh, args.scene, args.list, args.save, props, args.out,
+                           arm.get("run_args", ""))
         marks = _marks(run_dir)
         prof = window_profile(run_dir)
         try:
@@ -210,6 +222,7 @@ def main(argv=None):
             console = ""
         record["done"].append({
             "arm": arm_name,
+            "run_args": arm.get("run_args", ""),
             "dir": os.path.basename(run_dir),
             "boot_s": boot_seconds(marks),
             "load_s": load_seconds(marks),

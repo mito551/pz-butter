@@ -17,6 +17,7 @@ PROPS=""
 PERF=0
 MANGO=0
 APITRACE=0
+RENDERER="nvidia"
 JFR_PERIOD=10
 OUT="${HOME}/Zomboid/pzbutter-runs"
 DRY=0
@@ -33,6 +34,7 @@ while [[ $# -gt 0 ]]; do
         --perf) PERF=1; shift ;;
         --mangohud) MANGO=1; shift ;;
         --apitrace) APITRACE=1; shift ;;
+        --renderer) RENDERER="$2"; shift 2 ;;
         --jfr-period) JFR_PERIOD="$2"; shift 2 ;;
         --out) OUT="$2"; shift 2 ;;
         --dry-run) DRY=1; shift ;;
@@ -43,7 +45,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "$SCENE" || -z "$LIST" || -z "$SAVE" ]]; then
-    echo "usage: run.sh --scene NAME --list bare|full --save MODE/SAVE [--props \"k=v ...\"] [--perf] [--mangohud] [--apitrace] [--jfr-period MS] [--out DIR] [--dry-run] [--timeout SEC] [--jvm \"...\"]"; exit 2
+    echo "usage: run.sh --scene NAME --list bare|full --save MODE/SAVE [--props \"k=v ...\"] [--perf] [--mangohud] [--apitrace] [--renderer nvidia|zink] [--jfr-period MS] [--out DIR] [--dry-run] [--timeout SEC] [--jvm \"...\"]"; exit 2
 fi
 if [[ "$LIST" != "bare" && "$LIST" != "full" ]]; then echo "list must be bare or full"; exit 2; fi
 
@@ -67,6 +69,16 @@ if (( APITRACE == 1 )); then
     if ! command -v apitrace >/dev/null 2>&1; then
         if (( DRY )); then echo "[apitrace] not on PATH (would refuse in real run)"; else die "apitrace is not on PATH (dnf install apitrace)"; fi
     fi
+fi
+if [[ "$RENDERER" != "nvidia" && "$RENDERER" != "zink" ]]; then echo "renderer must be nvidia or zink"; exit 2; fi
+
+MESA_VER="$(rpm -q mesa-dri-drivers 2>/dev/null || true)"
+NVIDIA_VER="$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -1 || true)"
+if [[ "$RENDERER" == "zink" ]]; then
+    export __GLX_VENDOR_LIBRARY_NAME=mesa
+    export MESA_LOADER_DRIVER_OVERRIDE=zink
+    echo "[renderer] zink: __GLX_VENDOR_LIBRARY_NAME=mesa MESA_LOADER_DRIVER_OVERRIDE=zink"
+    echo "[renderer] mesa=${MESA_VER:-unknown} nvidia=${NVIDIA_VER:-unknown}"
 fi
 
 MODE="${SAVE%%/*}"
@@ -357,6 +369,9 @@ bench_mods=$BENCH_IDS
 jvm=$JVM_STR
 jvm_extra=$JVM_EXTRA
 apitrace=$APITRACE
+renderer=$RENDERER
+mesa=$MESA_VER
+nvidia=$NVIDIA_VER
 timeout=$TIMEOUT_VALUE
 launch=$LAUNCH_LINE
 pz_rev=$PZ_REV
@@ -486,6 +501,9 @@ chosen_mods=$CHOSEN_IDS
 bench_mods=$BENCH_IDS
 jvm=$JVM_STR
 apitrace=$APITRACE
+renderer=$RENDERER
+mesa=$MESA_VER
+nvidia=$NVIDIA_VER
 launch=$LAUNCH_LINE
 pz_rev=$PZ_REV
 zombiebuddy_sha256=$ZB_SHA2
