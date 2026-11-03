@@ -4,6 +4,6 @@ description=Smoother frames for Build 42. Every feature is off until you switch 
 modversion=0.2
 versionMin=42.21
 require=\ZombieBuddy
-javaJarFile=media/java/client/PZButter.jar
+javaJarFile=media/java/common/PZButter.jar
 javaPkgName=pzbutter
 javaPreload=true

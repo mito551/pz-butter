@@ -50,6 +50,7 @@ public final class SelfTest {
         StreamTest.run();
         LoadTest.run();
         GpuPstateTest.run();
+        SideTest.run();
         delete(DIR);
         System.out.println("ok");
     }

@@ -498,6 +498,7 @@ public final class Settings {
 
     public static boolean flag(String key) {
         if (!enabled) return false;
+        if (!Side.allowed(key)) return false;   // side tags live in Side.SERVER / Side.BOTH
         if (forcedOff.contains(key)) return STOCK_ON.contains(key);
         return bool(raw(key), ON_BY_DEFAULT.contains(key));
     }
@@ -522,6 +523,7 @@ public final class Settings {
 
     /** A number key, clamped to [min, max]; the default when missing or unreadable. */
     public static int num(String key, int dflt, int min, int max) {
+        if (!Side.allowed(key)) return dflt;
         String v = forcedOff.contains(key) ? null : raw(key);
         int n = dflt;
         if (v != null) try { n = Integer.parseInt(v.trim()); } catch (NumberFormatException e) { n = dflt; }
@@ -530,13 +532,14 @@ public final class Settings {
 
     /** A text key; the default when missing. */
     public static String text(String key, String dflt) {
+        if (!Side.allowed(key)) return dflt;
         String v = forcedOff.contains(key) ? null : raw(key);
         return v == null ? dflt : v.trim();
     }
 
     /** "off", "on" or "auto"; "off" when the master switch is off or the value is unreadable. */
     public static String mode(String key) {
-        if (!enabled || forcedOff.contains(key)) return "off";
+        if (!enabled || forcedOff.contains(key) || !Side.allowed(key)) return "off";
         String v = raw(key);
         if (v == null) return "off";
         switch (v.trim().toLowerCase(Locale.ROOT)) {
