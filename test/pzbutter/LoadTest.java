@@ -634,6 +634,7 @@ final class LoadTest {
         try { t = java.nio.file.Files.readString(f.toPath()); }
         catch (java.io.IOException e) { throw new RuntimeException(e); }
         assert t.contains("\nmodWatchAsync=true\n") : t;
+        assert t.contains("\ntexCompress=true\n") : t;
     }
 
     static void texCompressOffIsStock() {
