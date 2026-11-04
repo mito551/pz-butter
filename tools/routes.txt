@@ -1,0 +1,5 @@
+# One line per save: MODE/SAVE devRoute=dx,dy;dx,dy;... (offsets from the walk's start square)
+# Outbreak/2026-10-21_21-17-26: player starts at (10718, 9990) in Muldraugh (east of the Dixie strip);
+# anchors are wiki-known street lots on the main strip (north-south road, x~10627-10649):
+# cafe/Acorn Plaza (10649,9928), Sunstar Motel (10629,9816), Fossoil (10632,9760), Knox Bank (10627,9694).
+Outbreak/2026-10-21_21-17-26 devRoute=-68,-62;-88,-174;-85,-230;-90,-296;-85,-230;-88,-174

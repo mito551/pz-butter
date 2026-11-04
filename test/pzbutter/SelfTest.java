@@ -38,6 +38,7 @@ public final class SelfTest {
         ChunkTest.run();
         LuaGateTest.run();
         DevTest.run();
+        SpikeTest.run();
         ChunkShimTest.run();
         ZombieTest.run();
         WorkerTest.run();
@@ -49,6 +50,12 @@ public final class SelfTest {
         StreamTest.run();
         LoadTest.run();
         GpuPstateTest.run();
+        SideTest.run();
+        ServerTest.run();
+        HostTest.run();
+        MpClientTest.run();
+        NetStatsTest.run();
+        ThirdPartyTest.run();
         delete(DIR);
         System.out.println("ok");
     }

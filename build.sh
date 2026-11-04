@@ -16,18 +16,21 @@ cp "$HERE"/src/pzbutter/workers-*.txt "$B/test-classes/pzbutter/"
 cp "$HERE"/src/pzbutter/census-*.txt "$B/classes/pzbutter/"
 cp "$HERE"/src/pzbutter/census-*.txt "$B/test-classes/pzbutter/"
 "$JDK/bin/java" -ea -cp "$B/test-classes:$CP" pzbutter.SelfTest
+"$HERE"/tools/test_lua.sh
+python3 "$HERE/tools/check_readme.py"
+"$HERE"/tools/test_workshop.sh
 
 printf 'ZB-Preload: true\n' > "$B/MANIFEST.MF"
 "$JDK/bin/jar" --create --file "$B/PZButter.jar" --manifest "$B/MANIFEST.MF" -C "$B/classes" .
 cp -r "$HERE/mod" "$B/mod"
-mkdir -p "$B/mod/PZButter/42/media/java/client"
-cp "$B/PZButter.jar" "$B/mod/PZButter/42/media/java/client/"
+mkdir -p "$B/mod/PZButter/42/media/java/common"
+cp "$B/PZButter.jar" "$B/mod/PZButter/42/media/java/common/"
 # ZombieBuddy signature (.zbs beside the jar): ZB preloads only signed jars of trusted authors. Key and SteamID stay outside the repo.
 ZBS_KEY="${PZB_ZBS_KEY:-$HOME/.config/pz-butter/zbs-ed25519.key}"
 ZBS_ID="${PZB_ZBS_STEAMID:-$(cat "$HOME/.config/pz-butter/zbs-steamid" 2>/dev/null || true)}"   # set -e: a missing file must not end the build (CI has no key)
 if [[ -f "$ZBS_KEY" && -n "$ZBS_ID" ]]; then
     "$JDK/bin/java" -cp "$PZ_GAME/ZombieBuddy.jar" "$HERE/tools/ZbsSign.java" sign "$ZBS_KEY" "$ZBS_ID" \
-        "$B/mod/PZButter/42/media/java/client/PZButter.jar" | tail -1
+        "$B/mod/PZButter/42/media/java/common/PZButter.jar" | tail -1
 else
     echo "unsigned (no $ZBS_KEY or SteamID): ZombieBuddy will not preload this build"
 fi

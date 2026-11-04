@@ -26,6 +26,7 @@ final class DevTest {
         routeBadIsNull();
         walkNextWaypoint();
         walkFailedEndsScene();
+        walkEndsWhenStuck();
         virtualKeyHold();
         virtualKeysReleasedOnEnd();
         steerChoice();
@@ -35,6 +36,10 @@ final class DevTest {
         ringOnCircle();
         populationOnce();
         populationOffNoSpawn();
+        weatherOffCallsNothing();
+        stormAndHourSetOnce();
+        hourOutOfRangeIgnored();
+        weatherAppliedOnce();
     }
 
     static void markNames() {
@@ -81,6 +86,8 @@ final class DevTest {
         assert t.contains("\ndevSceneQuit=false\n") : t;
         assert t.contains("\ndevPopulation=0\n") : t;
         assert t.contains("\ndevRoute=\n") : t;
+        assert t.contains("\ndevWeather=off\n") : t;
+        assert t.contains("\ndevHour=-1\n") : t;
     }
 
     static void scenePhases() {
@@ -305,6 +312,49 @@ final class DevTest {
         SceneDriver.resetForTest();
     }
 
+    static void walkEndsWhenStuck() throws Exception {
+        assert SceneWalk.stuck(0.9, 3_000);
+        assert !SceneWalk.stuck(1.0, 3_000);
+        assert !SceneWalk.stuck(0.5, 2_000); // window not elapsed yet
+        // a frozen position for 3000 ms ends the scene with reason stuck
+        Settings.load(SelfTest.write("enabled=true\ndevScene=walk\ndevRoute=1,0\n"));
+        SceneDriver.resetForTest();
+        SceneDriver.init();
+        SceneWalk.Fake fake = new SceneWalk.Fake(SceneWalk.Result.RUNNING);
+        SceneDriver.action = new SceneWalk(fake);
+        Path f = SelfTest.tmp("scene/walkstuck.out").toPath();
+        SceneDriver.marksFile = f;
+        SceneDriver.onWorldReady();
+        SceneDriver.tick(1_000);
+        SceneDriver.tick(21_000);
+        for (long now = 21_100; now <= 24_100; now += 100) { // fake stands still at 0,0
+            SceneDriver.tick(now);
+        }
+        java.util.List<String> lines = java.nio.file.Files.readAllLines(f);
+        assert lines.get(1).contains("failed: stuck") : lines.get(1);
+        Settings.load(SelfTest.write("enabled=true\n"));
+        SceneDriver.resetForTest();
+        // walking 1.5 tiles per second never gets stuck; the scene ends normally
+        Settings.load(SelfTest.write("enabled=true\ndevScene=walk\ndevRoute=1,0\n"));
+        SceneDriver.resetForTest();
+        SceneDriver.init();
+        SceneWalk.Fake mover = new SceneWalk.Fake(SceneWalk.Result.RUNNING);
+        SceneDriver.action = new SceneWalk(mover);
+        Path g = SelfTest.tmp("scene/walkmove.out").toPath();
+        SceneDriver.marksFile = g;
+        SceneDriver.onWorldReady();
+        SceneDriver.tick(1_000);
+        SceneDriver.tick(21_000);
+        for (int i = 1; i <= 60; i++) {
+            mover.x = 1.5 * i;
+            SceneDriver.tick(21_000 + i * 1_000L);
+        }
+        lines = java.nio.file.Files.readAllLines(g);
+        assert lines.get(1).contains("failed: stuck") == false : lines.get(1);
+        Settings.load(SelfTest.write("enabled=true\n"));
+        SceneDriver.resetForTest();
+    }
+
     static void virtualKeyHold() {
         VirtualKeys.releaseAll();
         assert VirtualKeys.heldCount == 0;
@@ -440,6 +490,71 @@ final class DevTest {
         SceneDriver.onWorldReady();
         SceneDriver.tick(1_000);
         assert calls[0] == 0 : calls[0];
+        Settings.load(SelfTest.write("enabled=true\n"));
+        SceneDriver.resetForTest();
+    }
+
+    /** Records what apply() called, never touching the game. */
+    static final class FakeWeather implements SceneWeather.Weather {
+        int storms, hours;
+        int lastHour = -99;
+
+        public void storm() { storms++; }
+        public void setHour(int h) { hours++; lastHour = h; }
+    }
+
+    static void weatherOffCallsNothing() {
+        FakeWeather w = new FakeWeather();
+        String t = SceneWeather.apply("off", -1, w);
+        assert w.storms == 0 && w.hours == 0 : w.storms + "," + w.hours;
+        assert t.equals("") : t;
+        Settings.load(SelfTest.write("enabled=true\n"));
+        SceneDriver.resetForTest();
+    }
+
+    static void stormAndHourSetOnce() {
+        FakeWeather w = new FakeWeather();
+        String t = SceneWeather.apply("storm", 22, w);
+        assert w.storms == 1 : w.storms;
+        assert w.hours == 1 : w.hours;
+        assert w.lastHour == 22 : w.lastHour;
+        assert t.contains("storm") && t.contains("22") : t;
+        Settings.load(SelfTest.write("enabled=true\n"));
+        SceneDriver.resetForTest();
+    }
+
+    static void hourOutOfRangeIgnored() {
+        FakeWeather w = new FakeWeather();
+        String t = SceneWeather.apply("off", 24, w);
+        assert w.storms == 0 && w.hours == 0 : w.storms + "," + w.hours;
+        assert t.contains("24") && t.contains("ignored") : t;
+        Settings.load(SelfTest.write("enabled=true\n"));
+        SceneDriver.resetForTest();
+    }
+
+    static void weatherAppliedOnce() throws Exception {
+        // the scene driver applies the hour/weather once per scene, at the settle-start hook
+        Settings.load(SelfTest.write("enabled=true\ndevScene=stand\ndevHour=22\n"));
+        SceneDriver.resetForTest();
+        SceneDriver.init();
+        final int[] calls = {0};
+        SceneWeather.weather = new SceneWeather.Weather() {
+            public void storm() { }
+            public void setHour(int h) { calls[0]++; }
+        };
+        Path f = SelfTest.tmp("scene/wx.out").toPath();
+        SceneDriver.marksFile = f;
+        SceneDriver.onWorldReady();
+        SceneDriver.tick(1_000);
+        int afterFirst = calls[0];
+        assert afterFirst == 1 : afterFirst;
+        SceneDriver.tick(1_010);
+        SceneDriver.tick(1_000 + 20_000);
+        SceneDriver.tick(1_000 + 80_000);
+        // a second world load is a new scene: the hour is applied again, once
+        SceneDriver.onWorldReady();
+        SceneDriver.tick(2_000);
+        assert calls[0] == 2 : calls[0];
         Settings.load(SelfTest.write("enabled=true\n"));
         SceneDriver.resetForTest();
     }

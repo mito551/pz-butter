@@ -5,7 +5,9 @@ import java.lang.invoke.VarHandle;
 import me.zed_0xff.zombie_buddy.Patch;
 import pzbutter.luabudget.Budget;
 import se.krka.kahlua.j2se.KahluaTableImpl;
+import se.krka.kahlua.vm.JavaFunction;
 import se.krka.kahlua.vm.KahluaTable;
+import se.krka.kahlua.vm.LuaCallFrame;
 import se.krka.kahlua.vm.LuaClosure;
 import zombie.core.Core;
 
@@ -153,6 +155,20 @@ public final class LuaPatches {
         try {
             KahluaTableImpl t = new KahluaTableImpl(new java.util.HashMap<>());
             t.rawset("uiLuaFast", uiLuaFast);
+            t.rawset("containerSendGuard", Settings.flag("containerSendGuard"));
+            t.rawset("handlerCensus", Settings.flag("handlerCensus"));
+            t.rawset("ki5Bundle", Settings.flag("ki5Bundle"));
+            t.rawset("ki5SyncMs", Settings.num("ki5SyncMs", 100, 0, 60000));
+            t.rawset("ki5PartModThrottle", Settings.flag("ki5PartModThrottle"));
+            t.rawset("ki5EveryStart", new JavaFunction() {
+                public int call(LuaCallFrame frame, int n) { ThirdParty.beginEvery(); return 0; }
+            });
+            t.rawset("ki5EveryStop", new JavaFunction() {
+                public int call(LuaCallFrame frame, int n) { ThirdParty.endEvery(); return 0; }
+            });
+            t.rawset("ki5Flush", new JavaFunction() {
+                public int call(LuaCallFrame frame, int n) { ThirdParty.flush(); return 0; }
+            });
             zombie.Lua.LuaManager.env.rawset("PZButter", t);
         } catch (Throwable x) { System.out.println("[PZButter] Lua settings table not set: " + x); }
     }
@@ -273,10 +289,14 @@ public final class LuaPatches {
     @Patch(className = "zombie.Lua.LuaEventManager", methodName = "triggerEvent")
     public static class TriggerEvent {
         @Patch.OnEnter
-        public static void enter(@Patch.Local("g") boolean g) { g = gateEnterEvent(); }
+        public static void enter(@Patch.Argument(0) String event, @Patch.Local("g") boolean g) {
+            ServerTick.luaEnter();
+            SpikeContext.noteEvent(event);
+            g = gateEnterEvent();
+        }
 
         @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
-        public static void exit(@Patch.Local("g") boolean g) { if (g) gateExit(); }
+        public static void exit(@Patch.Local("g") boolean g) { if (g) gateExit(); ServerTick.luaExit(); }
     }
 
     @Patch(className = "zombie.Lua.LuaHookManager", methodName = "TriggerHook")

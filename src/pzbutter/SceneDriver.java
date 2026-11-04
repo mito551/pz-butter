@@ -66,6 +66,7 @@ public final class SceneDriver {
     private static volatile boolean worldReady;
     private static volatile boolean sceneSet;
     private static volatile boolean populationSpawned;
+    private static volatile boolean weatherApplied;
     private static volatile boolean prepared;
     private static volatile long readyMs;
     private static volatile long quitAtMs;
@@ -110,6 +111,7 @@ public final class SceneDriver {
         worldReady = false;
         sceneSet = false;
         populationSpawned = false;
+        weatherApplied = false;
         prepared = false;
         readyMs = 0;
         quitAtMs = 0;
@@ -135,6 +137,7 @@ public final class SceneDriver {
 
     public static void onWorldReady() {
         DevAudit.report("world");
+        DevMarks.writeAt("world.ready", System.currentTimeMillis());
         try {
             if (action != null && phase != Phase.IDLE && phase != Phase.DONE) {
                 try { action.stop(); } catch (Throwable t) { guard.fail(t); }
@@ -143,6 +146,7 @@ public final class SceneDriver {
             phase = Phase.IDLE;
             worldReady = true;
             populationSpawned = false;
+            weatherApplied = false;
             prepared = false;
             readyMs = 0;
             quitAtMs = 0;
@@ -160,6 +164,23 @@ public final class SceneDriver {
         prepared = true;
         if (action == null) return;
         try { action.prepare(); } catch (Throwable t) { guard.fail(t); end("prepare failed", nowMs); }
+    }
+
+    /** Settle start: devPopulation, then the devWeather/devHour hook. Both run once per scene (S6/S8). */
+    private static void settleStart() {
+        try { spawnPopulationIfNeeded(); } catch (Throwable t) { guard.fail(t); }
+        try { applyWeatherOnce(); } catch (Throwable t) { guard.fail(t); }
+    }
+
+    private static void applyWeatherOnce() {
+        if (weatherApplied) return;
+        weatherApplied = true;
+        String kind = Settings.text("devWeather", "off");
+        int hour;
+        try { hour = Integer.parseInt(Settings.text("devHour", "-1").trim()); }
+        catch (NumberFormatException e) { hour = -1; }
+        String t = SceneWeather.apply(kind, hour, SceneWeather.weather);
+        if (!t.isEmpty()) System.out.println("[PZButter] devScene: weather " + t);
     }
 
     public static void tick(long nowMs) {
@@ -198,13 +219,13 @@ public final class SceneDriver {
             }
             if (phase == Phase.IDLE && next == Phase.SETTLE) {
                 phase = Phase.SETTLE;
-                try { spawnPopulationIfNeeded(); } catch (Throwable t) { guard.fail(t); }
+                settleStart();
                 fireQuitIfNeeded(nowMs);
                 return;
             }
             if (next == Phase.WINDOW) {
                 if (phase == Phase.IDLE) {
-                    try { spawnPopulationIfNeeded(); } catch (Throwable t) { guard.fail(t); }
+                    settleStart();
                     if (phase == Phase.DONE) { fireQuitIfNeeded(nowMs); return; }
                 }
                 if (!prepared) {
@@ -358,6 +379,7 @@ public final class SceneDriver {
                 autoContinued = true;
                 return;
             }
+            DevMarks.writeAt("menu.ready", System.currentTimeMillis());
             Object[] r = zombie.Lua.LuaManager.caller.pcall(zombie.Lua.LuaManager.thread, fn, mode, world);
             if (r == null || r.length == 0 || !Boolean.TRUE.equals(r[0]))
                 System.out.println("[PZButter] devAutoContinue: continueLatestSave failed: " + (r != null && r.length > 1 ? r[1] : "no result"));

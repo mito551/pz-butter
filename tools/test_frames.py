@@ -1,3 +1,6 @@
+import contextlib
+import io
+import os
 import unittest
 
 import frames
@@ -44,6 +47,31 @@ class TestFrames(unittest.TestCase):
             frames.main(["/tmp/no-such-frames.out", "--window", "scene", "--marks",
                          "/tmp/no-such-marks.out"])
         self.assertEqual(cm.exception.code, 2)
+
+    def test_manual_window_first_pair(self):
+        marks = frames.read_marks(
+            ["mark w1.start 1000", "mark w1.end 5000", "mark w2.start 9000"])
+        start, end, note = frames.manual_window(marks)
+        self.assertEqual((start, end), (1000, 5000))
+        self.assertEqual(note, "3 marks, used 1-2")
+
+    def test_manual_window_one_mark(self):
+        marks = frames.read_marks(["mark w1.start 1000"])
+        err = io.StringIO()
+        with self.assertRaises(SystemExit) as cm, contextlib.redirect_stderr(err):
+            frames.main(["/tmp/no-such-frames.out", "--window", "manual", "--marks",
+                         self._marks_file(marks)])
+        self.assertEqual(cm.exception.code, 2)
+        self.assertIn("need 2 marks", err.getvalue())
+
+    def _marks_file(self, marks):
+        import tempfile
+        f = tempfile.NamedTemporaryFile("w", suffix=".out", delete=False)
+        for name, epoch, _note in marks:
+            f.write("mark %s %d\n" % (name, epoch))
+        f.close()
+        self.addCleanup(os.unlink, f.name)
+        return f.name
 
 
 if __name__ == "__main__":

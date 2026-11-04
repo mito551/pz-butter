@@ -74,6 +74,7 @@ public final class FrameClock {
             intervalMs = intervalNs / 1e6;
             stepMs = stepNs / 1e6;
             cpuMs = cpuNs / 1e6;
+            SpikeContext.onFrame(System.currentTimeMillis(), frameNo, intervalMs);
             LogSink s = log;
             if (s != null) {
                 long now = System.currentTimeMillis();

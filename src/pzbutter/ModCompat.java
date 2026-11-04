@@ -43,7 +43,8 @@ final class ModCompat {
     /** The classes whose nested classes are PZ Butter's holders. */
     static final Class<?>[] OUTERS = {Patches.class, DeliveryPatches.class, LuaPatches.class, UiPatches.class, MapPatches.class,
         SoundPatches.class, WorldPatches.class, ChunkPatches.class, LogPatches.class, ZombiePatches.class, GpuPatches.class, CensusPatches.class,
-        VehiclePatches.class, StreamPatches.class, LoadPatches.class, RuntimePatches.class, DevPatches.class, CameraPatches.class, ClockPatches.class};
+        VehiclePatches.class, StreamPatches.class, LoadPatches.class, RuntimePatches.class, DevPatches.class, CameraPatches.class, ClockPatches.class,
+        ServerPatches.class, HostPatches.class, MpClientPatches.class, NetStatsPatches.class, ThirdPartyPatches.class};
 
     private static final String PATCH = "Lme/zed_0xff/zombie_buddy/Patch;";
     private static final String ON_ENTER = "Lme/zed_0xff/zombie_buddy/Patch$OnEnter;";
@@ -87,7 +88,7 @@ Map.entry("LoadPatches.WaitFileTask", k("textureBufferMb")),
         Map.entry("LoadPatches.TextureIDGenerateHwId", k("texCompress")),
         Map.entry("Patches.Frame", k("luaWorkerGate", "luaFileWriteThrottle", "logDedupe", "luaBudget", "luaTiming", "frameStartGate",
             "presentPacing", "reflexSleep", "bakeScheduler", "lightSwitchCheckFrames", "gridStackInterval", "roofHideDebounceFrames",
-            "soundTickHz", "mapStreetMemo", "mapStreetCache", "textWidthCache", "uiTiming", "uiCensus", "uiRetained", "uiRetainCheck", "entityTiming")),
+            "soundTickHz", "mapStreetMemo", "mapStreetCache", "textWidthCache", "uiTiming", "uiCensus", "uiRetained", "uiRetainCheck", "entityTiming", "spikeContext", "spikeThresholdMs", "spikeContextWindowMs", "hitchSampler", "stallProbe")),
         // frame delivery
         Map.entry("DeliveryPatches.Step", k("limiterSleep", "reflexSleep")),
         Map.entry("DeliveryPatches.InvokeWake", k("limiterSleep", "reflexSleep")),
@@ -255,7 +256,26 @@ Map.entry("LoadPatches.WaitFileTask", k("textureBufferMb")),
         Map.entry("ChunkPatches.Plan", k("bakeScheduler", "treeBakeMaxChunksPerSec")),
         Map.entry("ChunkPatches.BakeGate", k("bakeScheduler", "treeBakeMaxChunksPerSec")),
         Map.entry("ChunkPatches.ZoomScroll", k("zoomEaseMs")),
-        Map.entry("ChunkPatches.ZoomUpdate", k("zoomEaseMs")));
+        Map.entry("ChunkPatches.ZoomUpdate", k("zoomEaseMs")),
+        // server (Plan 18)
+        Map.entry("ServerPatches.TickStart", k("serverTickLog", "serverLuaSample", "serverPrewarm", "serverClassPrewarm")),
+        Map.entry("ServerPatches.NetDone", k("serverTickLog", "serverLuaSample")),
+        Map.entry("ServerPatches.TickEnd", k("serverTickLog", "serverLuaSample")),
+        Map.entry("ServerPatches.StopOnExit", k("serverTickLog", "serverLuaSample")),
+        Map.entry("ServerPatches.StopOnClose", k("serverTickLog", "serverLuaSample")),
+        Map.entry("ServerPatches.SendGuard", k("containerSendGuard")),
+        Map.entry("ServerPatches.ProcessItems", k("processItemsMerge")),
+        Map.entry("HostPatches.Args", k("hostJvmArgs", "hostZombieBuddy")),
+        // MP client (Plan 18)
+        Map.entry("MpClientPatches.VehicleAnswer", k("vehicleEarlyParse")),
+        Map.entry("MpClientPatches.ChunkLoad", k("chunkRefill")),
+        Map.entry("MpClientPatches.ClientTick", k("vehicleEarlyParse", "chunkRefill")),
+        Map.entry("NetStatsPatches.PacketSend", k("netStats")),
+        Map.entry("NetStatsPatches.PacketSent", k("netStats")),
+        Map.entry("ThirdPartyPatches.PartModData", k("ki5PartModThrottle")),
+        Map.entry("NetStatsPatches.ClientReceive", k("netStats")),
+        Map.entry("NetStatsPatches.ClientLoading", k("netStats")),
+        Map.entry("NetStatsPatches.ServerReceive", k("netStats")));
 
     // ---- reading @Patch annotations without loading the class ----
 

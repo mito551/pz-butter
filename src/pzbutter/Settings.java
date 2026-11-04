@@ -259,6 +259,21 @@ public final class Settings {
       + "devMark=false\n"
       + "# devMarkKey: the key name (resolved with org.lwjglx.input.Keyboard.getKeyIndex).\n"
       + "devMarkKey=F9\n"
+      + "# spikeContext: diagnostic for the frame log. Each frame over spikeThresholdMs is classified by what the player was doing\n"
+      + "# and appended to Zomboid/pzbutter/spikes.out; once a minute the counts go to the console.\n"
+      + "spikeContext=false\n"
+      + "# spikeThresholdMs: with spikeContext, a frame longer than this many ms is a spike (default 50).\n"
+      + "spikeThresholdMs=50\n"
+      + "# spikeContextWindowMs: with spikeContext, a chunk load or a context menu this many ms before a spike names it (default 750).\n"
+      + "spikeContextWindowMs=750\n"
+      + "# hitchSampler: diagnostic for the frame log. A watchdog outside the frame samples the game and render threads while a\n"
+      + "# frame runs far past its recent median, and writes one line per hitch to Zomboid/pzbutter/hitches.out.\n"
+      + "hitchSampler=false\n"
+      + "# netStats: diagnostic. Per-packet-type counts and bytes once a second in Zomboid/pzbutter/net.out (client) or net-server.out (server).\n"
+      + "netStats=false\n"
+      + "# stallProbe: diagnostic. A sleeper outside the game threads writes Zomboid/pzbutter/stalls.out when a 2 ms sleep returns\n"
+      + "# 50 ms or more late, with safepoint, GC and page-fault deltas.\n"
+      + "stallProbe=false\n"
       + "#\n"
       + "# Dev scene driver. Off by default.\n"
       + "# devAutoContinue: on the main menu, press Continue once per process.\n"
@@ -279,6 +294,10 @@ public final class Settings {
       + "devDriveCar=Base.CarNormal\n"
       + "# devDriveKmh: target speed for devScene=drive.\n"
       + "devDriveKmh=60\n"
+      + "# devWeather: weather applied once at settle start (off = nothing; storm = the game's own debug storm trigger) (needs devScene).\n"
+      + "devWeather=off\n"
+      + "# devHour: hour of day set once at settle start (-1 = leave it; 0-23; anything else is ignored) (needs devScene).\n"
+      + "devHour=-1\n"
       + "#\n"
       + "# Sprite buffers and GPU (Plan 9). Every key is off or at the game's value until its in-game check.\n"
       + "# persistentVbo: the sprite and puddle ring buffers keep persistently mapped storage (OpenGL 4.4) instead of new storage and a map per 64 KB batch.\n"
@@ -373,7 +392,41 @@ public final class Settings {
 + "#\n"
 + "# Hot save (Plan 10a). Stock queues hot saves at most once a second.\n"
 + "# hotsaveIntervalSec: hot-save interval in seconds (0 = stock 1 s; 30 = 30 s). A crash can lose at least that many seconds of the world, and several times that when many chunks changed (the game writes at most about 10 chunks per hot save). Saving and quitting always write everything.\n"
-+ "hotsaveIntervalSec=0\n";
++ "hotsaveIntervalSec=0\n"
++ "#\n"
++ "# Lua handlers (Plan 19).\n"
++ "# handlerCensus: record Events.<Name>.Add/.Remove for per-tick and per-frame events, name each handler's mod owner and print one overview line at the end of load. On by default; the list and route helper are always available to other mods.\n"
++ "handlerCensus=true\n"
++ "#\n"
++ "# KI5 vehicle handlers (Plan 19). Client only; off on a dedicated server.\n"
++ "# ki5Bundle: remove recognised OnPlayerUpdate handlers from KI5 vehicle mods and run them from one dispatcher with per-kind timing.\n"
++ "ki5Bundle=false\n"
++ "# ki5SyncMs: shortest gap between two synchronous handler calls (ms). A vehicle, type or seat change runs them at once.\n"
++ "ki5SyncMs=100\n"
++ "# ki5PartModThrottle: while an every-frame handler runs, one BaseVehicle.transmitPartModData call per part per 100 ms; the last state is sent afterwards.\n"
++ "ki5PartModThrottle=false\n"
++ "#\n"
++ "# Server and hosting (Plan 18). Server keys are inert in single player and on a multiplayer client.\n"
++ "# serverTickLog: one line per server tick in Zomboid/pzbutter/ticks.out (same columns as frames.out); a minute line gives p50/p99/max.\n"
++ "serverTickLog=false\n"
++ "# serverLuaSample: diagnostic; a watchdog samples the server main thread when a tick runs long and writes Zomboid/pzbutter/hitches.out.\n"
++ "serverLuaSample=false\n"
++ "# containerSendGuard: skip sendAddItemToContainer calls that have no character, parent object or world item to send to (stock returns without sending).\n"
++ "containerSendGuard=true\n"
++ "# processItemsMerge: batch adds to a cell's process items in one pass; only batches of 128 or more, never on a multiplayer client.\n"
++ "processItemsMerge=false\n"
++ "# serverPrewarm: first server tick loads the animation sets and action groups the first player, vehicle, zombie and every animal would load.\n"
++ "serverPrewarm=false\n"
++ "# serverClassPrewarm: first server tick loads the game classes our patches target, so ZombieBuddy weaving happens before the first join.\n"
++ "serverClassPrewarm=false\n"
++ "# hostZombieBuddy: carry the client's ZombieBuddy agent into a game hosted from the menu, only when its agent arguments allow no prompt.\n"
++ "hostZombieBuddy=false\n"
++ "# hostJvmArgs: pass a small jvm.args file (<=4 KB, ASCII, <=16 lines) to the hosted server after the game's -Xms/-Xmx.\n"
++ "hostJvmArgs=false\n"
++ "# vehicleEarlyParse (MP client): off, verify (keep the packet the game dropped and compare it with the server's answer), or on (also parse it early).\n"
++ "vehicleEarlyParse=off\n"
++ "# chunkRefill (MP client): request a dropped chunk slot again while the player stays in one chunk; at most 6 per pass, one pass every 3 s.\n"
++ "chunkRefill=false\n";
 
     public static volatile boolean enabled;
     public static volatile boolean frameLog;
@@ -477,10 +530,13 @@ public final class Settings {
         "persistentVboFrameSync",   // acts only with persistentVbo (Plan 9)
         "driveTreeCutaway", "glassTilesPerFrame", "translucentLightsPerFrame",   // stock-equivalent values (Plan 6), not passed features
         "wake", "handoffRecalcFast",
-        "loaderCpuFixes", "scriptParserFast", "modWatchAsync", "texCompress");   // Plans 10b, 11b, 11d, 11e: on after their in-game checks
+        "loaderCpuFixes", "scriptParserFast", "modWatchAsync", "texCompress",   // Plans 10b, 11b, 11d, 11e: on after their in-game checks
+        "containerSendGuard",   // Plan 18: stock drops these calls anyway
+        "handlerCensus");   // Plan 19
 
     public static boolean flag(String key) {
         if (!enabled) return false;
+        if (!Side.allowed(key)) return false;   // side tags live in Side.SERVER / Side.BOTH
         if (forcedOff.contains(key)) return STOCK_ON.contains(key);
         return bool(raw(key), ON_BY_DEFAULT.contains(key));
     }
@@ -505,6 +561,7 @@ public final class Settings {
 
     /** A number key, clamped to [min, max]; the default when missing or unreadable. */
     public static int num(String key, int dflt, int min, int max) {
+        if (!Side.allowed(key)) return dflt;
         String v = forcedOff.contains(key) ? null : raw(key);
         int n = dflt;
         if (v != null) try { n = Integer.parseInt(v.trim()); } catch (NumberFormatException e) { n = dflt; }
@@ -513,13 +570,14 @@ public final class Settings {
 
     /** A text key; the default when missing. */
     public static String text(String key, String dflt) {
+        if (!Side.allowed(key)) return dflt;
         String v = forcedOff.contains(key) ? null : raw(key);
         return v == null ? dflt : v.trim();
     }
 
     /** "off", "on" or "auto"; "off" when the master switch is off or the value is unreadable. */
     public static String mode(String key) {
-        if (!enabled || forcedOff.contains(key)) return "off";
+        if (!enabled || forcedOff.contains(key) || !Side.allowed(key)) return "off";
         String v = raw(key);
         if (v == null) return "off";
         switch (v.trim().toLowerCase(Locale.ROOT)) {

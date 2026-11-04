@@ -2,11 +2,11 @@
 # PZ Butter: one measurement run.
 set -u
 
-die() { echo "run.sh: aborting: $*" >&2; exit 1; }
-
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TOOLS="$SCRIPT_DIR"
+# shellcheck source=tools/runlib.sh
+source "$TOOLS/runlib.sh"
 PZ_DIR="${PZ_DIR:-/home/mitori/Sonic/SteamLibrary/steamapps/common/ProjectZomboid}"
 Z="${Z:-$HOME/Zomboid}"
 
@@ -16,6 +16,8 @@ SAVE=""
 PROPS=""
 PERF=0
 MANGO=0
+APITRACE=0
+RENDERER="nvidia"
 JFR_PERIOD=10
 OUT="${HOME}/Zomboid/pzbutter-runs"
 DRY=0
@@ -31,6 +33,8 @@ while [[ $# -gt 0 ]]; do
         --props) PROPS="$2"; shift 2 ;;
         --perf) PERF=1; shift ;;
         --mangohud) MANGO=1; shift ;;
+        --apitrace) APITRACE=1; shift ;;
+        --renderer) RENDERER="$2"; shift 2 ;;
         --jfr-period) JFR_PERIOD="$2"; shift 2 ;;
         --out) OUT="$2"; shift 2 ;;
         --dry-run) DRY=1; shift ;;
@@ -41,7 +45,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "$SCENE" || -z "$LIST" || -z "$SAVE" ]]; then
-    echo "usage: run.sh --scene NAME --list bare|full --save MODE/SAVE [--props \"k=v ...\"] [--perf] [--mangohud] [--jfr-period MS] [--out DIR] [--dry-run] [--timeout SEC] [--jvm \"...\"]"; exit 2
+    echo "usage: run.sh --scene NAME --list bare|full --save MODE/SAVE [--props \"k=v ...\"] [--perf] [--mangohud] [--apitrace] [--renderer nvidia|zink] [--jfr-period MS] [--out DIR] [--dry-run] [--timeout SEC] [--jvm \"...\"]"; exit 2
 fi
 if [[ "$LIST" != "bare" && "$LIST" != "full" ]]; then echo "list must be bare or full"; exit 2; fi
 
@@ -49,18 +53,32 @@ if [[ "$LIST" != "bare" && "$LIST" != "full" ]]; then echo "list must be bare or
 case "$SCENE" in
     S2) SCENE_PROPS="devScene=stand devSceneSettleSec=0 devSceneSec=20" ;;
     S3) SCENE_PROPS="devScene=stand devSceneSec=60" ;;
-    S4) SCENE_PROPS="devScene=walk devSceneSec=90"
-        if [[ "$PROPS" != *devRoute=* ]]; then echo "S4 requires --props devRoute=..."; exit 2; fi ;;
+    S4) SCENE_PROPS="devScene=walk devSceneSec=90" ;;
     S5) SCENE_PROPS="devScene=drive devSceneSec=60 devDriveKmh=120" ;;
     S6) SCENE_PROPS="devScene=stand devPopulation=200 devSceneSec=60" ;;
     S7) SCENE_PROPS="devScene=off devMark=true" ;;
-    S8) echo 'S8: not built (no weather key); use S4 in a storm save'; exit 2 ;;
+    S8) SCENE_PROPS="devScene=walk devSceneSec=60 devWeather=storm devHour=22" ;;
     *) echo "unknown scene: $SCENE"; exit 2 ;;
 esac
 
 if (( PERF == 1 )) && [[ $SCENE == S7 ]]; then echo "--perf is incompatible with S7"; exit 2; fi
 if (( MANGO == 1 )); then
     command -v mangohud >/dev/null 2>&1 || die "mangohud is not on PATH"
+fi
+if (( APITRACE == 1 )); then
+    if ! command -v apitrace >/dev/null 2>&1; then
+        if (( DRY )); then echo "[apitrace] not on PATH (would refuse in real run)"; else die "apitrace is not on PATH (dnf install apitrace)"; fi
+    fi
+fi
+if [[ "$RENDERER" != "nvidia" && "$RENDERER" != "zink" ]]; then echo "renderer must be nvidia or zink"; exit 2; fi
+
+MESA_VER="$(rpm -q mesa-dri-drivers 2>/dev/null || true)"
+NVIDIA_VER="$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -1 || true)"
+if [[ "$RENDERER" == "zink" ]]; then
+    export __GLX_VENDOR_LIBRARY_NAME=mesa
+    export MESA_LOADER_DRIVER_OVERRIDE=zink
+    echo "[renderer] zink: __GLX_VENDOR_LIBRARY_NAME=mesa MESA_LOADER_DRIVER_OVERRIDE=zink"
+    echo "[renderer] mesa=${MESA_VER:-unknown} nvidia=${NVIDIA_VER:-unknown}"
 fi
 
 MODE="${SAVE%%/*}"
@@ -69,23 +87,10 @@ if [[ -z "$MODE" || -z "$SAVE_NAME" || "$MODE" == "$SAVE" ]]; then echo "save mu
 SRC_SAVE="$Z/Saves/$MODE/$SAVE_NAME"
 [[ -n $MODE && -n $SAVE_NAME && -d $SRC_SAVE ]] || die "no save at $SRC_SAVE (--save MODE/SAVE)"
 
-mod_ids() {
-    python3 - "$1" <<'PY'
-import re, sys
-try:
-    s = open(sys.argv[1]).read()
-except FileNotFoundError:
-    print("")
-    sys.exit(0)
-ids = re.findall(r'mod\s*=\s*([^,\s}]+)', s)
-print(",".join(sorted(set(ids))))
-PY
-}
-
 # build checks (before step 3)
 BUILD_MOD="$REPO_ROOT/build/mod/PZButter"
-BUILD_JAR="$BUILD_MOD/42/media/java/client/PZButter.jar"
-INSTALLED_JAR="$Z/mods/PZButter/42/media/java/client/PZButter.jar"
+BUILD_JAR="$BUILD_MOD/42/media/java/common/PZButter.jar"
+INSTALLED_JAR="$Z/mods/PZButter/42/media/java/common/PZButter.jar"
 echo "[build] signed-build check"
 if ! find "$BUILD_MOD" -name '*.zbs' -print -quit 2>/dev/null | grep -q .; then
     if (( DRY )); then echo "[build] signed-build check: FAIL"; fi
@@ -188,6 +193,21 @@ parse_props_string() {
 parse_props_string "enabled=true frameLog=true devAutoContinue=true devSceneQuit=true"
 parse_props_string "$SCENE_PROPS"
 if [[ -n "$PROPS" ]]; then parse_props_string "$PROPS"; fi
+
+# walk scenes: S4/S8 take devRoute from tools/routes.txt when --props has none (explicit --props wins)
+case "$SCENE" in
+    S4|S8)
+        if ! printf '%s\n' "${PROPS_ENTRIES[@]}" | grep -q '^devRoute='; then
+            ROUTE_LINE="$(grep -v '^#' "$TOOLS/routes.txt" 2>/dev/null | grep -m1 "^[[:space:]]*$MODE/$SAVE_NAME[[:space:]]." | awk '{print $2}')"
+            if [[ -z "$ROUTE_LINE" ]]; then
+                echo "$SCENE requires --props devRoute=... (or a $MODE/$SAVE line in tools/routes.txt)"
+                exit 2
+            fi
+            add_prop_entry "$ROUTE_LINE"
+        fi
+        ;;
+esac
+
 PROPS_LINE="${PROPS_ENTRIES[*]}"
 
 # default timeout (unless provided or S7)
@@ -228,9 +248,9 @@ BENCH_NAME="pzbutter-bench-${RUN_STAMP}"
 BENCH_SAVE="$Z/Saves/$MODE/$BENCH_NAME"
 echo "[step4] manifest write $SRC_SAVE"
 if (( DRY )); then
-    echo "+ python3 $TOOLS/manifest.py write $SRC_SAVE $RUN_DIR/source.manifest.json (dry-run: skipped)"
+    echo "+ manifest write $SRC_SAVE $RUN_DIR/source.manifest.json (dry-run: skipped)"
 else
-    python3 "$TOOLS/manifest.py" write "$SRC_SAVE" "$RUN_DIR/source.manifest.json" || die "manifest write failed"
+    manifest_write "$SRC_SAVE" "$RUN_DIR/source.manifest.json" || die "manifest write failed"
     cp -a "$SRC_SAVE" "$BENCH_SAVE" || die "save copy failed"
     BENCH_CREATED=1
     printf '%s\n%s\n' "$BENCH_NAME" "$MODE" > "$Z/latestSave.ini" || die "latestSave update failed"
@@ -314,10 +334,12 @@ LAUNCH_ENV=""
 if (( MANGO )); then
     LAUNCH_ENV="MANGOHUD=1 "
 fi
+TRACE_PREFIX=""
+if (( APITRACE )); then TRACE_PREFIX="apitrace trace --api=gl --output=$RUN_DIR/game.trace "; fi
 if (( MANGO )); then
-    LAUNCH_LINE="mangohud $PZ_DIR/projectzomboid.sh -javaagent:ZombieBuddy.jar $JVM_STR --"
+    LAUNCH_LINE="${TRACE_PREFIX}mangohud $PZ_DIR/projectzomboid.sh -javaagent:ZombieBuddy.jar $JVM_STR --"
 else
-    LAUNCH_LINE="$PZ_DIR/projectzomboid.sh -javaagent:ZombieBuddy.jar $JVM_STR --"
+    LAUNCH_LINE="${TRACE_PREFIX}$PZ_DIR/projectzomboid.sh -javaagent:ZombieBuddy.jar $JVM_STR --"
 fi
 
 echo "[step7] jvm: $JVM_STR"
@@ -346,6 +368,10 @@ chosen_mods=$CHOSEN_IDS
 bench_mods=$BENCH_IDS
 jvm=$JVM_STR
 jvm_extra=$JVM_EXTRA
+apitrace=$APITRACE
+renderer=$RENDERER
+mesa=$MESA_VER
+nvidia=$NVIDIA_VER
 timeout=$TIMEOUT_VALUE
 launch=$LAUNCH_LINE
 pz_rev=$PZ_REV
@@ -382,7 +408,13 @@ if (( MANGO )); then
     export MANGOHUD_CONFIG="output_folder=$RUN_DIR,autostart_log=1,log_interval=0"
 fi
 cd "$Z" 2>/dev/null || true
-if (( MANGO )); then
+if (( APITRACE )); then
+    if (( MANGO )); then
+        apitrace trace --api=gl --output="$RUN_DIR/game.trace" mangohud "$PZ_DIR/projectzomboid.sh" -javaagent:ZombieBuddy.jar $JVM_STR -- > "$RUN_DIR/stdout.txt" 2>&1 &
+    else
+        apitrace trace --api=gl --output="$RUN_DIR/game.trace" "$PZ_DIR/projectzomboid.sh" -javaagent:ZombieBuddy.jar $JVM_STR -- > "$RUN_DIR/stdout.txt" 2>&1 &
+    fi
+elif (( MANGO )); then
     mangohud "$PZ_DIR/projectzomboid.sh" -javaagent:ZombieBuddy.jar $JVM_STR -- > "$RUN_DIR/stdout.txt" 2>&1 &
 else
     "$PZ_DIR/projectzomboid.sh" -javaagent:ZombieBuddy.jar $JVM_STR -- > "$RUN_DIR/stdout.txt" 2>&1 &
@@ -402,14 +434,20 @@ echo "[step8] game pid=$GAME_PID_ACTUAL"
 python3 "$TOOLS/sysmon.py" "$RUN_DIR/sysmon.csv" --pid "$GAME_PID_ACTUAL" &
 SYSMON_PID=$!
 if (( PERF )); then
+    PERF_SECONDS=30
+    for e in "${PROPS_ENTRIES[@]}"; do
+        case "$e" in
+            devSceneSec=*) s="${e#*=}"; [[ "$s" =~ ^[0-9]+$ ]] && (( s < PERF_SECONDS )) && PERF_SECONDS=$s ;;
+        esac
+    done
+fi
+if (( PERF )); then
     (
       while kill -0 "$GAME_PID_ACTUAL" 2>/dev/null; do
         if [[ -f "$Z/pzbutter/marks.out" ]] && grep -q 'scene.start' "$Z/pzbutter/marks.out" 2>/dev/null; then break; fi
         sleep 1
       done
-      if kill -0 "$GAME_PID_ACTUAL" 2>/dev/null; then
-        perf record -g --call-graph dwarf -p "$GAME_PID_ACTUAL" -o "$RUN_DIR/perf.data" -- sleep 30
-      fi
+      perf record -g --call-graph dwarf -p "$GAME_PID_ACTUAL" -o "$RUN_DIR/perf.data" -- sleep "$PERF_SECONDS"
     ) &
     PERF_PID=$!
 fi
@@ -446,7 +484,7 @@ WORKERS_LINE="$(grep '\[PZButter\] workers:' "$RUN_DIR/console.txt" 2>/dev/null 
 
 # step 10 manifest check + delete bench copy
 echo "[step10] checking source save against manifest"
-python3 "$TOOLS/manifest.py" check "$SRC_SAVE" "$RUN_DIR/source.manifest.json"; rc=$?
+manifest_check "$SRC_SAVE" "$RUN_DIR/source.manifest.json"; rc=$?
 if (( rc != 0 )); then echo "source save differs (listed above)"; fi
 if [[ "$BENCH_CREATED" -eq 1 ]]; then rm -rf "$BENCH_SAVE"; BENCH_CREATED=0; fi
 
@@ -462,6 +500,10 @@ props=$PROPS_LINE
 chosen_mods=$CHOSEN_IDS
 bench_mods=$BENCH_IDS
 jvm=$JVM_STR
+apitrace=$APITRACE
+renderer=$RENDERER
+mesa=$MESA_VER
+nvidia=$NVIDIA_VER
 launch=$LAUNCH_LINE
 pz_rev=$PZ_REV
 zombiebuddy_sha256=$ZB_SHA2
@@ -480,4 +522,6 @@ if [[ $SCENE != S7 ]] && ! grep -q "^mark scene.start " "$RUN_DIR/marks.out" 2>/
     echo "result=failed (no scene.start)" >> "$RUN_DIR/run.opts"
     exit 3
 fi
+echo "[coverage]"
+python3 "$TOOLS/coverage.py" "$RUN_DIR" || true
 echo "run complete: $RUN_DIR"
