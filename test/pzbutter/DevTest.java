@@ -327,10 +327,14 @@ final class DevTest {
         SceneDriver.onWorldReady();
         SceneDriver.tick(1_000);
         SceneDriver.tick(21_000);
-        for (long now = 21_100; now <= 24_100; now += 100) { // fake stands still at 0,0
+        for (long now = 21_100; now <= 30_900; now += 100) { // fake stands still at 0,0
             SceneDriver.tick(now);
         }
+        // the first 10 s of a leg are the pathfinder's: no stuck verdict yet
         java.util.List<String> lines = java.nio.file.Files.readAllLines(f);
+        assert lines.size() == 1 : lines;
+        for (long now = 31_000; now <= 34_200; now += 100) SceneDriver.tick(now);
+        lines = java.nio.file.Files.readAllLines(f);
         assert lines.get(1).contains("failed: stuck") : lines.get(1);
         Settings.load(SelfTest.write("enabled=true\n"));
         SceneDriver.resetForTest();
