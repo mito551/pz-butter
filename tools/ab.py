@@ -23,7 +23,8 @@ import sys
 
 import frames
 
-BASE_PROPS = "devAutoContinue=true devScene=stand devSceneSettleSec=20 devSceneSec=60"
+# The scene preset in run.sh sets devScene and devSceneSec; --props comes after it and the last key wins.
+BASE_PROPS = "devAutoContinue=true devSceneSettleSec=20"
 
 
 def order_for(runs_per_arm, order="ABBA"):

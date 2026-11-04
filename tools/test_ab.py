@@ -46,6 +46,12 @@ mkdir -p "$out/run$(wc -l < '%s')"
         self.assertIn("--renderer zink", lines[0])
         self.assertNotIn("--renderer", lines[1])
 
+    def test_baseKeepsScenePreset(self):
+        # run.sh writes --props after the scene preset and the last key wins: a base devScene or
+        # devSceneSec would turn S4/S5/S8 into a stand scene of 60 s.
+        self.assertNotIn("devScene=", ab.BASE_PROPS)
+        self.assertNotIn("devSceneSec=", ab.BASE_PROPS)
+
     def test_abShortArmMarked(self):
         record = {
             "arms": [{"name": "off", "props": ""}, {"name": "on", "props": ""}],
