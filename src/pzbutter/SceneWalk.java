@@ -19,6 +19,8 @@ public final class SceneWalk implements SceneDriver.Action {
         boolean dead();
         double x(); // current player x, NaN when unavailable
         double y();
+        /** Diagnostics for a failed path: the player's and the target's squares. */
+        default String where(int x, int y, int z) { return ""; }
     }
 
     static int next(int index, int size) {
@@ -80,6 +82,7 @@ public final class SceneWalk implements SceneDriver.Action {
     private long stuckMs = -1;
     private long legMs = -1; // when the current leg's pathTo was issued (-1: at the next frame)
     private boolean finalHop; // the request in flight ends at the waypoint itself
+    private int lastX, lastY; // the request in flight
     private int fails;
 
     @Override
@@ -117,8 +120,9 @@ public final class SceneWalk implements SceneDriver.Action {
             if (r == Result.SUCCEEDED || r == Result.FAILED) {
                 if (r == Result.FAILED) {
                     fails++;
-                    System.out.printf(java.util.Locale.ROOT, "[PZButter] devScene walk: path failed at %.1f,%.1f, leg %d/%d to %d,%d (%d in a row)%n",
-                        walker.x(), walker.y(), index + 1, route.length, originX + route[index][0], originY + route[index][1], fails);
+                    System.out.println(String.format(java.util.Locale.ROOT, "[PZButter] devScene walk: path failed at %.1f,%.1f to %d,%d, leg %d/%d to %d,%d (%d in a row)%s",
+                        walker.x(), walker.y(), lastX, lastY, index + 1, route.length, originX + route[index][0], originY + route[index][1], fails,
+                        walker.where(lastX, lastY, originZ)));
                     if (fails >= MAX_FAILS) { SceneDriver.end("path failed"); return; }
                 } else fails = 0;
                 if (finalHop || r == Result.FAILED) index = next(index, route.length);
@@ -135,6 +139,7 @@ public final class SceneWalk implements SceneDriver.Action {
         double x = walker.x(), y = walker.y();
         int[] h = Double.isNaN(x) ? new int[] {tx, ty} : hop((int) Math.floor(x), (int) Math.floor(y), tx, ty, HOP_TILES);
         finalHop = h[0] == tx && h[1] == ty;
+        lastX = h[0]; lastY = h[1];
         walker.pathTo(h[0], h[1], originZ);
     }
 
@@ -147,8 +152,8 @@ public final class SceneWalk implements SceneDriver.Action {
         if (gap < STUCK_WINDOW_MS) return;
         double moved = Math.hypot(x - stuckX, y - stuckY);
         if (stuck(moved, gap)) {
-            System.out.printf(java.util.Locale.ROOT, "[PZButter] devScene walk: stuck at %.1f,%.1f, leg %d/%d to %d,%d, moved %.2f tiles in %d ms%n",
-                x, y, index + 1, route.length, originX + route[index][0], originY + route[index][1], moved, gap);
+            System.out.println(String.format(java.util.Locale.ROOT, "[PZButter] devScene walk: stuck at %.1f,%.1f, leg %d/%d to %d,%d, moved %.2f tiles in %d ms",
+                x, y, index + 1, route.length, originX + route[index][0], originY + route[index][1], moved, gap));
             SceneDriver.end("stuck");
             return;
         }
@@ -197,6 +202,19 @@ public final class SceneWalk implements SceneDriver.Action {
                 if (p == null) return true;
                 return p.isDead();
             } catch (Throwable t) { SceneDriver.guard.fail(t); return false; }
+        }
+        public String where(int x, int y, int z) {
+            try {
+                zombie.characters.IsoPlayer p = zombie.characters.IsoPlayer.getInstance();
+                if (p == null) return "";
+                return "; player " + square(p.getCurrentSquare()) + "; target " + square(p.getCell().getGridSquare(x, y, z));
+            } catch (Throwable t) { return "; where: " + t; }
+        }
+        private static String square(zombie.iso.IsoGridSquare q) {
+            if (q == null) return "not loaded";
+            zombie.iso.areas.IsoRoom r = q.getRoom();
+            return (r == null ? "outside" : "room " + r.getName()) + (q.isFree(false) ? ", free" : ", not free")
+                + (q.isSolid() ? ", solid" : "") + (q.TreatAsSolidFloor() ? "" : ", no floor");
         }
         public double x() {
             zombie.characters.IsoPlayer p = zombie.characters.IsoPlayer.getInstance();
