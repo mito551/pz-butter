@@ -168,8 +168,26 @@ public final class SceneDriver {
 
     /** Settle start: devPopulation, then the devWeather/devHour hook. Both run once per scene (S6/S8). */
     private static void settleStart() {
+        try { protectPlayer(); } catch (Throwable t) { guard.fail(t); }
         try { spawnPopulationIfNeeded(); } catch (Throwable t) { guard.fail(t); }
         try { applyWeatherOnce(); } catch (Throwable t) { guard.fail(t); }
+    }
+
+    /**
+     * A scene measures a living player: S6 stands among 200 zombies and the player died partway, at a different time
+     * in each run. Zombies still attack (the same work); the player takes no damage. setInvincible needs a role
+     * capability that a single-player game without debug may lack, so the field is set directly when it did not take.
+     */
+    private static void protectPlayer() throws ReflectiveOperationException {
+        zombie.characters.IsoPlayer p = zombie.characters.IsoPlayer.getInstance();
+        if (p == null) return;
+        p.setInvincible(true);
+        if (!p.isInvincible()) {
+            java.lang.reflect.Field f = zombie.characters.IsoGameCharacter.class.getDeclaredField("invincible");
+            f.setAccessible(true);
+            f.setBoolean(p, true);
+        }
+        System.out.println("[PZButter] devScene: player invincible " + p.isInvincible());
     }
 
     private static void applyWeatherOnce() {
