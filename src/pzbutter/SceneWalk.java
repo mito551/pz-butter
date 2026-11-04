@@ -29,6 +29,8 @@ public final class SceneWalk implements SceneDriver.Action {
     }
 
     static final long STUCK_WINDOW_MS = 3_000;
+    /** The pathfinder answers asynchronously; the first seconds of a leg are not movement time. */
+    static final long STUCK_GRACE_MS = 10_000;
 
     /** Stuck: less than one tile moved over a window of STUCK_WINDOW_MS. */
     static boolean stuck(double movedTiles, long windowMs) {
@@ -62,6 +64,7 @@ public final class SceneWalk implements SceneDriver.Action {
     private boolean hasRoute;
     private double stuckX = Double.NaN, stuckY;
     private long stuckMs = -1;
+    private long legMs = -1; // when the current leg's pathTo was issued (-1: at the next frame)
 
     @Override
     public void start() {
@@ -83,6 +86,7 @@ public final class SceneWalk implements SceneDriver.Action {
             index = 0;
             stuckX = Double.NaN;
             stuckMs = -1;
+            legMs = -1;
             walker.pathTo(originX + route[0][0], originY + route[0][1], originZ);
         } catch (Throwable t) { SceneDriver.guard.fail(t); }
     }
@@ -95,6 +99,8 @@ public final class SceneWalk implements SceneDriver.Action {
             Result r = walker.update();
             if (r == Result.SUCCEEDED) {
                 index = next(index, route.length);
+                legMs = nowMs;
+                stuckX = Double.NaN;
                 walker.pathTo(originX + route[index][0], originY + route[index][1], originZ);
             } else if (r == Result.FAILED) {
                 SceneDriver.end("path failed");
@@ -106,11 +112,18 @@ public final class SceneWalk implements SceneDriver.Action {
 
     private void checkStuck(long nowMs) {
         double x = walker.x(), y = walker.y();
+        if (legMs < 0) legMs = nowMs;
+        if (nowMs - legMs < STUCK_GRACE_MS) return;
         if (Double.isNaN(stuckX)) { stuckX = x; stuckY = y; stuckMs = nowMs; return; }
         long gap = nowMs - stuckMs;
         if (gap < STUCK_WINDOW_MS) return;
         double moved = Math.hypot(x - stuckX, y - stuckY);
-        if (stuck(moved, gap)) { SceneDriver.end("stuck"); return; }
+        if (stuck(moved, gap)) {
+            System.out.printf(java.util.Locale.ROOT, "[PZButter] devScene walk: stuck at %.1f,%.1f, leg %d/%d to %d,%d, moved %.2f tiles in %d ms%n",
+                x, y, index + 1, route.length, originX + route[index][0], originY + route[index][1], moved, gap);
+            SceneDriver.end("stuck");
+            return;
+        }
         stuckX = x; stuckY = y; stuckMs = nowMs;
     }
 
