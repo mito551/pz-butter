@@ -402,6 +402,8 @@ fi
 # The game reads the clipboard at start (and ImGui later); a remote-desktop clipboard owner never answers
 # and the game hangs. A local owner answers at once. This empties the clipboard.
 command -v wl-copy >/dev/null 2>&1 && printf ' ' | timeout 5 wl-copy 2>/dev/null
+# files the game leaves are copied only when this launch wrote them (a game that never starts leaves the last run's)
+LAUNCH_MARK="$RUN_DIR/.launch"; touch "$LAUNCH_MARK"
 echo "[step8] launching: $LAUNCH_LINE"
 if (( MANGO )); then
     export MANGOHUD=1
@@ -471,10 +473,11 @@ echo "[step9] game exited"
 if [[ -n "$PERF_PID" ]]; then wait "$PERF_PID" 2>/dev/null; fi
 if [[ -n "$SYSMON_PID" ]]; then kill "$SYSMON_PID" 2>/dev/null; wait "$SYSMON_PID" 2>/dev/null; SYSMON_PID=""; fi
 
-cp "$Z/console.txt" "$RUN_DIR/" 2>/dev/null || true
+fresh() { [[ -f "$1" && "$1" -nt "$LAUNCH_MARK" ]] || { [[ -f "$1" ]] && echo "[step9] not copied (older than this launch): $1"; false; }; }
+fresh "$Z/console.txt" && cp "$Z/console.txt" "$RUN_DIR/"
 # the game's own stdout: every "[ZB] patching" line and Byte Buddy error, including those before console.txt starts
-cp "$Z/projectzomboid.sh.log" "$RUN_DIR/game-stdout.log" 2>/dev/null || true
-cp "$Z"/pzbutter/*.out* "$RUN_DIR/" 2>/dev/null || true
+fresh "$Z/projectzomboid.sh.log" && cp "$Z/projectzomboid.sh.log" "$RUN_DIR/game-stdout.log"
+for f in "$Z"/pzbutter/*.out*; do fresh "$f" && cp "$f" "$RUN_DIR/"; done
 if [[ -f "/tmp/perf-${GAME_PID_ACTUAL}.map" ]]; then cp "/tmp/perf-${GAME_PID_ACTUAL}.map" "$RUN_DIR/" 2>/dev/null || true; fi
 [[ -f "$BENCH_SAVE/mods.txt" ]] && cp "$BENCH_SAVE/mods.txt" "$RUN_DIR/save-mods.txt" 2>/dev/null || true
 
