@@ -39,7 +39,7 @@ public final class MpClientPatches {
         }
 
         @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
-        public static void exit(@Patch.This VehicleFullUpdatePacket packet, @Patch.Argument(0) ByteBufferReader r,
+        public static void exit(@Patch.This Object packet, @Patch.Argument(0) ByteBufferReader r,
                 @Patch.Argument(1) IConnection c) {
             int[] range = RANGE.get();
             RANGE.remove();
@@ -75,8 +75,9 @@ public final class MpClientPatches {
         }
     }
 
-    public static boolean consistent(VehicleFullUpdatePacket p, IConnection c) {
-        return p.isConsistent(c);
+    /** Object, not VehicleFullUpdatePacket: a signature naming a @PacketSetting class breaks ZombieBuddy's preload (PreloadSafetyTest). */
+    public static boolean consistent(Object p, IConnection c) {
+        return ((VehicleFullUpdatePacket) p).isConsistent(c);
     }
 
     public static short id(byte[] body) {

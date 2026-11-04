@@ -56,6 +56,7 @@ public final class SelfTest {
         MpClientTest.run();
         NetStatsTest.run();
         ThirdPartyTest.run();
+        PreloadSafetyTest.run();
         delete(DIR);
         System.out.println("ok");
     }
