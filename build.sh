@@ -18,6 +18,7 @@ cp "$HERE"/src/pzbutter/census-*.txt "$B/test-classes/pzbutter/"
 "$JDK/bin/java" -ea -cp "$B/test-classes:$CP" pzbutter.SelfTest
 "$HERE"/tools/test_lua.sh
 python3 "$HERE/tools/check_readme.py"
+"$HERE"/tools/test_workshop.sh
 
 printf 'ZB-Preload: true\n' > "$B/MANIFEST.MF"
 "$JDK/bin/jar" --create --file "$B/PZButter.jar" --manifest "$B/MANIFEST.MF" -C "$B/classes" .
