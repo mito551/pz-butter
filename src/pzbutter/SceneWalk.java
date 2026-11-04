@@ -165,35 +165,50 @@ public final class SceneWalk implements SceneDriver.Action {
         try { walker.cancel(); } catch (Throwable t) { SceneDriver.guard.fail(t); }
     }
 
+    /**
+     * The game's own walk-to: ISPathFindAction (the timed action click-to-walk uses), so the path is followed inside the
+     * player's update. Calling PathFindBehavior2.update from a frame hook instead animates the walk without moving the
+     * player (it walks on the spot until the pathfinder gives up).
+     */
     private static final class GameWalker implements Walker {
+        private int tx, ty;
+        private long issuedMs;
+        private boolean started;
+
+        private static Object lua(String table, String fn, Object... args) {
+            Object f = zombie.Lua.LuaManager.env.rawget(table == null ? fn : table);
+            if (table != null) f = f instanceof se.krka.kahlua.vm.KahluaTable t ? t.rawget(fn) : null;
+            if (f == null) throw new IllegalStateException((table == null ? "" : table + ".") + fn + " not found");
+            Object[] r = zombie.Lua.LuaManager.caller.pcall(zombie.Lua.LuaManager.thread, f, args);
+            if (r == null || r.length == 0 || !Boolean.TRUE.equals(r[0]))
+                throw new IllegalStateException(fn + " failed: " + (r != null && r.length > 1 ? r[1] : "no result"));
+            return r.length > 1 ? r[1] : null;
+        }
+
         public void pathTo(int x, int y, int z) {
             try {
                 zombie.characters.IsoPlayer p = zombie.characters.IsoPlayer.getInstance();
                 if (p == null) return;
-                zombie.pathfind.PathFindBehavior2 b = p.getPathFindBehavior2();
-                if (b == null) return;
-                b.pathToLocation(x, y, z);
+                lua("ISTimedActionQueue", "clear", p);
+                lua(null, "ISPathFindAction_pathToLocationF", x + 0.5, y + 0.5, (double) z);
+                tx = x; ty = y; issuedMs = System.currentTimeMillis(); started = false;
             } catch (Throwable t) { SceneDriver.guard.fail(t); }
         }
         public Result update() {
             try {
                 zombie.characters.IsoPlayer p = zombie.characters.IsoPlayer.getInstance();
                 if (p == null) return Result.FAILED;
-                zombie.pathfind.PathFindBehavior2 b = p.getPathFindBehavior2();
-                if (b == null) return Result.FAILED;
-                zombie.pathfind.PathFindBehavior2.BehaviorResult r = b.update();
-                if (r == zombie.pathfind.PathFindBehavior2.BehaviorResult.Succeeded) return Result.SUCCEEDED;
-                if (r == zombie.pathfind.PathFindBehavior2.BehaviorResult.Failed) return Result.FAILED;
-                return Result.RUNNING;
+                if (!p.getCharacterActions().isEmpty()) { started = true; return Result.RUNNING; }
+                if (!started && System.currentTimeMillis() - issuedMs < 2_000) return Result.RUNNING; // queued, not begun yet
+                // the action ended: it succeeded when the player stands at the target
+                return Math.hypot(p.getX() - (tx + 0.5), p.getY() - (ty + 0.5)) <= 1.5 ? Result.SUCCEEDED : Result.FAILED;
             } catch (Throwable t) { SceneDriver.guard.fail(t); return Result.FAILED; }
         }
         public void cancel() {
             try {
                 zombie.characters.IsoPlayer p = zombie.characters.IsoPlayer.getInstance();
                 if (p == null) return;
-                zombie.pathfind.PathFindBehavior2 b = p.getPathFindBehavior2();
-                if (b == null) return;
-                b.cancel();
+                lua("ISTimedActionQueue", "clear", p);
             } catch (Throwable t) { SceneDriver.guard.fail(t); }
         }
         public boolean dead() {
