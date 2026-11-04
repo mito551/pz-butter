@@ -39,14 +39,28 @@ public final class SceneWalk implements SceneDriver.Action {
 
     public static int[][] parseRoute(String s) { return SceneDriver.parseRoute(s); }
 
+    /** Longest single pathfinder request: far targets lie outside the loaded chunks and fail. */
+    static final int HOP_TILES = 30;
+    /** Path failures in a row that end the scene (one failure skips to the next waypoint). */
+    static final int MAX_FAILS = 3;
+
+    /** The next request toward (tx,ty) from (px,py): the target itself, or a point maxTiles along the line. */
+    static int[] hop(int px, int py, int tx, int ty, int maxTiles) {
+        double d = Math.hypot(tx - px, ty - py);
+        if (d <= maxTiles) return new int[] {tx, ty};
+        double f = maxTiles / d;
+        return new int[] {px + (int) Math.round((tx - px) * f), py + (int) Math.round((ty - py) * f)};
+    }
+
     public static class Fake implements Walker {
         private final Result first;
         public Fake() { this.first = Result.FAILED; }
         public Fake(Result first) { this.first = first; }
         private boolean once = false;
         public double x, y;
+        public int lastX, lastY;
         public Result lastUpdate() { return first; }
-        public void pathTo(int x, int y, int z) { }
+        public void pathTo(int x, int y, int z) { lastX = x; lastY = y; once = false; }
         public Result update() {
             if (!once) { once = true; return first; }
             return Result.RUNNING;
@@ -65,6 +79,8 @@ public final class SceneWalk implements SceneDriver.Action {
     private double stuckX = Double.NaN, stuckY;
     private long stuckMs = -1;
     private long legMs = -1; // when the current leg's pathTo was issued (-1: at the next frame)
+    private boolean finalHop; // the request in flight ends at the waypoint itself
+    private int fails;
 
     @Override
     public void start() {
@@ -87,7 +103,8 @@ public final class SceneWalk implements SceneDriver.Action {
             stuckX = Double.NaN;
             stuckMs = -1;
             legMs = -1;
-            walker.pathTo(originX + route[0][0], originY + route[0][1], originZ);
+            fails = 0;
+            request();
         } catch (Throwable t) { SceneDriver.guard.fail(t); }
     }
 
@@ -97,17 +114,28 @@ public final class SceneWalk implements SceneDriver.Action {
         try {
             if (walker.dead()) { SceneDriver.end("player dead"); return; }
             Result r = walker.update();
-            if (r == Result.SUCCEEDED) {
-                index = next(index, route.length);
+            if (r == Result.SUCCEEDED || r == Result.FAILED) {
+                if (r == Result.FAILED) {
+                    fails++;
+                    System.out.printf(java.util.Locale.ROOT, "[PZButter] devScene walk: path failed at %.1f,%.1f, leg %d/%d to %d,%d (%d in a row)%n",
+                        walker.x(), walker.y(), index + 1, route.length, originX + route[index][0], originY + route[index][1], fails);
+                    if (fails >= MAX_FAILS) { SceneDriver.end("path failed"); return; }
+                } else fails = 0;
+                if (finalHop || r == Result.FAILED) index = next(index, route.length);
                 legMs = nowMs;
                 stuckX = Double.NaN;
-                walker.pathTo(originX + route[index][0], originY + route[index][1], originZ);
-            } else if (r == Result.FAILED) {
-                SceneDriver.end("path failed");
-                return;
+                request();
             }
             checkStuck(nowMs);
         } catch (Throwable t) { SceneDriver.guard.fail(t); }
+    }
+
+    private void request() {
+        int tx = originX + route[index][0], ty = originY + route[index][1];
+        double x = walker.x(), y = walker.y();
+        int[] h = Double.isNaN(x) ? new int[] {tx, ty} : hop((int) Math.floor(x), (int) Math.floor(y), tx, ty, HOP_TILES);
+        finalHop = h[0] == tx && h[1] == ty;
+        walker.pathTo(h[0], h[1], originZ);
     }
 
     private void checkStuck(long nowMs) {

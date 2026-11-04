@@ -26,6 +26,7 @@ final class DevTest {
         routeBadIsNull();
         walkNextWaypoint();
         walkFailedEndsScene();
+        walkHops();
         walkEndsWhenStuck();
         virtualKeyHold();
         virtualKeysReleasedOnEnd();
@@ -304,12 +305,39 @@ final class DevTest {
         SceneDriver.onWorldReady();
         SceneDriver.tick(1_000);
         SceneDriver.tick(1_000 + 20_000);
-        SceneDriver.tick(1_000 + 20_016);
+        SceneDriver.tick(1_000 + 20_016); // fail 1: skip to the next waypoint
+        SceneDriver.tick(1_000 + 20_032); // fail 2
         java.util.List<String> lines = java.nio.file.Files.readAllLines(f);
+        assert lines.size() == 1 : lines;
+        SceneDriver.tick(1_000 + 20_048); // fail 3 in a row: end
+        lines = java.nio.file.Files.readAllLines(f);
         assert lines.size() == 2 : lines;
         assert lines.get(1).contains("failed: path failed") : lines.get(1);
         Settings.load(SelfTest.write("enabled=true\n"));
         SceneDriver.resetForTest();
+    }
+
+    static void walkHops() {
+        // a far waypoint is walked in hops of at most HOP_TILES toward it
+        int[] h = SceneWalk.hop(0, 0, 100, 0, 30);
+        assert h[0] == 30 && h[1] == 0 : java.util.Arrays.toString(h);
+        h = SceneWalk.hop(10, 10, 10, -90, 30);
+        assert h[0] == 10 && h[1] == -20 : java.util.Arrays.toString(h);
+        h = SceneWalk.hop(0, 0, 20, 5, 30); // near: the waypoint itself
+        assert h[0] == 20 && h[1] == 5 : java.util.Arrays.toString(h);
+        // a hop that succeeds short of the waypoint keeps the waypoint; reaching it moves on
+        Settings.load(SelfTest.write("enabled=true\ndevScene=walk\ndevRoute=100,0;0,0\n"));
+        SceneWalk.Fake fake = new SceneWalk.Fake(SceneWalk.Result.SUCCEEDED);
+        SceneWalk w = new SceneWalk(fake);
+        w.start();
+        assert fake.lastX == 30 && fake.lastY == 0 : fake.lastX + "," + fake.lastY;
+        fake.x = 30; w.frame(1_000);
+        assert fake.lastX == 60 : fake.lastX;
+        fake.x = 90; w.frame(1_016);
+        assert fake.lastX == 100 : fake.lastX;
+        fake.x = 100; w.frame(1_032); // waypoint 1 reached: toward 0,0
+        assert fake.lastX == 70 : fake.lastX;
+        Settings.load(SelfTest.write("enabled=true\n"));
     }
 
     static void walkEndsWhenStuck() throws Exception {
