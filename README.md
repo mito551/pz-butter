@@ -200,6 +200,16 @@ These keys act only on a dedicated server or a game hosted from the menu; on a c
 |---|---|
 | `handlerCensus` | Diagnostic and public API. Wraps `Events.<Name>.Add/.Remove` for per-tick and per-frame events, records each handler's function, source file, first line and registration count, then at `OnGameStart`/`OnGameBoot` assigns it to its mod folder and prints one overview line. Run-time registrations only bump a counter. On by default. |
 
+### Vehicle mod handlers (Plan 19)
+
+These keys act on a multiplayer client only; on a dedicated server they stay off.
+
+| Key | What it does |
+|---|---|
+| `ki5Bundle` | Removes the recognised KI5 vehicle handlers from `OnPlayerUpdate` and calls them from one dispatcher at the end. On foot, handlers whose on-foot effect is none do not run; in a vehicle only handlers whose type filter matches. Off by default. |
+| `ki5SyncMs` | How often a `sync` handler may run while the vehicle, type and seat stay the same. A change runs it at once. Default 100 ms. |
+| `ki5PartModThrottle` | While an `every` handler runs, lets one `BaseVehicle.transmitPartModData` call per vehicle part through per 100 ms and sends the last suppressed state when the handler returns. Off by default. |
+
 ### Multiplayer client (Plan 18)
 
 These keys act only on a multiplayer client; on a server they stay off.

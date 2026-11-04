@@ -44,7 +44,7 @@ final class ModCompat {
     static final Class<?>[] OUTERS = {Patches.class, DeliveryPatches.class, LuaPatches.class, UiPatches.class, MapPatches.class,
         SoundPatches.class, WorldPatches.class, ChunkPatches.class, LogPatches.class, ZombiePatches.class, GpuPatches.class, CensusPatches.class,
         VehiclePatches.class, StreamPatches.class, LoadPatches.class, RuntimePatches.class, DevPatches.class, CameraPatches.class, ClockPatches.class,
-        ServerPatches.class, HostPatches.class, MpClientPatches.class, NetStatsPatches.class};
+        ServerPatches.class, HostPatches.class, MpClientPatches.class, NetStatsPatches.class, ThirdPartyPatches.class};
 
     private static final String PATCH = "Lme/zed_0xff/zombie_buddy/Patch;";
     private static final String ON_ENTER = "Lme/zed_0xff/zombie_buddy/Patch$OnEnter;";
@@ -272,6 +272,7 @@ Map.entry("LoadPatches.WaitFileTask", k("textureBufferMb")),
         Map.entry("MpClientPatches.ClientTick", k("vehicleEarlyParse", "chunkRefill")),
         Map.entry("NetStatsPatches.PacketSend", k("netStats")),
         Map.entry("NetStatsPatches.PacketSent", k("netStats")),
+        Map.entry("ThirdPartyPatches.PartModData", k("ki5PartModThrottle")),
         Map.entry("NetStatsPatches.ClientReceive", k("netStats")),
         Map.entry("NetStatsPatches.ClientLoading", k("netStats")),
         Map.entry("NetStatsPatches.ServerReceive", k("netStats")));
