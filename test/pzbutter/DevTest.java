@@ -341,6 +341,16 @@ final class DevTest {
         assert fake.lastX == 100 : fake.lastX;
         fake.x = 100; w.frame(1_032); // waypoint 1 reached: toward 0,0
         assert fake.lastX == 70 : fake.lastX;
+        // a failed far request retries closer (30, 15, 7, 3 tiles) before it counts and skips the waypoint
+        SceneWalk.Fake no = new SceneWalk.Fake(SceneWalk.Result.FAILED);
+        SceneWalk v = new SceneWalk(no);
+        v.start();
+        assert no.lastX == 30 : no.lastX;
+        v.frame(2_000); assert no.lastX == 15 : no.lastX;
+        v.frame(2_016); assert no.lastX == 7 : no.lastX;
+        v.frame(2_032); assert no.lastX == 3 : no.lastX;
+        v.frame(2_048); // counted: on to waypoint 2 (0,0), which is the start square itself
+        assert no.lastX == 0 && no.lastY == 0 : no.lastX + "," + no.lastY;
         Settings.load(SelfTest.write("enabled=true\n"));
     }
 

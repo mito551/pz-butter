@@ -89,6 +89,7 @@ public final class SceneWalk implements SceneDriver.Action {
     private boolean finalHop; // the request in flight ends at the waypoint itself
     private int lastX, lastY; // the request in flight
     private int fails;
+    private int hopLen = HOP_TILES; // halves after a failed far request
 
     @Override
     public void start() {
@@ -112,6 +113,7 @@ public final class SceneWalk implements SceneDriver.Action {
             stuckMs = -1;
             legMs = -1;
             fails = 0;
+            hopLen = HOP_TILES;
             request();
         } catch (Throwable t) { SceneDriver.guard.fail(t); }
     }
@@ -123,6 +125,13 @@ public final class SceneWalk implements SceneDriver.Action {
             if (walker.dead()) { SceneDriver.end("player dead"); return; }
             Result r = walker.update();
             if (r == Result.SUCCEEDED || r == Result.FAILED) {
+                if (r == Result.FAILED && !finalHop && hopLen > 4) {
+                    hopLen /= 2;   // an obstacle or an unreachable square on the line: try closer first
+                    legMs = nowMs;
+                    stuckX = Double.NaN;
+                    request();
+                    return;
+                }
                 if (r == Result.FAILED) {
                     fails++;
                     System.out.println(String.format(java.util.Locale.ROOT, "[PZButter] devScene walk: path failed at %.1f,%.1f to %d,%d, leg %d/%d to %d,%d (%d in a row)%s",
@@ -130,6 +139,7 @@ public final class SceneWalk implements SceneDriver.Action {
                         walker.where(lastX, lastY, originZ)));
                     if (fails >= MAX_FAILS) { SceneDriver.end("path failed"); return; }
                 } else fails = 0;
+                hopLen = HOP_TILES;
                 if (finalHop || r == Result.FAILED) index = next(index, route.length);
                 legMs = nowMs;
                 stuckX = Double.NaN;
@@ -142,7 +152,7 @@ public final class SceneWalk implements SceneDriver.Action {
     private void request() {
         int tx = originX + route[index][0], ty = originY + route[index][1];
         double x = walker.x(), y = walker.y();
-        int[] h = Double.isNaN(x) ? new int[] {tx, ty} : hop((int) Math.floor(x), (int) Math.floor(y), tx, ty, HOP_TILES);
+        int[] h = Double.isNaN(x) ? new int[] {tx, ty} : hop((int) Math.floor(x), (int) Math.floor(y), tx, ty, hopLen);
         finalHop = h[0] == tx && h[1] == ty;
         lastX = h[0]; lastY = h[1];
         walker.pathTo(h[0], h[1], originZ);
