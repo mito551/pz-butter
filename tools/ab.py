@@ -36,6 +36,11 @@ def order_for(runs_per_arm, order="ABBA"):
     return seq[: runs_per_arm * 2]
 
 
+def arm_for(arms, letter):
+    """The arm a plan letter names: A is the first --arm, B the second."""
+    return arms["AB".index(letter)]
+
+
 def remaining(plan, done):
     """Runs still to do; done is the number of finished runs, so a rerun never repeats one."""
     return plan[done:]
@@ -210,7 +215,8 @@ def main(argv=None):
     todo = remaining(record["order"], len(record["done"]))
     print("plan %s, %d done, %d to run" % ("".join(record["order"]), len(record["done"]), len(todo)))
     for i, arm_name in enumerate(todo, start=len(record["done"])):
-        arm = next(a for a in arms if a["name"] == arm_name)
+        arm = arm_for(arms, arm_name)
+        arm_name = arm["name"]
         props = BASE_PROPS + ((" " + arm["props"]) if arm["props"] else "")
         run_dir = run_once(args.run_sh, args.scene, args.list, args.save, props, args.out,
                            arm.get("run_args", ""))
