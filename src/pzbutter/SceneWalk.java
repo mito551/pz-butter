@@ -46,6 +46,11 @@ public final class SceneWalk implements SceneDriver.Action {
     /** Path failures in a row that end the scene (one failure skips to the next waypoint). */
     static final int MAX_FAILS = 3;
 
+    /** An ended walk-to succeeded: at the target, or at least 2 tiles moved from where it began. */
+    static boolean arrived(double x, double y, int tx, int ty, double fromX, double fromY) {
+        return Math.hypot(x - (tx + 0.5), y - (ty + 0.5)) <= 1.5 || Math.hypot(x - fromX, y - fromY) >= 2.0;
+    }
+
     /** The next request toward (tx,ty) from (px,py): the target itself, or a point maxTiles along the line. */
     static int[] hop(int px, int py, int tx, int ty, int maxTiles) {
         double d = Math.hypot(tx - px, ty - py);
@@ -172,6 +177,7 @@ public final class SceneWalk implements SceneDriver.Action {
      */
     private static final class GameWalker implements Walker {
         private int tx, ty;
+        private double fromX, fromY;
         private long issuedMs;
         private boolean started;
 
@@ -191,7 +197,7 @@ public final class SceneWalk implements SceneDriver.Action {
                 if (p == null) return;
                 lua("ISTimedActionQueue", "clear", p);
                 lua(null, "ISPathFindAction_pathToLocationF", x + 0.5, y + 0.5, (double) z);
-                tx = x; ty = y; issuedMs = System.currentTimeMillis(); started = false;
+                tx = x; ty = y; fromX = p.getX(); fromY = p.getY(); issuedMs = System.currentTimeMillis(); started = false;
             } catch (Throwable t) { SceneDriver.guard.fail(t); }
         }
         public Result update() {
@@ -200,8 +206,9 @@ public final class SceneWalk implements SceneDriver.Action {
                 if (p == null) return Result.FAILED;
                 if (!p.getCharacterActions().isEmpty()) { started = true; return Result.RUNNING; }
                 if (!started && System.currentTimeMillis() - issuedMs < 2_000) return Result.RUNNING; // queued, not begun yet
-                // the action ended: it succeeded when the player stands at the target
-                return Math.hypot(p.getX() - (tx + 0.5), p.getY() - (ty + 0.5)) <= 1.5 ? Result.SUCCEEDED : Result.FAILED;
+                // the action ended. The path stops where the reachable part ends (a fence, a closed building): any real
+                // progress counts, and the next hop starts from there
+                return arrived(p.getX(), p.getY(), tx, ty, fromX, fromY) ? Result.SUCCEEDED : Result.FAILED;
             } catch (Throwable t) { SceneDriver.guard.fail(t); return Result.FAILED; }
         }
         public void cancel() {

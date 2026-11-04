@@ -318,6 +318,10 @@ final class DevTest {
     }
 
     static void walkHops() {
+        // an ended walk-to: at the target, or 2+ tiles of progress, succeeded; no progress failed
+        assert SceneWalk.arrived(10.6, 10.4, 10, 10, 0, 0);
+        assert SceneWalk.arrived(5.0, 0.0, 30, 0, 0, 0);     // stopped short at a fence, 5 tiles walked
+        assert !SceneWalk.arrived(0.5, 0.5, 30, 0, 0, 0);    // did not move
         // a far waypoint is walked in hops of at most HOP_TILES toward it
         int[] h = SceneWalk.hop(0, 0, 100, 0, 30);
         assert h[0] == 30 && h[1] == 0 : java.util.Arrays.toString(h);
