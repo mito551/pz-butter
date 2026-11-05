@@ -276,7 +276,13 @@ Map.entry("LoadPatches.WaitFileTask", k("textureBufferMb")),
         Map.entry("ThirdPartyPatches.PartModData", k("mod:PZButter_KI5")),   // a fix mod has no key: Settings.forcedOff gets "mod:<id>"
         Map.entry("NetStatsPatches.ClientReceive", k("netStats")),
         Map.entry("NetStatsPatches.ClientLoading", k("netStats")),
-        Map.entry("NetStatsPatches.ServerReceive", k("netStats")));
+        Map.entry("NetStatsPatches.ServerReceive", k("netStats")),
+        Map.entry("MpClientPatches.VehicleIntake", k("vehicleRemoteSmooth")),
+        Map.entry("MpClientPatches.VehiclePose", k("vehicleRemoteSmooth")),
+        Map.entry("MpClientPatches.VehicleClear", k("vehicleRemoteSmooth")),
+        Map.entry("MpClientPatches.VehicleParse", k("vehicleRemoteSmooth")),
+        Map.entry("MpClientPatches.VehicleFrame", k("vehicleRemoteSmooth", "vehicleSendMs")),
+        Map.entry("MpClientPatches.VehicleSend", k("vehicleSendMs")));
 
     // ---- reading @Patch annotations without loading the class ----
 
