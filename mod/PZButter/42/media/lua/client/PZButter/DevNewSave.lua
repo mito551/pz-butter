@@ -30,6 +30,10 @@ function PZButterDevNewSave(name, at)
     getWorld():setLuaPosX(tonumber(x))
     getWorld():setLuaPosY(tonumber(y))
     getWorld():setLuaPosZ(tonumber(z))
+    -- the save's mods.txt is written from "currentGame": copy the active list into it first, as
+    -- MainScreen.resetLuaIfNeeded does ("in case other places forget to set it before starting a game"); without it
+    -- the first save came out with an empty mods {} block
+    ActiveMods.getById("currentGame"):copyFrom(ActiveMods.getById("default"))
     Events.OnNewGame.Add(dress)
     print("[PZButter] devNewSave: creating Sandbox/" .. name .. " at " .. x .. "," .. y .. "," .. z)
     createWorld(name)
