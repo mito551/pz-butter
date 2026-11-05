@@ -210,6 +210,14 @@ These keys act on a multiplayer client only; on a dedicated server they stay off
 | `ki5SyncMs` | How often a `sync` handler may run while the vehicle, type and seat stay the same. A change runs it at once. Default 100 ms. |
 | `ki5PartModThrottle` | While an `every` handler runs, lets one `BaseVehicle.transmitPartModData` call per vehicle part through per 100 ms and sends the last suppressed state when the handler returns. Off by default. |
 
+### Third-party fixes (Plan 19)
+
+| Key | What it does |
+|---|---|
+| `tsarPoll` | On a client with tsarslib, replaces its `OnTick` handler that asks the server for animation data every 100 ticks with one request per `tsarPollMin` minutes. Off by default. |
+| `tsarPollMin` | Minutes between tsarslib animation-data requests; `0` never asks again. Default 5. |
+| `damnSquareIndex` | With damnlib, indexes its vehicle-spawn squares so `checkSquare` skips the string build and table lookup on a miss, and runs the original on a hit. The index rebuilds after a spawn is added. Shared with the server; off by default. |
+
 ### Multiplayer client (Plan 18)
 
 These keys act only on a multiplayer client; on a server they stay off.

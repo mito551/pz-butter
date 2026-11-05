@@ -160,6 +160,9 @@ public final class LuaPatches {
             t.rawset("ki5Bundle", Settings.flag("ki5Bundle"));
             t.rawset("ki5SyncMs", Settings.num("ki5SyncMs", 100, 0, 60000));
             t.rawset("ki5PartModThrottle", Settings.flag("ki5PartModThrottle"));
+            t.rawset("tsarPoll", Settings.flag("tsarPoll"));
+            t.rawset("tsarPollMin", Settings.num("tsarPollMin", 5, 0, 1440));
+            t.rawset("damnSquareIndex", Settings.flag("damnSquareIndex"));
             t.rawset("ki5EveryStart", new JavaFunction() {
                 public int call(LuaCallFrame frame, int n) { ThirdParty.beginEvery(); return 0; }
             });
