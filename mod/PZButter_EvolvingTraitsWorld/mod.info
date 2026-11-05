@@ -1,0 +1,9 @@
+name=PZ Butter fix: EvolvingTraitsWorld (from ETW_Perf)
+id=PZButter_EvolvingTraitsWorld
+versionMin=42.19
+require=\EvolvingTraitsWorld,\ZombieBuddy
+ZBVersionMin=2.3.0
+javaJarFile=media/java/ETWPerf.jar
+javaPkgName=etw.perf
+description=Load-after performance patch for Evolving Traits World. Replaces hot Lua paths and adds Java helpers: a shared nearby-zombie scan and one gated per-tick dispatcher for all ETW tick handlers.
+loadModAfter=EvolvingTraitsWorld

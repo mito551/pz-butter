@@ -1,0 +1,6 @@
+name=PZ Butter fix: SunflowersUltimateCharacterOverhaul (from ISH_Perf)
+id=PZButter_SunflowersUltimateCharacterOverhaul
+versionMin=42.21
+require=\SunflowersUltimateCharacterOverhaul
+description=Load-after patch for Sunflower's Ultimate Character Overhaul. Writes the ~118 animation variables only when they change instead of every tick, and spreads the survivor scan over several ticks.
+loadModAfter=SunflowersUltimateCharacterOverhaul

@@ -1,0 +1,9 @@
+name=PZ Butter fix: WhoseKeyIsThis (from WKT_Perf)
+id=PZButter_WhoseKeyIsThis
+versionMin=42.0.0
+require=\ZombieBuddy,\WhoseKeyIsThis
+javaJarFile=media/java/client/WKTPerf.jar
+javaPkgName=wkt.perf
+ZBVersionMin=2.3.0
+description=Load-after patch for Whose Key Is This?. Fewer per-frame calculations in the in-world arrow, a ground-key search that reads only on-screen squares that hold items (or, with the optional ZombieBuddy jar, keys the renderer drew), cached inventory name colours and container stars, and a shared key list. Overrides WKT_GroundKeys and WKT_InventoryMark.
+loadModAfter=WhoseKeyIsThis

@@ -24,6 +24,8 @@ DRY=0
 TIMEOUT=""
 TIMEOUT_SET=0
 JVM_EXTRA=""
+ADD_MODS=()
+REMOVE_MODS=()
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -40,12 +42,14 @@ while [[ $# -gt 0 ]]; do
         --dry-run) DRY=1; shift ;;
         --timeout) TIMEOUT="$2"; TIMEOUT_SET=1; shift 2 ;;
         --jvm) JVM_EXTRA="$2"; shift 2 ;;
+        --add-mod) ADD_MODS+=("$2"); shift 2 ;;
+        --remove-mod) REMOVE_MODS+=("$2"); shift 2 ;;
         *) echo "unknown arg: $1"; exit 2 ;;
     esac
 done
 
 if [[ -z "$SCENE" || -z "$LIST" || -z "$SAVE" ]]; then
-    echo "usage: run.sh --scene NAME --list bare|full --save MODE/SAVE [--props \"k=v ...\"] [--perf] [--mangohud] [--apitrace] [--renderer nvidia|zink] [--jfr-period MS] [--out DIR] [--dry-run] [--timeout SEC] [--jvm \"...\"]"; exit 2
+    echo "usage: run.sh --scene NAME --list bare|full --save MODE/SAVE [--props \"k=v ...\"] [--perf] [--mangohud] [--apitrace] [--renderer nvidia|zink] [--jfr-period MS] [--out DIR] [--dry-run] [--timeout SEC] [--jvm \"...\"] [--add-mod ID]... [--remove-mod ID]..."; exit 2
 fi
 if [[ "$LIST" != "bare" && "$LIST" != "full" ]]; then echo "list must be bare or full"; exit 2; fi
 
@@ -292,6 +296,32 @@ if [[ "$CHOSEN_IDS" != "$BENCH_IDS" ]]; then
     die "save mod list does not match chosen list"
 fi
 
+# step 5b: A/B of a fix mod (Plan 19) is "list" against "list plus the fix mod" on the same save. After I2, so I2
+# still compares the user's own list with the save. The trap restores default.txt; the bench copy is per run.
+for m in "${ADD_MODS[@]}"; do
+    [[ -d "$Z/mods/$m" ]] || die "--add-mod $m: not installed in $Z/mods (./build.sh --install installs the fix mods)"
+    if (( DRY )); then
+        echo "+ add mod $m to $Z/mods/default.txt and $BENCH_SAVE/mods.txt (dry-run: skipped)"
+    else
+        add_mod "$Z/mods/default.txt" "$m" || die "--add-mod $m: default.txt edit failed"
+        add_mod "$BENCH_SAVE/mods.txt" "$m" || die "--add-mod $m: bench mods.txt edit failed"
+        echo "[step5b] added $m"
+    fi
+done
+# its twin: an A/B of a local _Perf mod is "list without it" against "list with it"
+for m in "${REMOVE_MODS[@]}"; do
+    if (( DRY )); then
+        echo "+ remove mod $m from $Z/mods/default.txt and $BENCH_SAVE/mods.txt (dry-run: skipped)"
+    else
+        remove_mod "$Z/mods/default.txt" "$m" || die "--remove-mod $m: default.txt edit failed"
+        remove_mod "$BENCH_SAVE/mods.txt" "$m" || die "--remove-mod $m: bench mods.txt edit failed"
+        echo "[step5b] removed $m"
+    fi
+done
+if (( (${#ADD_MODS[@]} || ${#REMOVE_MODS[@]}) && ! DRY )); then cp "$Z/mods/default.txt" "$RUN_DIR/modlist.used.txt" || die "mod list copy failed"; fi
+ADDED_MODS="$(IFS=,; echo "${ADD_MODS[*]}")"
+REMOVED_MODS="$(IFS=,; echo "${REMOVE_MODS[*]}")"
+
 # step6 properties
 echo "[step6] write properties"
 if (( DRY )); then
@@ -366,6 +396,8 @@ save=$SAVE
 props=$PROPS_LINE
 chosen_mods=$CHOSEN_IDS
 bench_mods=$BENCH_IDS
+added_mods=$ADDED_MODS
+removed_mods=$REMOVED_MODS
 jvm=$JVM_STR
 jvm_extra=$JVM_EXTRA
 apitrace=$APITRACE
@@ -506,6 +538,8 @@ save=$SAVE
 props=$PROPS_LINE
 chosen_mods=$CHOSEN_IDS
 bench_mods=$BENCH_IDS
+added_mods=$ADDED_MODS
+removed_mods=$REMOVED_MODS
 jvm=$JVM_STR
 apitrace=$APITRACE
 renderer=$RENDERER

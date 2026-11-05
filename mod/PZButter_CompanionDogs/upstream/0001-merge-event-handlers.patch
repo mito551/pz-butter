@@ -1,0 +1,55 @@
+--- a/42/media/lua/shared/CompanionDogs/Perf.lua
++++ b/42/media/lua/shared/CompanionDogs/Perf.lua
+@@ -188,7 +188,52 @@
+ ---@param ev table engine event, such as Events.OnTick
+ ---@param fn function
+ ---@param key string zone the handler is credited to
++-- OnTick and OnPlayerUpdate carry ~30 of our handlers. Every engine listener is a Java -> Lua call,
++-- so they share ONE listener per event and are called from Lua. Set CD.MERGE_EVENT_HANDLERS = false
++-- before the client/server files load to get one listener per handler again.
++if CD.MERGE_EVENT_HANDLERS == nil then CD.MERGE_EVENT_HANDLERS = true end
++local MAX_LOGGED_HANDLER_ERRORS = 3
++local merged = {}
++
++---@param ev table engine event
++---@return table m { fns, keys, errors, n } handlers sharing the event's one listener
++local function mergedListener(ev)
++    local m = merged[ev]
++    if m then return m end
++    m = { fns = {}, keys = {}, errors = {}, n = 0 }
++    merged[ev] = m
++    local fns, keys, errors = m.fns, m.keys, m.errors
++    ev.Add(function(a, b, c, d)
++        for i = 1, m.n do
++            -- the engine isolates a listener's errors from the next one; keep doing so
++            local ok, err
++            if CD._perfLv < 1 then
++                ok, err = pcall(fns[i], a, b, c, d)
++            else
++                CD.perfEnter(keys[i])
++                ok, err = pcall(fns[i], a, b, c, d)
++                CD.perfExit()
++            end
++            if not ok then
++                local n = (errors[i] or 0) + 1
++                errors[i] = n
++                if n <= MAX_LOGGED_HANDLER_ERRORS then
++                    CD.log("[CD-EVENT] handler '" .. tostring(keys[i]) .. "' raised: " .. tostring(err))
++                end
++            end
++        end
++    end)
++    return m
++end
++
+ function CD.evAdd(ev, fn, key)
++    if CD.MERGE_EVENT_HANDLERS and (ev == Events.OnTick or ev == Events.OnPlayerUpdate) then
++        local m = mergedListener(ev)
++        local n = m.n + 1
++        m.fns[n], m.keys[n] = fn, key
++        m.n = n
++        return
++    end
+     ev.Add(function(a, b, c, d)
+         if CD._perfLv < 1 then return fn(a, b, c, d) end
+         CD.perfEnter(key)

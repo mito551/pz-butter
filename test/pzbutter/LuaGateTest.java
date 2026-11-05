@@ -1331,7 +1331,7 @@ final class LuaGateTest {
         assert holders.equals(ModCompat.KEYS.keySet()) : "missing or stale: " + holders + " vs " + ModCompat.KEYS.keySet();
         for (java.util.Map.Entry<String, String[]> e : ModCompat.KEYS.entrySet()) {
             assert e.getValue().length > 0 : e.getKey();
-            for (String k : e.getValue()) assert !k.equals("enabled") && !k.equals("frameLog") && template.contains("\n" + k + "=") : e.getKey() + " " + k;
+            for (String k : e.getValue()) assert !k.equals("enabled") && !k.equals("frameLog") && (k.startsWith("mod:PZButter_") || template.contains("\n" + k + "=")) : e.getKey() + " " + k;
         }
         // every PZ Butter Plan 7 holder names its own key
         assert java.util.Arrays.asList(ModCompat.KEYS.get("LuaPatches.FileWriter")).equals(java.util.List.of("luaFileWriteThrottle"));
@@ -1355,6 +1355,7 @@ final class LuaGateTest {
         String template = Settings.render(new java.util.Properties());
         java.util.Set<String> all = new java.util.TreeSet<>(), values = new java.util.TreeSet<>();
         for (String[] ks : ModCompat.KEYS.values()) all.addAll(java.util.Arrays.asList(ks));
+        all.removeIf(k -> k.startsWith("mod:"));   // a fix mod has no key: ThirdPartyTest.forcedOffModIsOff checks it
         for (String k : all) {
             int i = template.indexOf("\n" + k + "=");
             String v = template.substring(i + k.length() + 2, template.indexOf('\n', i + 1));

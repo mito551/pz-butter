@@ -1,0 +1,9 @@
+name=PZ Butter fix: CyesPushDoors (from CPD_Perf)
+id=PZButter_CyesPushDoors
+versionMin=42.20
+require=\CyesPushDoors,\ZombieBuddy
+ZBVersionMin=2.3.0
+javaJarFile=media/java/client/CPDPerf.jar
+javaPkgName=cpd.perf
+description=Load-after performance build of Cye's Push Doors: the nearby-door scan works from a cache instead of walking 25 squares every other tick, with an optional Java helper for the door query and for door-toggle events.
+loadModAfter=CyesPushDoors

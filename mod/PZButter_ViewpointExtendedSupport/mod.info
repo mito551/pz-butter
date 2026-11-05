@@ -1,0 +1,9 @@
+name=PZ Butter fix: ViewpointExtendedSupport (from VES_Perf)
+id=PZButter_ViewpointExtendedSupport
+versionMin=42.20
+require=\ZombieBuddy,\Viewpoint,\ViewpointExtendedSupport
+ZBVersionMin=2.3.0
+javaJarFile=media/java/client/VESPerf.jar
+javaPkgName=ves.perf
+description=Load-after performance build of Viewpoint Extended Support's per-tick UI/cursor logic. Overrides ViewpointExtendedSupport.lua; the optional Java helper makes the window scan a single call.
+loadModAfter=ViewpointExtendedSupport

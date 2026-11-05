@@ -1,0 +1,5 @@
+# Fix mods built but not packaged or installed: one PZButter_<Target> id per line.
+# Their targets are gone for now (the Viewpoint add-ons; back with the next Viewpoint version).
+PZButter_ViewpointExtendedSupport
+PZButter_ViewpointLivingProps
+PZButter_SunflowersUltimateCharacterOverhaul

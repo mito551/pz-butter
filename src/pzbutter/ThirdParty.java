@@ -6,9 +6,9 @@ import java.util.function.BiConsumer;
 import zombie.vehicles.BaseVehicle;
 import zombie.vehicles.VehiclePart;
 
-/** KI5 part-mod throttle helpers. See SPEC 6.8.1 (ki5PartModThrottle). */
+/** Fix-mod switch (Plan 19: a fix is on when its PZButter_<Target> mod is enabled) and the KI5 part-mod throttle helpers (SPEC 6.8.1). */
 public final class ThirdParty {
-    static final Guard guard = new Guard("ki5PartModThrottle");
+    static final Guard guard = new Guard("PZButter_KI5 part-mod throttle");
     static final long WINDOW_MS = 100;
     static volatile int everyDepth;
     static volatile Boolean testOn;
@@ -20,9 +20,32 @@ public final class ThirdParty {
 
     private ThirdParty() {}
 
+    /** The game's activated mods: LuaManager.GlobalObject.getActivatedMods() returns this same list. Test seam. */
+    static java.util.function.Supplier<java.util.List<String>> modIds = () -> zombie.ZomboidFileSystem.instance.getModIDs();
+    private static volatile java.util.Set<String> activeIds;
+
+    /** True when mod {@code modId} is enabled. The list is read once per Lua load (LuaPatches.onLuaLoad resets it). */
+    public static boolean active(String modId) {
+        java.util.Set<String> ids = activeIds;
+        if (ids == null) {
+            try {
+                ids = new java.util.HashSet<>();
+                for (String id : modIds.get()) if (id != null) ids.add(id.startsWith("\\") ? id.substring(1) : id);
+            } catch (Throwable t) {
+                return false;   // not readable yet (before the file system starts): read again on the next call
+            }
+            activeIds = ids;
+        }
+        return ids.contains(modId);
+    }
+
+    static void resetActive() { activeIds = null; }
+
     static boolean on() {
         Boolean t = testOn;
-        return t != null ? t : Settings.flag("ki5PartModThrottle");
+        if (t != null) return t;
+        // PZButter_KI5 is the switch: on while that fix mod is enabled, unless modCompat=auto switched it off; client only
+        return !Side.server() && active("PZButter_KI5") && !Settings.forcedOff.contains("mod:PZButter_KI5");
     }
 
     public static void beginEvery() {
@@ -84,6 +107,8 @@ public final class ThirdParty {
     }
 
     static void resetForTest() {
+        resetActive();
+        modIds = () -> zombie.ZomboidFileSystem.instance.getModIDs();
         everyDepth = 0;
         testOn = null;
         allowed.clear();

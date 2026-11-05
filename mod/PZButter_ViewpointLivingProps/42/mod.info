@@ -1,0 +1,6 @@
+name=PZ Butter fix: ViewpointLivingProps (from VLP_Perf)
+id=PZButter_ViewpointLivingProps
+versionMin=42.20
+require=\Viewpoint,\ViewpointLivingProps
+description=Load-after performance patch for Viewpoint Living Props: caches the per-clock Viewpoint on-screen check (250 ms). Overrides ViewpointLivingPropsClocks.lua (built from 1.0.3).
+loadModAfter=ViewpointLivingProps
