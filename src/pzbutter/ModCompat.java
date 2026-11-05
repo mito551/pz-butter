@@ -269,7 +269,13 @@ Map.entry("LoadPatches.WaitFileTask", k("textureBufferMb")),
         // MP client (Plan 18)
         Map.entry("MpClientPatches.VehicleAnswer", k("vehicleEarlyParse")),
         Map.entry("MpClientPatches.ChunkLoad", k("chunkRefill")),
-        Map.entry("MpClientPatches.ClientTick", k("vehicleEarlyParse", "chunkRefill")));
+        Map.entry("MpClientPatches.ClientTick", k("vehicleEarlyParse", "chunkRefill")),
+        Map.entry("MpClientPatches.VehicleIntake", k("vehicleRemoteSmooth")),
+        Map.entry("MpClientPatches.VehiclePose", k("vehicleRemoteSmooth")),
+        Map.entry("MpClientPatches.VehicleClear", k("vehicleRemoteSmooth")),
+        Map.entry("MpClientPatches.VehicleParse", k("vehicleRemoteSmooth")),
+        Map.entry("MpClientPatches.VehicleFrame", k("vehicleRemoteSmooth", "vehicleSendMs")),
+        Map.entry("MpClientPatches.VehicleSend", k("vehicleSendMs")));
 
     // ---- reading @Patch annotations without loading the class ----
 

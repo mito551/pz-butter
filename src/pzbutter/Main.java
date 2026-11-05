@@ -83,6 +83,7 @@ public class Main {
         TranslucentBake.init();
         ZoomEase.init();
         AudioLimiter.init();
+        RemoteVehicles.init();
         SoundPatches.onFmodInit();
         LuaPatches.uiLuaFast = Settings.flag("uiLuaFast");
     }

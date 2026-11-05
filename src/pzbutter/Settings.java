@@ -412,7 +412,11 @@ public final class Settings {
 + "# vehicleEarlyParse (MP client): off, verify (keep the packet the game dropped and compare it with the server's answer), or on (also parse it early).\n"
 + "vehicleEarlyParse=off\n"
 + "# chunkRefill (MP client): request a dropped chunk slot again while the player stays in one chunk; at most 6 per pass, one pass every 3 s.\n"
-+ "chunkRefill=false\n";
++ "chunkRefill=false\n"
++ "#\n"
++ "# Remote vehicles (Plan 15 Task 8, covers SmoothRide). vehicleSendMs: driver physics send period, 16-150, 150 = stock. vehicleRemoteSmooth: buffer and draw other players' cars smoothly.\n"
++ "vehicleSendMs=150\n"
++ "vehicleRemoteSmooth=false\n";
 
     public static volatile boolean enabled;
     public static volatile boolean frameLog;
