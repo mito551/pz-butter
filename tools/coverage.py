@@ -149,11 +149,14 @@ def _first_last_epoch_ms(path):
     return (first, last)
 
 
+TOL_MS = 2000  # run.sh polls the marks once a second
+
+
 def _status(rec_start, rec_end, win_start, win_end):
     parts = []
-    if rec_start is not None and rec_start > win_start:
+    if rec_start is not None and rec_start - win_start > TOL_MS:
         parts.append(f"starts late by {rec_start - win_start} ms")
-    if rec_end is not None and rec_end < win_end:
+    if rec_end is not None and win_end - rec_end > TOL_MS:
         parts.append(f"ends early by {win_end - rec_end} ms")
     return "; ".join(parts) if parts else "ok"
 
@@ -185,7 +188,7 @@ def coverage(run_dir):
     if os.path.exists(os.path.join(run_dir, "perf.data")):
         try:
             s, e = perf_stamps(run_dir)
-            rows.append(("perf.data", _status(s, e, ws, we)))
+            rows.append(("perf.data", _status(s, None, ws, we)))  # a sub-window by design: only its start counts
         except (ValueError, OSError, subprocess.SubprocessError) as exc:
             rows.append(("perf.data", f"unreadable ({exc})"))
     try:

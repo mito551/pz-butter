@@ -53,9 +53,15 @@ class CoverageTest(unittest.TestCase):
 
     def test_perfStartsLate(self):
         d = make_dir(perf=True)
-        with patch("coverage.perf_stamps", lambda run_dir: (WIN[0] + 2000, WIN[1])):
+        with patch("coverage.perf_stamps", lambda run_dir: (WIN[0] + 3000, WIN[1])):
             rows = dict(coverage.coverage(d))
-        self.assertEqual(rows["perf.data"], "starts late by 2000 ms")
+        self.assertEqual(rows["perf.data"], "starts late by 3000 ms")
+
+    def test_perfSubWindowIsOk(self):
+        d = make_dir(perf=True)
+        with patch("coverage.perf_stamps", lambda run_dir: (WIN[0] + 1500, WIN[0] + 30000)):
+            rows = dict(coverage.coverage(d))
+        self.assertEqual(rows["perf.data"], "ok")
 
     def test_perfTodStamps(self):
         d = make_dir(perf=True)
