@@ -9,7 +9,8 @@ _G.PZButterKi5Installed = true
 
 local Ki5 = {}
 PZButter.Ki5 = Ki5
-local rows = PZButter.Ki5Table or {}
+-- read at install: "Ki5.lua" loads before "ki5table.lua" (byte order puts K before k)
+local rows = {}
 local syncMs = tonumber(PZButter.ki5SyncMs) or 100
 Ki5.now = getTimestampMs
 
@@ -123,6 +124,7 @@ end
 -- handlers are taken over then (finish is idempotent, so the order of the two OnGameStart handlers does not matter)
 function Ki5.install()
     PZButter.Census.finish()
+    rows = PZButter.Ki5Table or {}
     for _, row in ipairs(rows) do
         local fn = resolve(row)
         if fn then
