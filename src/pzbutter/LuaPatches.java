@@ -153,7 +153,10 @@ public final class LuaPatches {
     /** LuaManager.LoadDirBase entry (the Lua environment exists, the Lua files are about to load). */
     public static void onLuaLoad() {
         try {
-            KahluaTableImpl t = new KahluaTableImpl(new java.util.HashMap<>());
+            // the game runs LoadDirBase more than once per session in the same Lua env: keep the table, so what the
+            // first load put in it (PZButter.Census, PZButter.Ki5) survives; a new table made Ki5.lua see no Census
+            Object old = zombie.Lua.LuaManager.env.rawget("PZButter");
+            KahluaTableImpl t = old instanceof KahluaTableImpl k ? k : new KahluaTableImpl(new java.util.HashMap<>());
             t.rawset("uiLuaFast", uiLuaFast);
             t.rawset("containerSendGuard", Settings.flag("containerSendGuard"));
             t.rawset("handlerCensus", Settings.flag("handlerCensus"));
