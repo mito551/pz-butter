@@ -275,16 +275,17 @@ Fixes for other mods ship in the same Workshop item as separate mods, one per ta
 
 ## Recommended JVM flags (optional)
 
-No JVM flag is recommended yet. Measured so far (S6, 200 zombies, ZombieBuddy and PZ Butter only, 2026-11-04/05; medians of 2-3 runs per arm):
+**Recommended:** `-XX:-UseZGC -XX:+UseG1GC -XX:MaxGCPauseMillis=5` (G1 with a 5 ms pause target instead of the bundled JRE's ZGC). In one session of 3 runs per arm (S6, 200 zombies, ZombieBuddy and PZ Butter only, 2026-11-05) it gave p99 17.0 ms against 20.4 ms, p50 9.6 against 10.8 ms and the 1 % low 51 against 40 fps, and the world loaded in 19 s against 34 s; boot was the same. The p99, p50 and load ranges did not overlap, and an earlier session pointed the same way.
+
+Measured and not recommended:
 
 | Flags | Against the stock ZGC collector |
 |---|---|
-| `-XX:+UseG1GC` | The world loads 17-23 s faster (29.5 s against 46.5 s), but the game boots 11-19 s slower. |
-| `-XX:+UseG1GC -XX:MaxGCPauseMillis=5` | p99 15.5 ms against 20.0 ms in one session. Stock's own p99 moved between 13.0 and 20.0 ms from one session to the next, so this needs a same-session repeat before it is a recommendation. |
+| `-XX:+UseG1GC` (no pause target) | The world loads 17-23 s faster, but the game boots 11-19 s slower. |
 | `-XX:+UseShenandoahGC` | Worse in p50, p99, 1 % low and boot. |
 | `-Xmx4g` | Within noise. |
 
-Boot times on a machine that is already swapping vary by a minute or more, whatever the flags. This section will name a flag after a gain in p99 or the worst GC pause that repeats in one session.
+Boot times on a machine that is already swapping vary by a minute or more, whatever the flags.
 
 If you want to try flags yourself, put them in the Steam launch options before `--`, or in `vmArgs` in the launcher JSON. A game update can change the bundled JRE, so recheck any flag after an update.
 
