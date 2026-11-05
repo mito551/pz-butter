@@ -1,0 +1,95 @@
+--- a/client/WKT_InventoryMark.lua
++++ b/client/WKT_InventoryMark.lua
+@@ -1,3 +1,19 @@
++--[[
++    WKT_Perf build of WKT_InventoryMark.lua. Regenerate with WKT_Perf/tools/build_wkt.py after every update
++    of Whose Key Is This?.
++]]
++do
++    local ok, r = pcall(getModFileReader, "WhoseKeyIsThis", "media/lua/client/WKT_InventoryMark.lua", false)
++    if ok and r then
++        local n, line = 0, r:readLine()
++        while line do n = n + #line; line = r:readLine() end
++        r:close()
++        if n ~= 7881 then
++            print("[WKT_Perf] WARNING: WKT_InventoryMark.lua of Whose Key Is This? changed since WKT_Perf was built; regenerate WKT_Perf with tools/build_wkt.py")
++        end
++    end
++end
++
+ --[[
+     Whose Key Is This?  /  이 열쇠는 어디꺼야?
+     Marks keys with the pointer switched on inside the ordinary inventory
+@@ -32,6 +48,7 @@
+ 
+ local marked = {}       -- item -> {r, g, b}
+ local markedNames = {}  -- display name -> {r, g, b}
++local colourCache = {}  -- text -> colour|false
+ local anyMarked = false
+ local nextRefresh = 0
+ 
+@@ -42,6 +59,7 @@
+ 
+     marked = {}
+     markedNames = {}
++    colourCache = {}
+     anyMarked = false
+ 
+     if not WKT.isEnabled() then return end
+@@ -124,11 +142,27 @@
+ 
+ --- The star itself. Drawn after whatever the button normally draws.
+ local function drawStar(button)
+-    local ok, item = pcall(function()
+-        return button.inventory and button.inventory:getContainingItem() or nil
+-    end)
+-    if not ok or item == nil then return end
+-    if not WKT.isFavorite(item) then return end
++    local now = getTimestampMs()
++    local c = button.wktStarCache
++    local item = nil
++    -- buttons are pooled and handed to other containers, so the cache is per container too
++    if not (c and c.inv == button.inventory and (now - c.at) < 500) then
++        if button.inventory then
++            local ok
++            ok, item = pcall(button.inventory.getContainingItem, button.inventory)
++            if not ok then item = nil end
++        else
++            item = nil
++        end
++        local fav = false
++        if item ~= nil then fav = WKT.isFavorite(item) end
++        button.wktStarCache = { inv = button.inventory, item = item, fav = fav, at = now }
++        c = button.wktStarCache
++    else
++        item = c.item
++    end
++    if not c or c.item == nil then return end
++    if not c.fav then return end
+ 
+     starTex = starTex or getTexture("media/ui/FavoriteStar.png")
+     if starTex == nil then return end
+@@ -173,11 +207,21 @@
+ 
+ local function colourFor(text)
+     if type(text) ~= "string" then return nil end
++    if colourCache[text] ~= nil then
++        local c = colourCache[text]
++        if c == false then return nil end
++        return c
++    end
+     local colour = markedNames[text]
+-    if colour then return colour end
++    if colour then colourCache[text] = colour; return colour end
+     -- the pane appends " (3)" to stacked rows
+     local base = string.match(text, "^(.*) %(%d+%)$")
+-    if base then return markedNames[base] end
++    if base then
++        local bc = markedNames[base]
++        colourCache[text] = (bc == nil) and false or bc
++        return bc
++    end
++    colourCache[text] = false
+     return nil
+ end
+ 

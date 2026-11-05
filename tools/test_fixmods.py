@@ -97,6 +97,22 @@ class AddModTest(unittest.TestCase):
         self.assertEqual(self.add(out, "PZButter_KI5"), out)  # already listed: unchanged
         self.assertEqual(self.add("mod = ZombieBuddy,\n", "PZButter_KI5"), "mod = ZombieBuddy,\n    mod = PZButter_KI5,\n")
 
+    def run_lib(self, fn, text, mid):
+        import subprocess
+        p = os.path.join(tempfile.mkdtemp(), "list.txt")
+        with open(p, "w") as f:
+            f.write(text)
+        lib = os.path.join(os.path.dirname(os.path.abspath(__file__)), "runlib.sh")
+        subprocess.run(["bash", "-c", 'source "$0"; ' + fn + ' "$1" "$2"', lib, p, mid], check=True)
+        with open(p) as f:
+            return f.read()
+
+    def test_removeModWritesBoth(self):
+        block = "mods\n{\n    mod = CD_Perf,\n    mod = CD_PerfX,\n    mod = PZButter,\n}\n"
+        out = self.run_lib("remove_mod", block, "CD_Perf")
+        self.assertEqual(out, "mods\n{\n    mod = CD_PerfX,\n    mod = PZButter,\n}\n")  # only the exact id
+        self.assertEqual(self.run_lib("remove_mod", out, "CD_Perf"), out)  # not listed: unchanged
+
 
 if __name__ == "__main__":
     unittest.main()

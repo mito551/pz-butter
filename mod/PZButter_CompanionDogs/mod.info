@@ -1,0 +1,9 @@
+name=PZ Butter fix: CompanionDogs (from CD_Perf)
+id=PZButter_CompanionDogs
+versionMin=42.18
+require=\ZombieBuddy,\CompanionDogs
+ZBVersionMin=2.3.0
+javaJarFile=media/java/client/CDPerf.jar
+javaPkgName=cd.perf
+description=Load-after patch for Companion Dogs. Pins its built-in performance measurement off, merges its per-tick event handlers, and replaces its square-by-square zombie, prey and trough scans with cached, sliced and (with the optional ZombieBuddy jar) native queries. Overrides Threat, Hunting, Feed and Companion server files (built from 0.7.4).
+loadModAfter=CompanionDogs

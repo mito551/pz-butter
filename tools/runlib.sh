@@ -35,6 +35,16 @@ open(path, "w").write(s)
 PY
 }
 
+# Remove "mod = ID," from a default.txt / mods.txt list. No-op if not listed.
+remove_mod() {
+    python3 - "$1" "$2" <<'PY'
+import re, sys
+path, mid = sys.argv[1], sys.argv[2]
+s = open(path).read()
+open(path, "w").write(re.sub(r'^[ \t]*mod\s*=\s*' + re.escape(mid) + r'\s*,[ \t]*\r?\n', '', s, flags=re.M))
+PY
+}
+
 manifest_write() {
     local dir="$1" out="$2"
     python3 "$TOOLS/manifest.py" write "$dir" "$out"
