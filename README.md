@@ -294,7 +294,7 @@ PZ Butter is inspired by the mods below and aims to cover what they do, in one m
 
 | Mod | Author | Licence | Workshop |
 |---|---|---|---|
-| PZ_Optimization (pzopt) | xD3I | none stated | [3805285544](https://steamcommunity.com/sharedfiles/filedetails/?id=3805285544) |
+| PZ_Optimization (pzopt) | xD3I | not stated | 3805285544 (removed from the Workshop, November 2026) |
 | [B42] PZ Optimization Preloader | Antikristianos | not stated | [3818209799](https://steamcommunity.com/sharedfiles/filedetails/?id=3818209799) |
 | Undying Optimizer | Mister K | not stated | [3777958977](https://steamcommunity.com/sharedfiles/filedetails/?id=3777958977) |
 | Viewpoint - Smooth Frames | EhChad | MIT | [3816784011](https://steamcommunity.com/sharedfiles/filedetails/?id=3816784011) |
@@ -302,7 +302,7 @@ PZ Butter is inspired by the mods below and aims to cover what they do, in one m
 | Viewpoint Fixes | not stated | not stated | [3817842243](https://steamcommunity.com/sharedfiles/filedetails/?id=3817842243) |
 | Viewpoint PZO Shader Compatibility | not stated | not stated | [3815225881](https://steamcommunity.com/sharedfiles/filedetails/?id=3815225881) |
 | VRAM Steady | "VRAM Steady authors" | MIT | [3819844505](https://steamcommunity.com/sharedfiles/filedetails/?id=3819844505) |
-| Character Texture VRAM Leak Fix [ZombieBuddy] | syeon | not stated | [3821525282](https://steamcommunity.com/sharedfiles/filedetails/?id=3821525282) |
+| Character Texture VRAM Leak Fix [ZombieBuddy] | syeon | MIT ([source](https://github.com/OX-nd/SmartTextureLeakFix)) | [3821525282](https://steamcommunity.com/sharedfiles/filedetails/?id=3821525282) |
 | Project Zomboid Optimiser (PZO) | prop11 | not stated | [3787481250](https://steamcommunity.com/sharedfiles/filedetails/?id=3787481250) |
 | Tempo - A Performance & FPS Optimizer | Vyper | not stated | [3736629791](https://steamcommunity.com/sharedfiles/filedetails/?id=3736629791) |
 | ZombieBuddy | see page | not stated | [3619862853](https://steamcommunity.com/sharedfiles/filedetails/?id=3619862853) |
@@ -311,9 +311,9 @@ PZ Butter is inspired by the mods below and aims to cover what they do, in one m
 | Zed's Better FPS KA | zed_0xff, Kaoeutsu | not stated | [3793137588](https://steamcommunity.com/sharedfiles/filedetails/?id=3793137588) |
 | PzPerformanceFixes (formerly Alex Perf Fixes) | Alex | not stated | [3826630779](https://steamcommunity.com/sharedfiles/filedetails/?id=3826630779) |
 | Smooth Performance Optimizer by Erunest (Lua, Java, Vehicles) | Erunest | not stated | [3826681202](https://steamcommunity.com/sharedfiles/filedetails/?id=3826681202) |
-| ZPH Hotfix Pack [B42.20 MP] (ZPHFixes) | ZomboiderPH | none stated | [3806264950](https://steamcommunity.com/sharedfiles/filedetails/?id=3806264950) |
-| SmoothRide MP [B42] | druid | none stated | [3827367565](https://steamcommunity.com/sharedfiles/filedetails/?id=3827367565) |
-| Viewpoint GPU Fix | not stated | none stated | [3828842183](https://steamcommunity.com/sharedfiles/filedetails/?id=3828842183) |
+| ZPH Hotfix Pack [B42.20 MP] (ZPHFixes) | ZomboiderPH | not stated | [3806264950](https://steamcommunity.com/sharedfiles/filedetails/?id=3806264950) |
+| SmoothRide MP [B42] | druid (druidqwerty) | MIT ([source](https://github.com/druidqwerty/SmoothRide)) | [3827367565](https://steamcommunity.com/sharedfiles/filedetails/?id=3827367565) |
+| Viewpoint GPU Fix | not stated | not stated | [3828842183](https://steamcommunity.com/sharedfiles/filedetails/?id=3828842183) |
 | Lua Budget | mito551 | not stated | not on the Workshop; merged into PZ Butter (its rules stay in `Zomboid/LuaBudget.properties`; remove the LuaBudget mod from the mod list) |
 
 The table lists what the project aims to cover; not everything each mod does is covered yet. The Viewpoint add-ons above need the Viewpoint mod itself ([3809306528](https://steamcommunity.com/sharedfiles/filedetails/?id=3809306528)). PZ Butter covers what the add-ons do, not Viewpoint.
