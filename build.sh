@@ -20,7 +20,7 @@ TEST_HOME="$(mktemp -d -t pzbutter-home.XXXXXX)"
 "$JDK/bin/java" -ea -Duser.home="$TEST_HOME" -cp "$B/test-classes:$CP" pzbutter.SelfTest
 "$HERE"/tools/test_lua.sh
 python3 "$HERE/tools/check_readme.py"
-# fix mods (Plan 19): every mod/PZButter_<Target>, shipped or not, must pass the package rules
+# fix mods (Plan 17): every mod/PZButter_<Target>, shipped or not, must pass the package rules
 mapfile -t FIXMODS < <(find "$HERE/mod" -mindepth 1 -maxdepth 1 -type d -name 'PZButter_*' | sort)
 (( ${#FIXMODS[@]} == 0 )) || python3 "$HERE/tools/fixmods.py" "${FIXMODS[@]}"
 "$HERE"/tools/test_workshop.sh

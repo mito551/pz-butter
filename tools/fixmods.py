@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Package rules for PZ Butter's fix mods (Plan 19): one PZButter_<Target> mod per target mod.
+"""Package rules for PZ Butter's fix mods (Plan 17): one PZButter_<Target> mod per target mod.
 
 check(mod_dir, packaged=False) -> list of problems (empty: the mod passes).
   - id starts with PZButter_ and matches the folder name

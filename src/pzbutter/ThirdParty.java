@@ -6,7 +6,7 @@ import java.util.function.BiConsumer;
 import zombie.vehicles.BaseVehicle;
 import zombie.vehicles.VehiclePart;
 
-/** Fix-mod switch (Plan 19: a fix is on when its PZButter_<Target> mod is enabled) and the KI5 part-mod throttle helpers (SPEC 6.8.1). */
+/** Fix-mod switch (Plan 17: a fix is on when its PZButter_<Target> mod is enabled) and the KI5 part-mod throttle helpers (SPEC 6.8.1). */
 public final class ThirdParty {
     static final Guard guard = new Guard("PZButter_KI5 part-mod throttle");
     static final long WINDOW_MS = 100;

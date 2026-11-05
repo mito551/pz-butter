@@ -17,7 +17,7 @@ import zombie.vehicles.BaseVehicle;
 import zombie.vehicles.VehicleManager;
 
 /**
- * Multiplayer client rows of Plan 18 (SPEC 6.7.3 vehicleEarlyParse, 6.6.1
+ * Multiplayer client rows of Plan 15 (SPEC 6.7.3 vehicleEarlyParse, 6.6.1
  * chunkRefill). The decision logic lives here so it can be tested without a
  * running game; MpClientPatches supplies the game seams.
  */

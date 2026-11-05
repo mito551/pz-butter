@@ -1,6 +1,6 @@
 package pzbutter;
 
-/** Checks for the KI5 part-mod gate (Plan 19). Run with -ea. */
+/** Checks for the KI5 part-mod gate (Plan 17). Run with -ea. */
 public final class ThirdPartyTest {
     private ThirdPartyTest() {}
 
@@ -13,7 +13,7 @@ public final class ThirdPartyTest {
         ThirdParty.resetForTest();
     }
 
-    /** Plan 19 Task 0: a fix mod is on when it is in the game's activated-mods list, read once per Lua load. */
+    /** Plan 17 Task 0: a fix mod is on when it is in the game's activated-mods list, read once per Lua load. */
     static void activeReadsList() {
         ThirdParty.resetForTest();
         int[] reads = {0};

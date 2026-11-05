@@ -258,7 +258,7 @@ Map.entry("LoadPatches.WaitFileTask", k("textureBufferMb")),
         Map.entry("ChunkPatches.BakeGate", k("bakeScheduler", "treeBakeMaxChunksPerSec")),
         Map.entry("ChunkPatches.ZoomScroll", k("zoomEaseMs")),
         Map.entry("ChunkPatches.ZoomUpdate", k("zoomEaseMs")),
-        // server (Plan 18)
+        // server (Plan 15)
         Map.entry("ServerPatches.TickStart", k("serverTickLog", "serverLuaSample", "serverPrewarm", "serverClassPrewarm")),
         Map.entry("ServerPatches.NetDone", k("serverTickLog", "serverLuaSample")),
         Map.entry("ServerPatches.TickEnd", k("serverTickLog", "serverLuaSample")),
@@ -267,7 +267,7 @@ Map.entry("LoadPatches.WaitFileTask", k("textureBufferMb")),
         Map.entry("ServerPatches.SendGuard", k("containerSendGuard")),
         Map.entry("ServerPatches.ProcessItems", k("processItemsMerge")),
         Map.entry("HostPatches.Args", k("hostJvmArgs", "hostZombieBuddy")),
-        // MP client (Plan 18)
+        // MP client (Plan 15)
         Map.entry("MpClientPatches.VehicleAnswer", k("vehicleEarlyParse")),
         Map.entry("MpClientPatches.ChunkLoad", k("chunkRefill")),
         Map.entry("MpClientPatches.ClientTick", k("vehicleEarlyParse", "chunkRefill")),

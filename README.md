@@ -179,7 +179,7 @@ The mod creates `~/Zomboid/PZButter.properties` on first start and reads it once
 | `cursorLatch` | Move the cursor to the newest pointer position just before the frame is drawn. Off by default. |
 | `aimHoldMs` | Right-button hold before aiming starts, in ms (default `150`; `0` aims at once). |
 
-### Server and hosting (Plan 18)
+### Server and hosting (Plan 15)
 
 These keys act only on a dedicated server or a game hosted from the menu; on a client they stay off with one console line.
 
@@ -194,13 +194,13 @@ These keys act only on a dedicated server or a game hosted from the menu; on a c
 | `hostZombieBuddy` | Carries a ZombieBuddy `-javaagent:` entry into the hosted server's child JVM, but only when that agent already runs a non-interactive policy (`deny-new` or `allow-all`); an untrusted headless child would otherwise wait on a console prompt. Off by default. |
 | `hostJvmArgs` | Uses `Zomboid/PZButter-host.args` as an extra `@file` in the hosted server's child JVM, after the game's `-Xms/-Xmx`. The file is ignored unless it is at most 4 KB, ASCII and 16 lines of blanks, comments, a small `-Xms` or a plain `-Xlog` line. Off by default. |
 
-### Lua handlers (Plan 19)
+### Lua handlers (Plan 17)
 
 | Key | What it does |
 |---|---|
 | `handlerCensus` | Diagnostic and public API. Wraps `Events.<Name>.Add/.Remove` for per-tick and per-frame events, records each handler's function, source file, first line and registration count, then at `OnGameStart`/`OnGameBoot` assigns it to its mod folder and prints one overview line. Run-time registrations only bump a counter. On by default. |
 
-### Multiplayer client (Plan 18)
+### Multiplayer client (Plan 15)
 
 These keys act only on a multiplayer client; on a server they stay off.
 

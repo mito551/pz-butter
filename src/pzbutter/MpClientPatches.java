@@ -9,7 +9,7 @@ import zombie.network.GameClient;
 import zombie.network.IConnection;
 import zombie.network.packets.vehicle.VehicleFullUpdatePacket;
 
-/** Game seams for the MP client rows of Plan 18. */
+/** Game seams for the MP client rows of Plan 15. */
 public final class MpClientPatches {
 
     private MpClientPatches() {}
