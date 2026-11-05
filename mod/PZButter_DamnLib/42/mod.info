@@ -1,0 +1,7 @@
+id=PZButter_DamnLib
+name=PZ Butter: DamnLib square index
+description=DamnLib checks every loaded square against its spawn locations. This answers squares with no location from an index, and calls DamnLib only for the others. Enabling this mod is its switch. Works without PZ Butter.
+modversion=0.1
+versionMin=42.21
+require=\damnlib
+loadModAfter=damnlib

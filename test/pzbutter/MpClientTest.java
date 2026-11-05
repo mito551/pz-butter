@@ -2,7 +2,7 @@ package pzbutter;
 
 import java.util.List;
 
-/** MP client rows of Plan 18 (vehicleEarlyParse, chunkRefill). */
+/** MP client rows of Plan 15 (vehicleEarlyParse, chunkRefill). */
 final class MpClientTest {
 
     private MpClientTest() {}

@@ -1,0 +1,53 @@
+--- a/server/systems/CompanionDogs_Hunting.lua
++++ b/server/systems/CompanionDogs_Hunting.lua
+@@ -1,3 +1,15 @@
++--[[
++    CD_Perf build of Companion Dogs. Same behaviour, much less work per tick.
++    Regenerate with tools/build_cd.py after every update of Companion Dogs.
++]]
++do
++    local m = getModInfoByID and getModInfoByID("CompanionDogs")
++    local v = m and m:getModVersion()
++    if v and v ~= "0.7.4" then
++        print("[CD_Perf] WARNING: Companion Dogs is " .. tostring(v) .. ", this override was built from 0.7.4; regenerate CD_Perf with tools/build_cd.py")
++    end
++end
++
+ CompanionDogs = CompanionDogs or {}
+ local CD = CompanionDogs
+ 
+@@ -36,25 +48,15 @@
+     local ax, ay, az = math.floor(animal:getX()), math.floor(animal:getY()), math.floor(animal:getZ())
+     local R = math.ceil(radius)
+     local best, bestDist, count = nil, radius, 0
+-    CD.perfCount("sq.wildanimals", (2 * R + 1) * (2 * R + 1))
+-    for dx = -R, R do
+-        for dy = -R, R do
+-            local sq = cell:getGridSquare(ax + dx, ay + dy, az)
+-            if sq then
+-                local list = sq:getAnimals()
+-                if list then
+-                    for i = 0, list:size() - 1 do
+-                        local o = list:get(i)
+-                        if isHuntablePrey(animal, o, classes) then
+-                            local dd = CD.dist2D(animal, o)
+-                            if dd <= radius then
+-                                count = count + 1
+-                                if dd <= bestDist then
+-                                    best, bestDist = o, dd
+-                                end
+-                            end
+-                        end
+-                    end
++    local animals = CD.PerfNear.animals(animal, R)
++    for ai = 1, #animals do
++        local o = animals[ai]
++        if isHuntablePrey(animal, o, classes) then
++            local dd = CD.dist2D(animal, o)
++            if dd <= radius then
++                count = count + 1
++                if dd <= bestDist then
++                    best, bestDist = o, dd
+                 end
+             end
+         end

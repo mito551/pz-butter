@@ -1,0 +1,317 @@
+require("ETW_ModDataServer")
+
+local ETW_CommonFunctions = require("ETW_CommonFunctions")
+local ETW_Registry = require("ETW_Registry")
+local ETW_Alcoholic = require("TraitsLogic/ETW_Alcoholic")
+local ETW_CombatTraits = require("TraitsLogic/ETW_CombatTraits")
+local ETW_HealthTraits = require("TraitsLogic/ETW_HealthTraits")
+local ETW_MentalTraits = require("TraitsLogic/ETW_MentalTraits")
+local ETW_StartingTraits = require("TraitsLogic/ETW_StartingTraits")
+local ETW_WeatherTraits = require("TraitsLogic/ETW_WeatherTraits")
+local ETW_PerfTick = require("ETW_PerfTick")
+
+---@type EvolvingTraitsWorldTraitsRegistries
+local ETWTraitsRegistry = ETW_Registry.traits
+local gameMode = ETW_CommonFunctions.gameMode()
+local logETW = ETW_CommonFunctions.log
+local FILENAME = "ETW_EventsOrchestrator.lua"
+
+---Returns whether a Lua table contains at least one entry without relying on unsupported Kahlua next().
+---@param values table Table to inspect.
+---@return boolean hasEntries True when pairs() yields at least one key.
+local function hasEntries(values)
+	for _ in pairs(values) do
+		return true
+	end
+	return false
+end
+
+if
+	not ETW_CommonFunctions.gameModeSafeguard(
+		FILENAME,
+		{ ETW_CommonFunctions.GameMode.SP, ETW_CommonFunctions.GameMode.MP_SERVER }
+	)
+then
+	return
+end
+
+local cachedPlayersList
+
+---Processes every-minute trait effects while sharing one player traversal.
+local function oneMinuteUpdate()
+	local climateManager = getClimateManager()
+	local rainIntensity = climateManager:getRainIntensity()
+	local fogIntensity = climateManager:getFogIntensity()
+	cachedPlayersList = ETW_CommonFunctions.playersList()
+	for i = 0, cachedPlayersList:size() - 1 do
+		local player = cachedPlayersList:get(i)
+		local bodyDamage
+		local stats
+		local modData
+		local alcoholicTraitStage = ETW_Alcoholic.getAlcoholicTraitStage(player)
+		if alcoholicTraitStage > 0 then
+			stats = stats or player:getStats()
+			modData = modData or ETW_CommonFunctions.getETWModData(player)
+			if modData then
+				ETW_Alcoholic.oneMinuteUpdate(player, stats, modData, alcoholicTraitStage)
+			end
+		end
+		if rainIntensity > 0 then
+			stats = stats or player:getStats()
+			ETW_WeatherTraits.rainTraits(player, stats, rainIntensity)
+		end
+		if fogIntensity > 0 then
+			stats = stats or player:getStats()
+			ETW_WeatherTraits.fogTraits(player, stats, fogIntensity)
+		end
+		if player:hasTrait(ETWTraitsRegistry.ANEMIC) then
+			bodyDamage = bodyDamage or player:getBodyDamage()
+			ETW_HealthTraits.anemicTrait(bodyDamage)
+		end
+		if player:hasTrait(ETWTraitsRegistry.THICK_BLOODED) then
+			bodyDamage = bodyDamage or player:getBodyDamage()
+			ETW_HealthTraits.thickBloodedTrait(bodyDamage)
+		end
+		if player:hasTrait(ETWTraitsRegistry.SUN_SENSITIVITY) then
+			bodyDamage = bodyDamage or player:getBodyDamage()
+			modData = modData or ETW_CommonFunctions.getETWModData(player)
+			if modData then
+				ETW_WeatherTraits.sunSensitivityTrait(player, bodyDamage, modData)
+			end
+		end
+		if player:hasTrait(ETWTraitsRegistry.UNWAVERING) then
+			bodyDamage = bodyDamage or player:getBodyDamage()
+			modData = modData or ETW_CommonFunctions.getETWModData(player)
+			if modData then
+				ETW_HealthTraits.unwaveringTrait(player, bodyDamage, modData)
+			end
+		end
+		if player:hasTrait(ETWTraitsRegistry.SUPER_IMMUNE) then
+			bodyDamage = bodyDamage or player:getBodyDamage()
+			ETW_HealthTraits.superImmuneTrait(player, bodyDamage)
+		end
+		if player:hasTrait(ETWTraitsRegistry.IMMUNOCOMPROMISED) then
+			bodyDamage = bodyDamage or player:getBodyDamage()
+			ETW_HealthTraits.immunocompromisedTrait(player, bodyDamage)
+		end
+		if player:hasTrait(ETWTraitsRegistry.BLISSFUL) then
+			stats = stats or player:getStats()
+			ETW_MentalTraits.blissfulTrait(player, stats)
+		end
+		if player:hasTrait(ETWTraitsRegistry.DEPRIVED) then
+			stats = stats or player:getStats()
+			ETW_StartingTraits.updateDeprivedMood(player, stats)
+		end
+		if player:hasTrait(ETWTraitsRegistry.ASCETIC) then
+			stats = stats or player:getStats()
+			ETW_MentalTraits.asceticTrait(player, stats)
+		end
+		if player:hasTrait(ETWTraitsRegistry.TV_JUNKIE) then
+			stats = stats or player:getStats()
+			modData = modData or ETW_CommonFunctions.getETWModData(player)
+			if modData then
+				ETW_MentalTraits.tvJunkieTrait(player, stats, modData)
+			end
+		end
+		if player:hasTrait(ETWTraitsRegistry.PARANOIA) then
+			stats = stats or player:getStats()
+			modData = modData or ETW_CommonFunctions.getETWModData(player)
+			if modData then
+				ETW_MentalTraits.paranoiaTrait(player, stats, modData)
+			end
+		end
+		if player:hasTrait(ETWTraitsRegistry.PYROPHOBIA) or player:hasTrait(ETWTraitsRegistry.PYROMANIA) then
+			stats = stats or player:getStats()
+			ETW_MentalTraits.fireTrait(player, stats)
+		end
+		if
+			player:hasTrait(ETWTraitsRegistry.HEAT_AVERSE)
+			or player:hasTrait(ETWTraitsRegistry.HEAT_LOVING)
+			or player:hasTrait(ETWTraitsRegistry.COLD_AVERSE)
+			or player:hasTrait(ETWTraitsRegistry.COLD_LOVING)
+		then
+			stats = stats or player:getStats()
+			bodyDamage = bodyDamage or player:getBodyDamage()
+			ETW_MentalTraits.temperatureTrait(player, stats, bodyDamage)
+		end
+		if player:hasTrait(ETWTraitsRegistry.HEAVY_DRESSER) or player:hasTrait(ETWTraitsRegistry.LIGHT_DRESSER) then
+			stats = stats or player:getStats()
+			ETW_MentalTraits.dresserTrait(player, stats)
+		end
+		if
+			-- server doesn't know when player is aiming, so in MP it's covered via command from MP Client, but in SP we can check it here
+			gameMode == ETW_CommonFunctions.GameMode.SP
+			and (player:hasTrait(ETWTraitsRegistry.ANTI_GUN_ACTIVIST) or player:hasTrait(ETWTraitsRegistry.TERMINATOR))
+			and player:isAiming()
+		then
+			local weapon = player:getPrimaryHandItem()
+			stats = stats or player:getStats()
+			if weapon and instanceof(weapon, "HandWeapon") then
+				---@cast weapon HandWeapon
+				if weapon:getSubCategory() == "Firearm" then
+					if player:hasTrait(ETWTraitsRegistry.TERMINATOR) then
+						ETW_CombatTraits.terminatorMentalTrait(player, stats)
+					else
+						ETW_CombatTraits.antiGunMentalTrait(player, stats)
+					end
+				end
+			end
+		end
+		if player:hasTrait(ETWTraitsRegistry.DEPRESSIVE) then
+			stats = stats or player:getStats()
+			modData = modData or ETW_CommonFunctions.getETWModData(player)
+			if modData then
+				ETW_MentalTraits.depressiveTrait(player, modData, stats, false)
+			end
+		end
+		if player:hasTrait(ETWTraitsRegistry.SELF_DESTRUCTIVE) then
+			stats = stats or player:getStats()
+			bodyDamage = bodyDamage or player:getBodyDamage()
+			ETW_MentalTraits.selfDestructiveTrait(player, stats, bodyDamage)
+		end
+		if player:hasTrait(ETWTraitsRegistry.HARDY) then
+			stats = stats or player:getStats()
+			modData = modData or ETW_CommonFunctions.getETWModData(player)
+			if modData then
+				ETW_HealthTraits.hardyTrait(player, stats, modData)
+			end
+		end
+		if player:hasTrait(ETWTraitsRegistry.QUICK_REST) then
+			modData = modData or ETW_CommonFunctions.getETWModData(player)
+			if modData then
+				modData.QuickRestLastEndurance = player:getStats():get(CharacterStat.ENDURANCE)
+			end
+		end
+		if player:hasTrait(ETWTraitsRegistry.IDEAL_WEIGHT) then
+			modData = modData or ETW_CommonFunctions.getETWModData(player)
+			if modData then
+				ETW_HealthTraits.idealWeightTrait(player, modData)
+			end
+		end
+	end
+end
+
+---Rolls hourly trait effects.
+local function oneHourUpdate()
+	cachedPlayersList = cachedPlayersList or ETW_CommonFunctions.playersList()
+	for i = 0, cachedPlayersList:size() - 1 do
+		local player = cachedPlayersList:get(i)
+		if player:hasTrait(ETWTraitsRegistry.DEPRESSIVE) then
+			local modData = ETW_CommonFunctions.getETWModData(player)
+			if modData then
+				ETW_MentalTraits.depressiveTrait(player, modData, nil, true)
+			end
+		end
+	end
+end
+
+---Traits whose tick work everyTickPlayer() runs; the Java dispatcher skips players with none of
+---them unless they have starting-injury snapshots or active Indefatigable protection.
+local TICK_TRAITS = {
+	ETWTraitsRegistry.PAIN_TOLERANCE,
+	ETWTraitsRegistry.NOODLE_LEGS,
+	ETWTraitsRegistry.BRITTLE_BONES,
+	ETWTraitsRegistry.STRONG_BONES,
+	ETWTraitsRegistry.MADE_OF_GLASS,
+	ETWTraitsRegistry.BOUNCER,
+	ETWTraitsRegistry.INDEFATIGABLE,
+	ETWTraitsRegistry.ANTI_GUN_ACTIVIST,
+	ETWTraitsRegistry.QUICK_REST,
+}
+local TICK_HANDLER_ID = "ETW_EventsOrchestrator"
+
+---Processes tick-level trait effects for one player, called per player by the ETW_Perf tick dispatcher.
+---@param player IsoPlayer
+local function everyTickPlayer(player)
+	local modData = ETW_CommonFunctions.getETWModData(player)
+	local bodyDamage
+	local stats
+	local startingInjuryParts
+	if player:hasTrait(ETWTraitsRegistry.PAIN_TOLERANCE) then
+		stats = stats or player:getStats()
+		ETW_HealthTraits.painToleranceTrait(player, stats)
+	end
+	if player:hasTrait(ETWTraitsRegistry.NOODLE_LEGS) then
+		ETW_HealthTraits.noodleLegsTrait(player)
+	end
+	if modData then
+		local injurySnapshots = modData.InjurySnapshotSystem
+		if
+			injurySnapshots
+			and (
+				hasEntries(injurySnapshots.InjuredBodyParts or {})
+				or hasEntries(injurySnapshots.BurnedBodyParts or {})
+				or hasEntries(injurySnapshots.BrokenBodyParts or {})
+			)
+		then
+			bodyDamage = bodyDamage or player:getBodyDamage()
+			startingInjuryParts = ETW_StartingTraits.updateStartingInjuries(player, bodyDamage, modData)
+		end
+		if player:hasTrait(ETWTraitsRegistry.BRITTLE_BONES) or player:hasTrait(ETWTraitsRegistry.STRONG_BONES) then
+			bodyDamage = bodyDamage or player:getBodyDamage()
+			ETW_HealthTraits.boneTraits(player, bodyDamage, modData, startingInjuryParts)
+		end
+		if player:hasTrait(ETWTraitsRegistry.MADE_OF_GLASS) then
+			bodyDamage = player:getBodyDamage()
+			ETW_HealthTraits.madeOfGlassTrait(player, bodyDamage, modData)
+		end
+		local indefatigableProtectionExpiresAt = modData.IndefatigableProtectionExpiresAt
+		if type(indefatigableProtectionExpiresAt) == "number" and indefatigableProtectionExpiresAt > 0 then
+			bodyDamage = bodyDamage or player:getBodyDamage()
+			ETW_HealthTraits.indefatigableProtection(player, bodyDamage, modData)
+		end
+		if player:hasTrait(ETWTraitsRegistry.BOUNCER) then
+			ETW_CombatTraits.bouncerTrait(player, modData)
+		end
+		if player:hasTrait(ETWTraitsRegistry.INDEFATIGABLE) then
+			bodyDamage = bodyDamage or player:getBodyDamage()
+			ETW_HealthTraits.indefatigableTrait(player, bodyDamage, modData)
+		end
+		if modData.AntiGunAimingXPCheckPending and player:hasTrait(ETWTraitsRegistry.ANTI_GUN_ACTIVIST) then
+			ETW_CombatTraits.antiGunAimingXPPenalty(player, modData)
+		end
+		if player:hasTrait(ETWTraitsRegistry.QUICK_REST) then
+			stats = stats or player:getStats()
+			ETW_HealthTraits.quickRestTrait(player, stats, modData)
+		end
+	end
+end
+
+---@param playerIndex number
+---@param player IsoPlayer
+local function initializeTraitsLogic(playerIndex, player)
+	Events.OnZombieDead.Remove(ETW_CombatTraits.onZombieDead)
+	Events.OnZombieDead.Add(ETW_CombatTraits.onZombieDead)
+	Events.OnWeaponHitXp.Remove(ETW_CombatTraits.onWeaponHitXP)
+	Events.OnWeaponHitXp.Add(ETW_CombatTraits.onWeaponHitXP)
+	Events.OnWeaponSwing.Remove(ETW_CombatTraits.onWeaponSwing)
+	Events.OnWeaponSwing.Add(ETW_CombatTraits.onWeaponSwing)
+	Events.EveryOneMinute.Remove(oneMinuteUpdate)
+	Events.EveryOneMinute.Add(oneMinuteUpdate)
+	Events.EveryHours.Remove(oneHourUpdate)
+	Events.EveryHours.Add(oneHourUpdate)
+	ETW_PerfTick.register(TICK_HANDLER_ID, everyTickPlayer, "players", TICK_TRAITS)
+	if gameMode == ETW_CommonFunctions.GameMode.MP_SERVER then
+		Events.OnTick.Remove(initializeTraitsLogic)
+	end
+end
+
+local function clearEventsETW()
+	ETW_Alcoholic.clearWithdrawalStressEvent()
+	Events.OnZombieDead.Remove(ETW_CombatTraits.onZombieDead)
+	Events.OnWeaponHitXp.Remove(ETW_CombatTraits.onWeaponHitXP)
+	Events.OnWeaponSwing.Remove(ETW_CombatTraits.onWeaponSwing)
+	Events.EveryOneMinute.Remove(oneMinuteUpdate)
+	Events.EveryHours.Remove(oneHourUpdate)
+	ETW_PerfTick.unregister(TICK_HANDLER_ID)
+	logETW("ETW Logger | System: clearEventsETW in " .. FILENAME)
+end
+
+if gameMode == ETW_CommonFunctions.GameMode.SP then
+	Events.OnCreatePlayer.Remove(initializeTraitsLogic)
+	Events.OnCreatePlayer.Add(initializeTraitsLogic)
+	Events.OnPlayerDeath.Remove(clearEventsETW)
+	Events.OnPlayerDeath.Add(clearEventsETW)
+elseif gameMode == ETW_CommonFunctions.GameMode.MP_SERVER then
+	Events.OnTick.Add(initializeTraitsLogic)
+end

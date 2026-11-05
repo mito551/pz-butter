@@ -8,8 +8,11 @@ import zombie.iso.IsoChunk;
 import zombie.network.GameClient;
 import zombie.network.IConnection;
 import zombie.network.packets.vehicle.VehicleFullUpdatePacket;
+import zombie.network.packets.vehicle.VehicleUpdatePacket;
+import zombie.vehicles.VehicleInterpolation;
+import zombie.vehicles.VehicleManager;
 
-/** Game seams for the MP client rows of Plan 18. */
+/** Game seams for the MP client rows of Plan 15. */
 public final class MpClientPatches {
 
     private MpClientPatches() {}
@@ -89,6 +92,79 @@ public final class MpClientPatches {
     }
 
     public static volatile long refills;
+
+    /** Remote vehicle intake advice (skip on true means mod took the sample). */
+    @Patch(className = "zombie.vehicles.VehicleInterpolation", methodName = "interpolationDataAdd", strictMatch = true)
+    public static class VehicleIntake {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This Object self, @Patch.Argument(0) Object vehicle,
+                                    @Patch.Argument(1) Object data, @Patch.Argument(2) long time) {
+            try { return RemoteVehicles.onIntake(self, vehicle, data, time); }
+            catch (Throwable t) { RemoteVehicles.guard.fail(t); return false; }
+        }
+    }
+
+    /** The 3-argument overload the manager draws a remote car with (strict match: other callers keep vanilla). */
+    @Patch(className = "zombie.vehicles.VehicleInterpolation", methodName = "interpolationDataGet", strictMatch = true)
+    public static class VehiclePose {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This Object self, @Patch.Argument(0) float[] out,
+                                    @Patch.Argument(1) float[] engine, @Patch.Argument(2) VehicleInterpolation towing) {
+            try { return RemoteVehicles.onPose(self, out, engine, towing); }
+            catch (Throwable t) { RemoteVehicles.guard.fail(t); return false; }
+        }
+
+        /** Skipped (the track answered) the method returns false by default: put true back. */
+        @Patch.OnExit
+        public static void exit(@Patch.Return(readOnly = false) boolean ret) {
+            try { ret = RemoteVehicles.poseReturn(ret); }
+            catch (Throwable t) { RemoteVehicles.guard.fail(t); }
+        }
+    }
+
+    /** vehicleSendMs: after vanilla sent and set its 150 ms period, the next send waits sendMs instead. */
+    @Patch(className = "zombie.vehicles.BaseVehicle", methodName = "updatePhysicsNetwork")
+    public static class VehicleSend {
+        @Patch.OnExit
+        public static void exit(@Patch.This Object self) {
+            try { RemoteVehicles.afterSend(self); }
+            catch (Throwable t) { RemoteVehicles.sendGuard.fail(t); }
+        }
+    }
+
+    @Patch(className = "zombie.vehicles.VehicleInterpolation", methodName = "clear")
+    public static class VehicleClear {
+        @Patch.OnEnter
+        public static void enter(@Patch.This Object self) {
+            try { RemoteVehicles.onClear(self); }
+            catch (Throwable t) { RemoteVehicles.guard.fail(t); }
+        }
+    }
+
+    @Patch(className = "zombie.network.packets.vehicle.VehicleUpdatePacket", methodName = "parse")
+    public static class VehicleParse {
+        @Patch.OnEnter
+        public static void enter() {
+            try { RemoteVehicles.parseDepth++; }
+            catch (Throwable t) { RemoteVehicles.guard.fail(t); }
+        }
+
+        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
+        public static void exit() {
+            try { if (RemoteVehicles.parseDepth > 0) RemoteVehicles.parseDepth--; }
+            catch (Throwable t) { RemoteVehicles.guard.fail(t); }
+        }
+    }
+
+    @Patch(className = "zombie.vehicles.VehicleManager", methodName = "clientUpdate")
+    public static class VehicleFrame {
+        @Patch.OnEnter
+        public static void enter() {
+            try { RemoteVehicles.frameEnter(); }
+            catch (Throwable t) { RemoteVehicles.guard.fail(t); }
+        }
+
+    }
 
     static void resetForTest() {
         refills = 0;

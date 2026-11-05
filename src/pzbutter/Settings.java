@@ -394,19 +394,11 @@ public final class Settings {
 + "# hotsaveIntervalSec: hot-save interval in seconds (0 = stock 1 s; 30 = 30 s). A crash can lose at least that many seconds of the world, and several times that when many chunks changed (the game writes at most about 10 chunks per hot save). Saving and quitting always write everything.\n"
 + "hotsaveIntervalSec=0\n"
 + "#\n"
-+ "# Lua handlers (Plan 19).\n"
++ "# Lua handlers (Plan 17).\n"
 + "# handlerCensus: record Events.<Name>.Add/.Remove for per-tick and per-frame events, name each handler's mod owner and print one overview line at the end of load. On by default; the list and route helper are always available to other mods.\n"
 + "handlerCensus=true\n"
 + "#\n"
-+ "# KI5 vehicle handlers (Plan 19). Client only; off on a dedicated server.\n"
-+ "# ki5Bundle: remove recognised OnPlayerUpdate handlers from KI5 vehicle mods and run them from one dispatcher with per-kind timing.\n"
-+ "ki5Bundle=false\n"
-+ "# ki5SyncMs: shortest gap between two synchronous handler calls (ms). A vehicle, type or seat change runs them at once.\n"
-+ "ki5SyncMs=100\n"
-+ "# ki5PartModThrottle: while an every-frame handler runs, one BaseVehicle.transmitPartModData call per part per 100 ms; the last state is sent afterwards.\n"
-+ "ki5PartModThrottle=false\n"
-+ "#\n"
-+ "# Server and hosting (Plan 18). Server keys are inert in single player and on a multiplayer client.\n"
++ "# Server and hosting (Plan 15). Server keys are inert in single player and on a multiplayer client.\n"
 + "# serverTickLog: one line per server tick in Zomboid/pzbutter/ticks.out (same columns as frames.out); a minute line gives p50/p99/max.\n"
 + "serverTickLog=false\n"
 + "# serverLuaSample: diagnostic; a watchdog samples the server main thread when a tick runs long and writes Zomboid/pzbutter/hitches.out.\n"
@@ -426,7 +418,11 @@ public final class Settings {
 + "# vehicleEarlyParse (MP client): off, verify (keep the packet the game dropped and compare it with the server's answer), or on (also parse it early).\n"
 + "vehicleEarlyParse=off\n"
 + "# chunkRefill (MP client): request a dropped chunk slot again while the player stays in one chunk; at most 6 per pass, one pass every 3 s.\n"
-+ "chunkRefill=false\n";
++ "chunkRefill=false\n"
++ "#\n"
++ "# Remote vehicles (Plan 15 Task 8, covers SmoothRide). vehicleSendMs: driver physics send period, 16-150, 150 = stock. vehicleRemoteSmooth: buffer and draw other players' cars smoothly.\n"
++ "vehicleSendMs=150\n"
++ "vehicleRemoteSmooth=false\n";
 
     public static volatile boolean enabled;
     public static volatile boolean frameLog;
@@ -531,8 +527,8 @@ public final class Settings {
         "driveTreeCutaway", "glassTilesPerFrame", "translucentLightsPerFrame",   // stock-equivalent values (Plan 6), not passed features
         "wake", "handoffRecalcFast",
         "loaderCpuFixes", "scriptParserFast", "modWatchAsync", "texCompress",   // Plans 10b, 11b, 11d, 11e: on after their in-game checks
-        "containerSendGuard",   // Plan 18: stock drops these calls anyway
-        "handlerCensus");   // Plan 19
+        "containerSendGuard",   // Plan 15: stock drops these calls anyway
+        "handlerCensus");   // Plan 17
 
     public static boolean flag(String key) {
         if (!enabled) return false;

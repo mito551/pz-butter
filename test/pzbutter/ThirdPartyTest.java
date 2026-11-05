@@ -1,6 +1,6 @@
 package pzbutter;
 
-/** Checks for the KI5 part-mod gate (Plan 19). Run with -ea. */
+/** Checks for the KI5 part-mod gate (Plan 17). Run with -ea. */
 public final class ThirdPartyTest {
     private ThirdPartyTest() {}
 
@@ -8,7 +8,44 @@ public final class ThirdPartyTest {
         gateWindow();
         gateOff();
         flushOnEndEvery();
+        activeReadsList();
+        onFollowsTheFixMod();
         ThirdParty.resetForTest();
+    }
+
+    /** Plan 17 Task 0: a fix mod is on when it is in the game's activated-mods list, read once per Lua load. */
+    static void activeReadsList() {
+        ThirdParty.resetForTest();
+        int[] reads = {0};
+        ThirdParty.modIds = () -> { reads[0]++; return java.util.List.of("PZButter", "\\PZButter_KI5"); };
+        assert ThirdParty.active("PZButter_KI5") : "listed mod is active (a leading backslash is ignored)";
+        assert !ThirdParty.active("PZButter_DamnLib") : "unlisted mod is not active";
+        assert reads[0] == 1 : "the list is read once, then cached";
+        ThirdParty.resetActive();
+        ThirdParty.modIds = () -> java.util.List.of();
+        assert !ThirdParty.active("PZButter_KI5") : "a new Lua load reads the list again";
+        ThirdParty.modIds = () -> { throw new IllegalStateException("no file system yet"); };
+        ThirdParty.resetActive();
+        assert !ThirdParty.active("PZButter_KI5") : "an unreadable list means not active";
+    }
+
+    /** The throttle is on while PZButter_KI5 is enabled, off when it is not or when modCompat=auto forced it off. */
+    static void onFollowsTheFixMod() {
+        ThirdParty.resetForTest();
+        Side.forTest(false, false);
+        ThirdParty.modIds = () -> java.util.List.of("PZButter", "PZButter_KI5");
+        assert ThirdParty.on() : "on while the fix mod is enabled";
+        Settings.forcedOff.add("mod:PZButter_KI5");
+        assert !ThirdParty.on() : "modCompat=auto switched it off";
+        Settings.forcedOff.remove("mod:PZButter_KI5");
+        ThirdParty.resetActive();
+        ThirdParty.modIds = () -> java.util.List.of("PZButter");
+        assert !ThirdParty.on() : "off while the fix mod is not enabled";
+        Side.forTest(true, false);
+        ThirdParty.resetActive();
+        ThirdParty.modIds = () -> java.util.List.of("PZButter", "PZButter_KI5");
+        assert !ThirdParty.on() : "off on a server";
+        Side.resetForTest();
     }
 
     static void gateWindow() {

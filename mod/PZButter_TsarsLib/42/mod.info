@@ -1,0 +1,7 @@
+id=PZButter_TsarsLib
+name=PZ Butter: TsarsLib poll
+description=TsarsLib asks the server for its animation data every 100 ticks, forever. This asks once on the first tick and then at most every 5 minutes. Enabling this mod is its switch. Needs PZ Butter.
+modversion=0.1
+versionMin=42.21
+require=\PZButter,\tsarslib
+loadModAfter=PZButter,tsarslib

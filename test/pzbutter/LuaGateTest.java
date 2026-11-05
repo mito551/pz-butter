@@ -1331,7 +1331,7 @@ final class LuaGateTest {
         assert holders.equals(ModCompat.KEYS.keySet()) : "missing or stale: " + holders + " vs " + ModCompat.KEYS.keySet();
         for (java.util.Map.Entry<String, String[]> e : ModCompat.KEYS.entrySet()) {
             assert e.getValue().length > 0 : e.getKey();
-            for (String k : e.getValue()) assert !k.equals("enabled") && !k.equals("frameLog") && template.contains("\n" + k + "=") : e.getKey() + " " + k;
+            for (String k : e.getValue()) assert !k.equals("enabled") && !k.equals("frameLog") && (k.startsWith("mod:PZButter_") || template.contains("\n" + k + "=")) : e.getKey() + " " + k;
         }
         // every PZ Butter Plan 7 holder names its own key
         assert java.util.Arrays.asList(ModCompat.KEYS.get("LuaPatches.FileWriter")).equals(java.util.List.of("luaFileWriteThrottle"));
@@ -1344,7 +1344,7 @@ final class LuaGateTest {
         "gridStackInterval", "lightSwitchCheckFrames", "lightingFps", "presentPacing", "roofHideDebounceFrames", "soundTickHz", "treeBakeMaxChunksPerSec", "vrr", "zoomEaseMs",
         "numberZombiesBlended", "zombieLodFixed3d", "zombieModelAddBudgetUs", "zombieSimLodTiles", "zombieSimLodSteps", "vboBatchKb", "vboSizeClasses",
         "hotsaveIntervalSec", "chunkHandoffDivisor", "chunkHandoffFrameBudgetUs", "textureBufferMb", "spikeThresholdMs", "spikeContextWindowMs",
-        "vehicleEarlyParse");
+        "vehicleEarlyParse", "vehicleSendMs");
 
     /**
      * Forced off answers stock for every key of the table: a switch is false (true for the stock-true ones), and each number or mode key
@@ -1355,6 +1355,7 @@ final class LuaGateTest {
         String template = Settings.render(new java.util.Properties());
         java.util.Set<String> all = new java.util.TreeSet<>(), values = new java.util.TreeSet<>();
         for (String[] ks : ModCompat.KEYS.values()) all.addAll(java.util.Arrays.asList(ks));
+        all.removeIf(k -> k.startsWith("mod:"));   // a fix mod has no key: ThirdPartyTest.forcedOffModIsOff checks it
         for (String k : all) {
             int i = template.indexOf("\n" + k + "=");
             String v = template.substring(i + k.length() + 2, template.indexOf('\n', i + 1));
@@ -1366,7 +1367,7 @@ final class LuaGateTest {
         // the numbers and modes, through the features' own init, with values in the file that are not stock
         Settings.load(SelfTest.write("enabled=true\naimHoldMs=999\ncutawayRadius=9\ngridStackInterval=9\nroofHideDebounceFrames=9\nzoomEaseMs=9\n"
             + "bakeMipLevels=9\ntreeBakeMaxChunksPerSec=9\nsoundTickHz=9\nlightSwitchCheckFrames=9\nlightingFps=9\npresentPacing=on\nvrr=on\nborderlessFullscreen=on\n"
-            + "numberZombiesBlended=9\nzombieLodFixed3d=99\nzombieModelAddBudgetUs=9\nzombieSimLodTiles=9\nzombieSimLodSteps=3\nvboBatchKb=512\nvboSizeClasses=orphan\npersistentVbo=true\nbakeNoSync=true\nbakeNoSyncCheck=true\nbakeBudgetGpu=true\nbakeBudgetAdaptive=true\ntextureBufferMb=256\nspikeThresholdMs=999\nspikeContextWindowMs=999\n"));
+            + "numberZombiesBlended=9\nzombieLodFixed3d=99\nzombieModelAddBudgetUs=9\nzombieSimLodTiles=9\nzombieSimLodSteps=3\nvboBatchKb=512\nvboSizeClasses=orphan\npersistentVbo=true\nbakeNoSync=true\nbakeNoSyncCheck=true\nbakeBudgetGpu=true\nbakeBudgetAdaptive=true\ntextureBufferMb=256\nspikeThresholdMs=999\nspikeContextWindowMs=999\nvehicleSendMs=33\n"));
         Settings.forcedOff.addAll(VALUE_KEYS);
         Settings.forcedOff.add("bakeNoSync"); Settings.forcedOff.add("bakeNoSyncCheck");
         Settings.forcedOff.add("bakeBudgetGpu");
@@ -1379,6 +1380,8 @@ final class LuaGateTest {
             assert BakeMisc.mipLevels == 0 && ChunkTrees.maxPerSec == 0 && !SoundPatches.tickGuard.on && LightChecks.switchTtl == 0 && LightChecks.lightingFps == 0;
             assert SwapHold.pacing.equals("off") && Vrr.mode.equals("off") && Vrr.fullscreenWindow.equals("off") && !Vrr.guard.on;
             assert MpClient.mode().equals("off");                                // vehicleEarlyParse: stock drops the early packet
+            RemoteVehicles.frameEnter();
+            assert RemoteVehicles.sendMs == 150;                                 // vehicleSendMs: stock's 150 ms period
             assert ZombieLod.blended == 0 && ZombieLod.cap == 0 && ZombieLod.budgetNs == 0 && !ZombieLod.blendGuard.on && !ZombieLod.capGuard.on && !ZombieLod.budgetGuard.on;
             assert ZombieLod.simTiles == 0 && ZombieLod.simSteps == 1 && !ZombieLod.simGuard.on;
             assert BatchSize.kb == 0 && !BatchSize.guard.on;                       // vboBatchKb: stock 4 KB, nothing installed

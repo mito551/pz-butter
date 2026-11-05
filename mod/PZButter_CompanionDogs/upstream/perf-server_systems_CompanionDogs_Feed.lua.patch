@@ -1,0 +1,145 @@
+--- a/server/systems/CompanionDogs_Feed.lua
++++ b/server/systems/CompanionDogs_Feed.lua
+@@ -1,3 +1,15 @@
++--[[
++    CD_Perf build of Companion Dogs. Same behaviour, much less work per tick.
++    Regenerate with tools/build_cd.py after every update of Companion Dogs.
++]]
++do
++    local m = getModInfoByID and getModInfoByID("CompanionDogs")
++    local v = m and m:getModVersion()
++    if v and v ~= "0.7.4" then
++        print("[CD_Perf] WARNING: Companion Dogs is " .. tostring(v) .. ", this override was built from 0.7.4; regenerate CD_Perf with tools/build_cd.py")
++    end
++end
++
+ CompanionDogs = CompanionDogs or {}
+ local CD = CompanionDogs
+ 
+@@ -141,6 +153,13 @@
+     end
+ end
+ 
++local troughZoneCalls = {}
++
++local function cfgOn(key)
++    local c = rawget(_G, "CD_PerfPatchConfig")
++    return not (type(c) == "table" and c[key] == false)
++end
++
+ local function findTroughNear(animal, radius, wantFood, wantWater)
+     local cell = getCell()
+     if not cell then return nil end
+@@ -149,55 +168,73 @@
+     local ay = math.floor(animal:getY())
+     local az = math.floor(animal:getZ())
+     local R = math.ceil(radius)
++    local id = animal:getOnlineID()
++    local calls = (troughZoneCalls[id] or 0) + 1
++    troughZoneCalls[id] = calls
++    -- ranch fast path: the engine's own list of the troughs in the dog's animal zones.
++    -- Every 3rd search per dog still does the full one, so a closer dish is not missed for long.
++    local dzones = cfgOn("troughZone") and calls % 3 ~= 0 and animal:getConnectedDZone()
++    if dzones and dzones:size() > 0 then
++        local list = animal:getBehavior():getRandomTroughList()
++        local best, bestKind, bestDist = nil, nil, radius + 1
++        local bx, by, bz
++        for i = 0, list:size() - 1 do
++            local o = list:get(i)
++            if math.floor(o:getZ()) == az then
++                local kind
++                if wantFood and troughHasFood(o, breedKey) then kind = "food"
++                elseif wantWater and troughHasWater(o) then kind = "water" end
++                if kind then
++                    local dist = CD.dist2D(animal, o)
++                    if dist <= radius and dist < bestDist then
++                        best, bestKind, bestDist = o, kind, dist
++                        bx, by, bz = o:getX(), o:getY(), o:getZ()
++                    end
++                end
++            end
++        end
++        if best then return best, bestKind, bx, by, bz, false, nil end
++    end
++
++    -- troughs and dishes in the original's visiting order (square by square, troughs first),
++    -- so equal distances resolve the same way
++    local items = CD.PerfNear.feed(animal, R)
+     local best, bestKind, bestDist, bestDish, bestItem = nil, nil, radius + 1, false, nil
+     local bx, by, bz
+-    for dx = -R, R do
+-        for dy = -R, R do
+-            local sq = cell:getGridSquare(ax + dx, ay + dy, az)
+-            if sq then
+-                local objs = sq:getObjects()
+-                if objs then
+-                    for i = 0, objs:size() - 1 do
+-                        local o = objs:get(i)
+-                        if instanceof(o, "IsoFeedingTrough") then
+-                            local kind
+-                            if wantFood and troughHasFood(o, breedKey) then kind = "food"
+-                            elseif wantWater and troughHasWater(o) then kind = "water" end
+-                            if kind then
+-                                local dist = CD.dist2D(animal, o)
+-                                if dist <= radius and dist < bestDist then
+-                                    best, bestKind, bestDist, bestDish, bestItem = o, kind, dist, false, nil
+-                                    bx, by, bz = o:getX(), o:getY(), o:getZ()
+-                                end
+-                            end
+-                        end
++    for i = 1, #items do
++        local o = items[i]
++        if instanceof(o, "IsoFeedingTrough") then
++            local kind
++            if wantFood and troughHasFood(o, breedKey) then kind = "food"
++            elseif wantWater and troughHasWater(o) then kind = "water" end
++            if kind then
++                local dist = CD.dist2D(animal, o)
++                if dist <= radius and dist < bestDist then
++                    best, bestKind, bestDist, bestDish, bestItem = o, kind, dist, false, nil
++                    bx, by, bz = o:getX(), o:getY(), o:getZ()
++                end
++            end
++        else
++            local item = o:getItem()
++            if item and CD.isDishType(item:getFullType()) then
++                local kind
++                if wantFood and dishStock(item, "food") > 0 then kind = "food"
++                elseif wantWater and dishStock(item, "water") > 0 then kind = "water" end
++                if kind then
++                    local dist = CD.dist2D(animal, o)
++                    if dist <= radius and dist < bestDist then
++                        local sq = o:getSquare()
++                        best, bestKind, bestDist, bestDish, bestItem = o, kind, dist, true, item
++                        bx, by, bz = sq:getX(), sq:getY(), sq:getZ()
+                     end
+                 end
+-                local wobs = sq:getWorldObjects()
+-                if wobs then
+-                    for i = 0, wobs:size() - 1 do
+-                        local wo = wobs:get(i)
+-                        local item = wo:getItem()
+-                        if item and CD.isDishType(item:getFullType()) then
+-                            local kind
+-                            if wantFood and dishStock(item, "food") > 0 then kind = "food"
+-                            elseif wantWater and dishStock(item, "water") > 0 then kind = "water" end
+-                            if kind then
+-                                local dist = CD.dist2D(animal, wo)
+-                                if dist <= radius and dist < bestDist then
+-                                    best, bestKind, bestDist, bestDish, bestItem = wo, kind, dist, true, item
+-                                    bx, by, bz = sq:getX(), sq:getY(), sq:getZ()
+-                                end
+-                            end
+-                        end
+-                    end
+-                end
+             end
+         end
+     end
+     if best then return best, bestKind, bx, by, bz, bestDish, bestItem end
+     return nil
+ end
++
+ 
+ local function walkToFeedTile(animal, d, gx, gy, gz, run, nowMs)
+     CD.letMove(animal)

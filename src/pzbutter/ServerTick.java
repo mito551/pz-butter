@@ -5,7 +5,7 @@ import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadMXBean;
 
 /**
- * Server tick log (Plan 18). One line per server tick in the frames.out format
+ * Server tick log (Plan 15). One line per server tick in the frames.out format
  * (epoch_ms, tick number, ms since the previous tick start, ms in the tick, main-thread CPU ms),
  * so tools/frames.py reads it unchanged. A minute line gives n/p50/p99/max. Ticks over 100 ms
  * carry the stage that took most of the tick: net (before ServerMap.preupdate), a Lua event,

@@ -6,7 +6,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 
-/** Hosted server child JVM (Plan 18 Task 4). */
+/** Hosted server child JVM (Plan 15 Task 4). */
 final class HostTest {
 
     private HostTest() {}

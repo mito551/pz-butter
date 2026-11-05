@@ -57,6 +57,7 @@ public final class SelfTest {
         NetStatsTest.run();
         ThirdPartyTest.run();
         PreloadSafetyTest.run();
+        VehTrackTest.run();
         delete(DIR);
         System.out.println("ok");
     }

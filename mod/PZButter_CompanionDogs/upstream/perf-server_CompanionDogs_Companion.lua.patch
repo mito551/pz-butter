@@ -1,0 +1,79 @@
+--- a/server/CompanionDogs_Companion.lua
++++ b/server/CompanionDogs_Companion.lua
+@@ -1,5 +1,21 @@
++--[[
++    CD_Perf build of Companion Dogs. Same behaviour, much less work per tick.
++    Regenerate with tools/build_cd.py after every update of Companion Dogs.
++]]
++do
++    local m = getModInfoByID and getModInfoByID("CompanionDogs")
++    local v = m and m:getModVersion()
++    if v and v ~= "0.7.4" then
++        print("[CD_Perf] WARNING: Companion Dogs is " .. tostring(v) .. ", this override was built from 0.7.4; regenerate CD_Perf with tools/build_cd.py")
++    end
++end
++
+ CompanionDogs = CompanionDogs or {}
+ local CD = CompanionDogs
++local function cfgOn(key)
++    local c = rawget(_G, "CD_PerfPatchConfig")
++    return not (type(c) == "table" and c[key] == false)
++end
+ 
+ local function worldMinutes()
+     return getGameTime():getWorldAgeHours() * 60
+@@ -981,6 +997,11 @@
+     return n
+ end
+ 
++-- Idle gate: with no dog loaded (CD.dogReg.dogs empty) these only walk their own per-dog
++-- tables, which then hold nothing live; stale entries are cleaned when a dog loads again.
++-- SKIP: processAnimClears, tickFenceHops, tickFenceSteer, tickFollowSteer, tickFenceLandPush, tickLandGlide, tickCareWatch, tickFallGuard, tickGunGuard, tickCompanionFire, tickDenseSync
++-- NEVER: tickMountedDogs (mounted dogs may be outside the animal list), tickCarriedGuard (carried dogs are found by id), tickNetAuthority (holds must expire), maintainFollowers + maintainCombat + tickFollowStream + tickLandStream (together they drop dogs that left and tell clients to stop streaming them), teleportbring, eachPlayerSlice (its ghost scan finds unregistered dogs), everything on the COMPANION_TICK_INTERVAL beat
++
+ local counter = 0
+ local followCounter = 0
+ local function companionTick()
+@@ -992,18 +1013,23 @@
+         CD._regTickDriven = true
+         CD.pz("srv.dogreg", CD.rebuildDogRegIfChanged)
+     end
+-    CD.pz("srv.animclears", CD.processAnimClears)
++    local busy = #CD.dogReg.dogs > 0 or not cfgOn("idleGate")
++    if busy then CD.pz("srv.animclears", CD.processAnimClears) end
+     CD.pz("srv.mounted", CD.tickMountedDogs)
+-    CD.pz("srv.fencehop", CD.tickFenceHops)
+-    CD.pz("srv.fencesteer", CD.tickFenceSteer)
+-    CD.pz("srv.followsteer", CD.tickFollowSteer)
+-    CD.pz("srv.fencelandpush", CD.tickFenceLandPush)
+-    CD.pz("srv.landglide", CD.tickLandGlide)
++    if busy then
++        CD.pz("srv.fencehop", CD.tickFenceHops)
++        CD.pz("srv.fencesteer", CD.tickFenceSteer)
++        CD.pz("srv.followsteer", CD.tickFollowSteer)
++        CD.pz("srv.fencelandpush", CD.tickFenceLandPush)
++        CD.pz("srv.landglide", CD.tickLandGlide)
++    end
+     CD.pz("srv.landstream", CD.tickLandStream)
+-    CD.pz("srv.carewatch", CD.tickCareWatch)
+-    CD.pz("srv.fallguard", CD.tickFallGuard)
+-    CD.pz("srv.gunguard", CD.tickGunGuard)
+-    CD.pz("srv.fire", CD.tickCompanionFire)
++    if busy then
++        CD.pz("srv.carewatch", CD.tickCareWatch)
++        CD.pz("srv.fallguard", CD.tickFallGuard)
++        CD.pz("srv.gunguard", CD.tickGunGuard)
++        CD.pz("srv.fire", CD.tickCompanionFire)
++    end
+     CD.pz("srv.teleportbring", eachOnlinePlayer, CD.bringActiveOnTeleport)
+     followCounter = followCounter + 1
+     if followCounter >= CD.FOLLOW_TICK_INTERVAL then
+@@ -1013,7 +1039,7 @@
+         CD.pz("srv.carriedguard", CD.tickCarriedGuard)
+     end
+     CD.pz("srv.netauth", CD.tickNetAuthority)
+-    CD.pz("srv.densesync", CD.tickDenseSync)
++    if busy then CD.pz("srv.densesync", CD.tickDenseSync) end
+     CD.pz("srv.followstream", CD.tickFollowStream)
+     CD.pz("srv.companion", CD.eachPlayerSlice, CD.processNearbyDogs, CD.reapPhantomCompanions)
+     counter = counter + 1

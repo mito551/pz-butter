@@ -20,6 +20,9 @@ TEST_HOME="$(mktemp -d -t pzbutter-home.XXXXXX)"
 "$JDK/bin/java" -ea -Duser.home="$TEST_HOME" -cp "$B/test-classes:$CP" pzbutter.SelfTest
 "$HERE"/tools/test_lua.sh
 python3 "$HERE/tools/check_readme.py"
+# fix mods (Plan 17): every mod/PZButter_<Target>, shipped or not, must pass the package rules
+mapfile -t FIXMODS < <(find "$HERE/mod" -mindepth 1 -maxdepth 1 -type d -name 'PZButter_*' | sort)
+(( ${#FIXMODS[@]} == 0 )) || python3 "$HERE/tools/fixmods.py" "${FIXMODS[@]}"
 "$HERE"/tools/test_workshop.sh
 
 printf 'ZB-Preload: true\n' > "$B/MANIFEST.MF"
@@ -49,4 +52,16 @@ if [[ "${1:-}" == "--install" ]]; then
     cp -r "$B/mod/PZButter" "$DEST"
     touch "$DEST/.pzbutter-build"
     echo "installed $DEST"
+    # fix mods go beside it; enabling one in the game is its switch (mod/UNSHIPPED ones stay out)
+    while IFS= read -r fm; do
+        FDEST="$HOME/Zomboid/mods/$(basename "$fm")"
+        if [[ -e "$FDEST" && ! -e "$FDEST/.pzbutter-build" ]]; then
+            echo "$FDEST exists and was not installed by build.sh; not touching it" >&2; exit 1
+        fi
+        rm -rf "$FDEST"
+        cp -r "$B/mod/$(basename "$fm")" "$FDEST"
+        rm -rf "$FDEST/tools" "$FDEST/upstream"
+        touch "$FDEST/.pzbutter-build"
+        echo "installed $FDEST"
+    done < <(python3 "$HERE/tools/fixmods.py" --shipped "$HERE/mod")
 fi

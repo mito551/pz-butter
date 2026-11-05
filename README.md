@@ -179,7 +179,7 @@ The mod creates `~/Zomboid/PZButter.properties` on first start and reads it once
 | `cursorLatch` | Move the cursor to the newest pointer position just before the frame is drawn. Off by default. |
 | `aimHoldMs` | Right-button hold before aiming starts, in ms (default `150`; `0` aims at once). |
 
-### Server and hosting (Plan 18)
+### Server and hosting (Plan 15)
 
 These keys act only on a dedicated server or a game hosted from the menu; on a client they stay off with one console line.
 
@@ -194,23 +194,13 @@ These keys act only on a dedicated server or a game hosted from the menu; on a c
 | `hostZombieBuddy` | Carries a ZombieBuddy `-javaagent:` entry into the hosted server's child JVM, but only when that agent already runs a non-interactive policy (`deny-new` or `allow-all`); an untrusted headless child would otherwise wait on a console prompt. Off by default. |
 | `hostJvmArgs` | Uses `Zomboid/PZButter-host.args` as an extra `@file` in the hosted server's child JVM, after the game's `-Xms/-Xmx`. The file is ignored unless it is at most 4 KB, ASCII and 16 lines of blanks, comments, a small `-Xms` or a plain `-Xlog` line. Off by default. |
 
-### Lua handlers (Plan 19)
+### Lua handlers (Plan 17)
 
 | Key | What it does |
 |---|---|
 | `handlerCensus` | Diagnostic and public API. Wraps `Events.<Name>.Add/.Remove` for per-tick and per-frame events, records each handler's function, source file, first line and registration count, then at `OnGameStart`/`OnGameBoot` assigns it to its mod folder and prints one overview line. Run-time registrations only bump a counter. On by default. |
 
-### Vehicle mod handlers (Plan 19)
-
-These keys act on a multiplayer client only; on a dedicated server they stay off.
-
-| Key | What it does |
-|---|---|
-| `ki5Bundle` | Removes the recognised KI5 vehicle handlers from `OnPlayerUpdate` and calls them from one dispatcher at the end. On foot, handlers whose on-foot effect is none do not run; in a vehicle only handlers whose type filter matches. Off by default. |
-| `ki5SyncMs` | How often a `sync` handler may run while the vehicle, type and seat stay the same. A change runs it at once. Default 100 ms. |
-| `ki5PartModThrottle` | While an `every` handler runs, lets one `BaseVehicle.transmitPartModData` call per vehicle part through per 100 ms and sends the last suppressed state when the handler returns. Off by default. |
-
-### Multiplayer client (Plan 18)
+### Multiplayer client (Plan 15)
 
 These keys act only on a multiplayer client; on a server they stay off.
 
@@ -218,6 +208,8 @@ These keys act only on a multiplayer client; on a server they stay off.
 |---|---|
 | `vehicleEarlyParse` | `off`, `verify` or `on`. A full vehicle update can arrive before its chunk, in which case the game drops it and the car pops in later. `verify` keeps the bytes and compares the next answer without ever placing the car early; `on` also places it at the end of the client update and removes it before a different answer. Off by default. |
 | `chunkRefill` | Asks again for a chunk slot whose load failed while the player stays in one place, since the streamer keeps the dead entry until the player moves away. A hole is due after 4 s quiet or 25 s busy, at most 6 asks every 3 s, with 15-120 s backoff. Off by default. |
+| `vehicleSendMs` | The physics send period of a car you drive, 16-150 ms. Only vanilla's moving period (exactly 150 ms) is shortened; its 300 ms parked period and other mods' periods stay. The server forwards each packet at once, so other players get the shorter period. Covers SmoothRide MP's send boost. Default 150 (stock). |
+| `vehicleRemoteSmooth` | Draws other players' cars from a buffer at an adaptive delay (about 60-120 ms with a 33 ms send period, against vanilla's 500 ms), on a curve between packets when the curve stays close to the straight line. Through a short packet drop the car keeps turning and slowing as it was; every jump is blended in over about 120 ms, and a trailer is drawn at its car's instant. It stays off, with one console line, if this game build's fields do not match or its self-test fails. Covers SmoothRide MP's receiver. Off by default. |
 
 ### Dev keys
 
@@ -266,8 +258,20 @@ Values can be `true`/`false`, `yes`/`no`, `on`/`off` or `1`/`0`. If the file can
 |---|---|
 | `./build.sh` | Compiles, runs the self-tests (`test/pzbutter/SelfTest.java`) and builds `build/PZButter.jar`. |
 | `./bench.sh` | Microbenchmark of the frame clock's per-frame cost. |
+| `tools/run.sh … --add-mod ID` | One measured run with mod `ID` added to the list and to the save's copy (repeatable). An A/B of a fix mod is `tools/ab.py … --arm-run-args on="--add-mod PZButter_<Target>"`. |
+| `python3 tools/fixmods.py mod/PZButter_*` | The fix-mod rules (`./build.sh` runs them): the id starts with `PZButter_`, the mod requires and loads after its target, and a mod that requires PZ Butter guards its Lua. |
 
 **CI.** Every push builds the mod and runs the self-tests on GitHub Actions; it can also be started by hand (Actions → Build → Run workflow). **Releases.** Bump `modversion` in `mod/PZButter/42/mod.info`, then push a commit to `main` whose message contains `[build]`. GitHub Actions downloads the free Project Zomboid dedicated server (cached) to compile against, builds the mod, runs the self-tests, and publishes a release `v<modversion>` with `PZButter-<modversion>.zip`. Only the newest commit of a push is checked. If that version already has a release, the run fails.
+
+## Fix mods for other mods
+
+Fixes for other mods ship in the same Workshop item as separate mods, one per target mod, named `PZButter_<Target>`. Enabling one switches its fix on; there is no setting for it. Each one requires its target mod, so it cannot be enabled without it. A fix that gets cheaper through PZ Butter's own hooks also requires PZ Butter; the others work on their own. | Fix mod | Target | Needs PZ Butter | What it does |
+|---|---|---|---|
+| `PZButter_KI5` | damnlib (the KI5 vehicles) | yes: it takes handlers over through `handlerCensus` | Runs the recognised `OnPlayerUpdate` handlers of KI5 vehicles and the other mods `tools/ki5scan.py` lists from one dispatcher at the end. On foot, handlers whose work needs a vehicle are skipped; a sync-only handler runs at most every 100 ms while the vehicle, type and seat stay the same. While an every-frame handler runs, one `BaseVehicle.transmitPartModData` call per vehicle part passes per 100 ms, and the last state is sent afterwards. A multiplayer client only. |
+| `PZButter_TsarsLib` | tsarslib | yes: only `handlerCensus` can take out its local `OnTick` handler | tsarslib asks the server for its animation data every 100 ticks for the whole session. This asks once on the first tick and then at most every 5 minutes; the answer changes only when a mod is added or updated. |
+| `PZButter_DamnLib` | damnlib | no | damnlib checks every loaded square against its spawn locations. This keeps an index of those locations and answers a square with none at once; the rest still go to damnlib. A new location marks the index stale. It stays off when another mod already wrapped the check. |
+
+`mod/UNSHIPPED` lists fix mods that are kept in the repository but not packed or installed, for targets that are not available at the moment.
 
 ## Recommended JVM flags (optional)
 

@@ -73,6 +73,30 @@ mkdir -p "$out/run$(wc -l < '%s')"
         self.assertIn("arm on SHORT (2/3)", text)
         self.assertIn("median 31.0", text)
 
+    def test_bootSwapCounted(self):
+        d = tempfile.mkdtemp()
+        with open(os.path.join(d, "sysmon.csv"), "w") as f:
+            f.write("epoch_ms,mem_avail_mb,swap_used_mb,pswpin\n"
+                    "500,9000,7000.5,100\n1000,9000,7100.0,150\n20000,3000,8000,6150\n39000,2000,8500,6200\n50000,2000,8500,9000\n")
+        marks = frames.read_marks(["mark jvm.start 1000", "mark menu.ready 39000"])
+        self.assertEqual(ab.boot_swap(d, marks), (6050, 7100.0))
+        self.assertEqual(ab.boot_swap(tempfile.mkdtemp(), marks), (None, None))  # no sysmon.csv
+
+    def test_noisyMarkedInSummary(self):
+        record = {
+            "arms": [{"name": "off", "props": ""}, {"name": "on", "props": ""}],
+            "runs_per_arm": 1,
+            "order": ab.order_for(1),
+            "done": [
+                {"arm": "off", "dir": "r1", "boot_s": 150.0, "boot_swapin": 42000},
+                {"arm": "on", "dir": "r2", "boot_s": 90.0, "boot_swapin": 200},
+            ],
+        }
+        text = ab.summary_text(record)
+        self.assertIn("arm off NOISY (1/1)", text)
+        self.assertNotIn("arm on NOISY", text)
+        self.assertIn("noisy boots (over 5000 swap-in pages): r1 (42000)", text)
+
     def test_bootFromMarks(self):
         marks = frames.read_marks(["mark jvm.start 1000", "mark menu.ready 39000"])
         self.assertEqual(ab.boot_seconds(marks), 38.0)

@@ -70,6 +70,22 @@ cp -a "$SRC" "$DEST/Contents/mods/PZButter" || die "copy failed"
 # Build bookkeeping and local test leftovers do not belong in a release.
 find "$DEST/Contents/mods/PZButter" \( -name '.keep' -o -name '.DS_Store' -o -name '*.class' -o -name '*.tmp' -o -name 'test-*' \) -delete
 find "$DEST/Contents/mods/PZButter" -type d -name 'test' -prune -exec rm -rf {} +
+# Fix mods (Plan 17): every shipped PZButter_<Target> beside PZButter, without its tools/ and upstream/.
+FIX_NOTE=""
+while IFS= read -r fm; do
+    id="$(basename "$fm")"
+    cp -a "$fm" "$DEST/Contents/mods/$id" || die "copy of $id failed"
+    rm -rf -- "$DEST/Contents/mods/$id/tools" "$DEST/Contents/mods/$id/upstream"
+    find "$DEST/Contents/mods/$id" \( -name '.keep' -o -name '.DS_Store' -o -name '*.tmp' -o -name 'test-*' -o -name '.pzbutter-build' \) -delete
+    python3 "$TOOLS/fixmods.py" --packaged "$DEST/Contents/mods/$id" || die "$id fails the fix-mod rules"
+    if grep -Eq '^require=.*\\PZButter(,|$)' "$fm/42/mod.info"; then need=" (needs PZ Butter)"; else need=" (standalone)"; fi
+    FIX_NOTE="${FIX_NOTE:+$FIX_NOTE, }$id$need"
+done < <(python3 "$TOOLS/fixmods.py" --shipped "$(dirname "$SRC")")
+if [[ -n "$FIX_NOTE" ]]; then
+    DESC="$DESC
+description=
+description=Fix mods in this item, each switched on by enabling it: $FIX_NOTE."
+fi
 cp -p "$PREVIEW" "$DEST/preview.png" || die "cannot copy preview.png"
 
 python3 - "$TEMPLATE" "$DEST/workshop.txt" "$DESC" <<'PY'
