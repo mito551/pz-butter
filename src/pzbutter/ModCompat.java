@@ -168,6 +168,7 @@ Map.entry("LoadPatches.WaitFileTask", k("textureBufferMb")),
         Map.entry("DevPatches.GameLoadingUpdate", k("devAutoContinue")),
         Map.entry("DevPatches.VehicleRemoved", k("devScene")),
         Map.entry("DevPatches.KeyDown", k("devScene")),
+        Map.entry("DevPatches.SpeedSet", k("devScene")),
         // census (Plan 8b)
         Map.entry("CensusPatches.PreUpdate", k("devCensus")),
         Map.entry("CensusPatches.FrameStep", k("devCensus")),

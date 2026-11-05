@@ -44,6 +44,28 @@ public final class DevPatches {
     }
 
 
+    /**
+     * Diagnostic: who pauses a scene. On the full list something sets game speed 0 on every frame of the settle
+     * (823 re-pauses in one S4 run); the first three calls during a scene print their Lua and Java callers.
+     */
+    public static int pauseTraces;
+    @me.zed_0xff.zombie_buddy.Patch(className = "zombie.ui.SpeedControls", methodName = "SetCurrentGameSpeed")
+    public static class SpeedSet {
+        @me.zed_0xff.zombie_buddy.Patch.OnEnter
+        public static void enter(@me.zed_0xff.zombie_buddy.Patch.Argument(0) int speed) {
+            if (speed != 0 || pauseTraces >= 3 || !SceneDriver.sceneSet() || !SceneDriver.guard.on) return;
+            try {
+                pauseTraces++;
+                StringBuilder sb = new StringBuilder("[PZButter] devScene: speed 0 set by:");
+                String[] lua = zombie.Lua.LuaManager.getLuaStackTraceStrings(zombie.Lua.LuaManager.thread.getCurrentCoroutine());
+                if (lua != null) for (String l : lua) sb.append("\n  lua ").append(l);
+                StackTraceElement[] java = new Throwable().getStackTrace();
+                for (int i = 1; i < Math.min(java.length, 9); i++) sb.append("\n  java ").append(java[i]);
+                System.out.println(sb);
+            } catch (Throwable t) { SceneDriver.guard.fail(t); }
+        }
+    }
+
     /** isKeyDown(int) only: strictMatch makes ZombieBuddy match the advice's argument list exactly (as GpuPatches.GenTextures relies on). */
     @me.zed_0xff.zombie_buddy.Patch(className = "zombie.input.GameKeyboard", methodName = "isKeyDown", strictMatch = true)
     public static class KeyDown {
