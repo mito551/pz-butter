@@ -231,6 +231,8 @@ These keys act only on a multiplayer client; on a server they stay off.
 | `devSceneSettleSec` | Dev. Seconds after world ready before `scene.start` (default 20); needs devScene. |
 | `devSceneSec` | Dev. Seconds from `scene.start` to `scene.end` (default 60); needs devScene. |
 | `devSceneQuit` | Dev. Quit to desktop 3 s after `scene.end`. Needs devScene. Off by default. |
+| `devNewSave` | Dev. With `devAutoContinue`, creates a new Sandbox world with this name on the active mod list instead of pressing Continue: default sandbox settings, an unemployed character with no traits. `tools/newsave.sh NAME` sets it for one launch. Empty (off) by default. |
+| `devNewSaveAt` | Dev. Where `devNewSave`'s player starts, `x,y,z` in squares. Default `13652,3136,0`, the spot the earlier full test saves used. |
 | `devPopulation` | Dev. Zombies spawned once at settle start. Needs devScene. Off by default. |
 | `devRoute` | Dev. Square offsets for `devScene=walk`, `dx,dy;dx,dy;...` (default empty: walk acts like stand). Needs devScene. |
 | `devDriveCar` | Dev. Vehicle script for `devScene=drive` (default `Base.CarNormal`). Needs devScene. |

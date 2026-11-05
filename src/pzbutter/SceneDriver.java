@@ -74,6 +74,9 @@ public final class SceneDriver {
     private static int sceneSec = 60;
     private static volatile boolean autoContinue;
     private static volatile boolean autoContinued;
+    /** devNewSave: the name of a new Sandbox world to create on the main menu instead of pressing Continue ("" = off). */
+    private static volatile String newSave = "";
+    private static volatile String newSaveAt = "13652,3136,0";
 
     static void init() {
         guard.on = Settings.enabled && !"off".equalsIgnoreCase(Settings.text("devScene", "off"));
@@ -84,6 +87,10 @@ public final class SceneDriver {
         autoContinue = Settings.flag("devAutoContinue");
         autoGuard.on = autoContinue;
         if (autoContinue) System.out.println("[PZButter] devAutoContinue: presses Continue and Click to Start once");
+        newSave = Settings.enabled ? Settings.text("devNewSave", "").trim() : "";
+        newSaveAt = Settings.text("devNewSaveAt", "13652,3136,0").trim();
+        if (!newSave.isEmpty() && autoContinue)
+            System.out.println("[PZButter] devNewSave: creates Sandbox world " + newSave + " at " + newSaveAt + " instead of Continue");
         if (!guard.on) return;
         System.out.println("[PZButter] devScene: " + Settings.text("devScene", "off") + " settle=" + settleSec + " scene=" + sceneSec);
         String scene = Settings.text("devScene", "off");
@@ -116,6 +123,8 @@ public final class SceneDriver {
         readyMs = 0;
         quitAtMs = 0;
         autoContinued = false;
+        newSave = "";
+        newSaveAt = "13652,3136,0";
         action = null;
         marksFile = null;
         spawner = null;
@@ -401,6 +410,17 @@ public final class SceneDriver {
             if (inst instanceof se.krka.kahlua.vm.KahluaTable it) {
                 Object d = it.rawget("delay");
                 if (d instanceof Number n && n.doubleValue() > 0) return;
+            }
+            if (!newSave.isEmpty()) {
+                // a fresh save on the active mod list, through vanilla's own new-game calls (DevNewSave.lua)
+                Object nf = zombie.Lua.LuaManager.env.rawget("PZButterDevNewSave");
+                autoContinued = true;
+                if (nf == null) { System.out.println("[PZButter] devNewSave off: PZButterDevNewSave not loaded"); return; }
+                DevMarks.writeAt("menu.ready", System.currentTimeMillis());
+                Object[] r = zombie.Lua.LuaManager.caller.pcall(zombie.Lua.LuaManager.thread, nf, newSave, newSaveAt);
+                if (r == null || r.length == 0 || !Boolean.TRUE.equals(r[0]))
+                    System.out.println("[PZButter] devNewSave: failed: " + (r != null && r.length > 1 ? r[1] : "no result"));
+                return;
             }
             Object fn = t.rawget("continueLatestSave");
             Object mode = t.rawget("latestSaveGameMode");
