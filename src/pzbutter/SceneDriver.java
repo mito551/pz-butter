@@ -194,7 +194,8 @@ public final class SceneDriver {
     /**
      * A scene measures a running world. Mods such as Pause on Start (3392136394) set the game speed to 0 a few ticks
      * after OnGameStart; the full-list runs of 2026-11-05 then measured a paused world (the walk moved 0 tiles).
-     * Checked at the settle start and again at the scene start, because the pause can land after the first check.
+     * Checked at the settle start, on every settle frame and at the scene start, because the pause lands after the
+     * settle start; a settle spent paused moves the mods' warm-up into the scene window.
      */
     private static void unpause(String when) {
         zombie.ui.SpeedControls sc = zombie.ui.UIManager.getSpeedControls();
@@ -229,6 +230,9 @@ public final class SceneDriver {
             if (since < 0) since = 0;
             Phase next = phaseAt(since, settleSec, sceneSec);
             if (next == phase) {
+                // a mod's pause lands after the settle start (Pause on Start: tick 5 after OnGameStart); the settle
+                // must run the world, or the mods' warm-up lands in the scene window
+                if (phase == Phase.SETTLE) try { unpause("settle"); } catch (Throwable t) { guard.fail(t); }
                 // the action prepares halfway through the settle: a car spawned on the first in-game frame
                 // lands in a chunk the game drops a moment later (BaseVehicle.update: chunk.refs empty)
                 if (phase == Phase.SETTLE && !prepared && since >= (long) settleSec * 500L) {

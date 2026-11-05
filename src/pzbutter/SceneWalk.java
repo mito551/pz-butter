@@ -21,6 +21,8 @@ public final class SceneWalk implements SceneDriver.Action {
         double y();
         /** Diagnostics for a failed path: the player's and the target's squares. */
         default String where(int x, int y, int z) { return ""; }
+        /** Diagnostics for a stuck walk: what the player and its path are doing. */
+        default String state() { return ""; }
     }
 
     static int next(int index, int size) {
@@ -168,7 +170,8 @@ public final class SceneWalk implements SceneDriver.Action {
         double moved = Math.hypot(x - stuckX, y - stuckY);
         if (stuck(moved, gap)) {
             System.out.println(String.format(java.util.Locale.ROOT, "[PZButter] devScene walk: stuck at %.1f,%.1f, leg %d/%d to %d,%d, moved %.2f tiles in %d ms",
-                x, y, index + 1, route.length, originX + route[index][0], originY + route[index][1], moved, gap));
+                x, y, index + 1, route.length, originX + route[index][0], originY + route[index][1], moved, gap)
+                + walker.state() + walker.where(lastX, lastY, originZ));
             SceneDriver.end("stuck");
             return;
         }
@@ -241,6 +244,23 @@ public final class SceneWalk implements SceneDriver.Action {
                 if (p == null) return "";
                 return "; player " + square(p.getCurrentSquare()) + "; target " + square(p.getCell().getGridSquare(x, y, z));
             } catch (Throwable t) { return "; where: " + t; }
+        }
+        public String state() {
+            try {
+                zombie.characters.IsoPlayer p = zombie.characters.IsoPlayer.getInstance();
+                if (p == null) return "; no player";
+                java.util.List<?> q = p.getCharacterActions();
+                zombie.pathfind.PathFindBehavior2 pf = p.getPathFindBehavior2();
+                zombie.ui.SpeedControls sc = zombie.ui.UIManager.getSpeedControls();
+                return "; actions " + q.size() + (q.isEmpty() ? "" : " (first " + q.get(0).getClass().getSimpleName() + ")")
+                    + "; state " + (p.getCurrentState() == null ? "none" : p.getCurrentState().getClass().getSimpleName())
+                    + (p.getVehicle() != null ? "; in vehicle" : "") + (p.isAsleep() ? "; asleep" : "")
+                    + (p.isSitOnGround() ? "; sitting" : "") + (p.isBlockMovement() ? "; movement blocked" : "")
+                    + (p.isGhostMode() ? "; ghost" : "")
+                    + "; path " + (pf == null ? "none" : (pf.isGoalLocation() ? "location " + pf.getTargetX() + "," + pf.getTargetY()
+                        : pf.isGoalNone() ? "no goal" : "other goal") + (pf.getIsCancelled() ? ", cancelled" : ""))
+                    + "; speed " + (sc == null ? "?" : sc.getCurrentGameSpeed()) + " x" + zombie.GameTime.instance.getMultiplier();
+            } catch (Throwable t) { return "; state: " + t; }
         }
         private static String square(zombie.iso.IsoGridSquare q) {
             if (q == null) return "not loaded";
