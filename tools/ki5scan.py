@@ -13,7 +13,7 @@ import re
 import sys
 
 ADD = re.compile(r"Events\.OnPlayerUpdate\.Add\(\s*([A-Za-z_][\w.]*)\s*\)")
-FUNC = re.compile(r"^\s*function\s+([A-Za-z_][\w.]*)\s*\(", re.M)
+FUNC = re.compile(r"^[ \t]*function\s+([A-Za-z_][\w.]*)\s*\(", re.M)  # [ \t]: \s* crossed blank lines, one line early
 WORDS = re.compile(r"[A-Za-z_]\w*|\S")
 OPENERS = {"function", "if", "for", "while", "do"}
 TYPE = re.compile(
@@ -51,8 +51,8 @@ def function_body(text, name):
                     close = i + 1
                     break
         end = block_end(text, close)
-        return text[begin:end], text.count("\n", 0, m.start()) + 1
-    return None, 0
+        return text[begin:end], text.count("\n", 0, m.start()) + 1, text.count("\n", 0, end) + 1
+    return None, 0, 0
 
 
 def early_vehicle_return(body):
@@ -129,14 +129,14 @@ def scan(root, active):
             rel = os.path.relpath(path, directory).replace(os.sep, "/")
             for m in ADD.finditer(text):
                 name = m.group(1)
-                body, line = function_body(text, name)
+                body, line, last = function_body(text, name)
                 if body is None:
                     continue
                 kind, types = classify(body)
                 on_foot = "none" if kind == "sync" else "unchecked"
                 rows.append({"id": "%s:%s:%d" % (mid, rel, line),
                              "name": name, "kind": kind, "types": types,
-                             "onFoot": on_foot})
+                             "onFoot": on_foot, "last": last})
     # one mod id in two workshop items gives the same id twice
     rows = sorted({r["id"]: r for r in rows}.values(), key=lambda r: r["id"])
     return rows
@@ -152,9 +152,11 @@ def table_text(rows):
            "PZButter.Ki5Table = {"]
     for r in rows:
         types = "{" + ", ".join(quote(t) for t in r["types"]) + "}"
-        out.append('    {id=%s, name=%s, kind=%s, types=%s, onFoot=%s},' % (
+        # the game's census line is the closure's first instruction (getFirstLineOfClosure: Prototype.lines[0]),
+        # a line inside the function, not the `function` line: the dispatcher matches id's line .. last
+        out.append('    {id=%s, name=%s, kind=%s, types=%s, onFoot=%s, last=%d},' % (
             quote(r["id"]), quote(r["name"]), quote(r["kind"]), types,
-            quote(r["onFoot"])))
+            quote(r["onFoot"]), r.get("last", int(r["id"].rsplit(":", 1)[1]))))
     out.append("}")
     return "\n".join(out) + "\n"
 

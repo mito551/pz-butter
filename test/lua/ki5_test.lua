@@ -11,7 +11,7 @@ local everyFn = function(player) calls.every = calls.every + 1 end
 local uncheckedFn = function(player) calls.unchecked = calls.unchecked + 1 end
 local badFn = function(player) calls.bad = calls.bad + 1; error("boom") end
 local neighbourFn = function(player) calls.neighbour = calls.neighbour + 1 end
-Stubs.setSource(syncFn, "/mods/modA/sync.lua", 1)
+Stubs.setSource(syncFn, "/mods/modA/sync.lua", 3)  -- the game reports the first instruction, inside the function
 Stubs.setSource(everyFn, "/mods/modA/every.lua", 1)
 Stubs.setSource(uncheckedFn, "/mods/modA/other.lua", 1)
 Stubs.setSource(badFn, "/mods/modA/bad.lua", 1)
@@ -25,7 +25,7 @@ Events.OnPlayerUpdate.Add(neighbourFn)
 PZButter.ki5Bundle = true
 PZButter.ki5SyncMs = 100
 PZButter.Ki5Table = {
-    {id = "modA:sync.lua:1", name = "Sync", kind = "sync", types = {"carA"}, onFoot = "none"},
+    {id = "modA:sync.lua:1", name = "Sync", kind = "sync", types = {"carA"}, onFoot = "none", last = 4},
     {id = "modA:every.lua:1", name = "Every", kind = "every", types = {}, onFoot = "unchecked"},
     {id = "modA:other.lua:1", name = "Other", kind = "unchecked", types = {}, onFoot = "unchecked"},
     {id = "modA:bad.lua:1", name = "Bad", kind = "every", types = {}, onFoot = "unchecked"},
