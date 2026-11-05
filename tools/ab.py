@@ -62,8 +62,12 @@ def boot_seconds(marks):
 
 
 def load_seconds(marks):
-    ready, world = marks.get("menu.ready"), marks.get("world.ready")
-    if ready is None or world is None:
+    """menu.ready to the first world.ready after it (a run can log world.ready before the menu)."""
+    ready = marks.get("menu.ready")
+    if ready is None:
+        return None
+    world = next((m for m in marks if m[0] == "world.ready" and m[1] >= ready[1]), None)
+    if world is None:
         return None
     return (world[1] - ready[1]) / 1000.0
 
