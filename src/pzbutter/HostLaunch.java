@@ -12,7 +12,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Flags for the hosted server's child JVM (Plan 18, SPEC 6.7.3 hostJvmArgs).
+ * Flags for the hosted server's child JVM (Plan 15, SPEC 6.7.3 hostJvmArgs).
  *
  * CoopMaster.launchServer builds its command line locally and only ever hands one
  * string to the list from getGarbageCollector(), so that method's return value is

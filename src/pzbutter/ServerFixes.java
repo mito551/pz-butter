@@ -14,7 +14,7 @@ import zombie.inventory.InventoryItem;
 import zombie.inventory.ItemContainer;
 
 /**
- * Small server fixes (Plan 18, SPEC 6.8.1 and 6.7.3): the container send guard, the batched
+ * Small server fixes (Plan 15, SPEC 6.8.1 and 6.7.3): the container send guard, the batched
  * process-items merge and the first-tick prewarm. Advice is inlined into game classes, so every
  * method called from a holder is public.
  */

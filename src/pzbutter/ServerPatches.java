@@ -8,7 +8,7 @@ import zombie.inventory.ItemContainer;
 import zombie.iso.IsoCell;
 
 /**
- * Server tick log seams (Plan 18), inside GameServer.startServer's loop:
+ * Server tick log seams (Plan 15), inside GameServer.startServer's loop:
  *
  * <pre>
  *   2822  done check / System.nanoTime          tick start
