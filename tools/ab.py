@@ -13,6 +13,7 @@ low come from frames.py.
 """
 
 import argparse
+import csv
 import json
 import os
 import re
@@ -98,6 +99,30 @@ def _stat(runs, key):
     return {"n": len(vals), "median": statistics.median(vals), "min": min(vals), "max": max(vals)}
 
 
+NOISY_SWAPIN = 5000   # swap-in pages during boot; above it the boot measured the machine's memory, not the arm
+
+
+def boot_swap(run_dir, marks):
+    """(swap-in pages from jvm.start to menu.ready, swap in use at launch in MB) from sysmon.csv; None when absent."""
+    start, ready = marks.get("jvm.start"), marks.get("menu.ready")
+    try:
+        with open(os.path.join(run_dir, "sysmon.csv")) as f:
+            rows = list(csv.DictReader(f))
+    except OSError:
+        return (None, None)
+    if start is None or ready is None:
+        return (None, None)
+    boot = [r for r in rows if start[1] <= int(float(r["epoch_ms"])) <= ready[1] and r.get("pswpin") not in (None, "")]
+    if not boot:
+        return (None, None)
+    used = boot[0].get("swap_used_mb")
+    return (int(float(boot[-1]["pswpin"]) - float(boot[0]["pswpin"])), float(used) if used not in (None, "") else None)
+
+
+def _noisy(run):
+    return (run.get("boot_swapin") or 0) > NOISY_SWAPIN
+
+
 def _overlap(a_runs, b_runs, key):
     a = [r[key] for r in a_runs if r.get(key) is not None]
     b = [r[key] for r in b_runs if r.get(key) is not None]
@@ -137,8 +162,15 @@ def summary_text(record):
     lines = []
     for name, arm in s["arms"].items():
         short = " SHORT (%d/%d)" % (arm["runs"], record["runs_per_arm"]) if arm["short"] else ""
+        noisy = [r for r in record["done"] if r["arm"] == name and _noisy(r)]
+        if noisy:
+            short += " NOISY (%d/%d)" % (len(noisy), arm["runs"])
         lines.append("arm %s%s: boot %s s; load %s s; p50 %s ms; p99 %s ms; 1%% low %s fps" % (
             name, short, _fmt(arm["boot"]), _fmt(arm["load"]), _fmt(arm["p50"]), _fmt(arm["p99"]), _fmt(arm["low1"])))
+    noisy = [r for r in record["done"] if _noisy(r)]
+    if noisy:
+        lines.append("noisy boots (over %d swap-in pages): %s" % (
+            NOISY_SWAPIN, ", ".join("%s (%d)" % (r.get("dir", "?"), r["boot_swapin"]) for r in noisy)))
     if s["overlap"] is None:
         lines.append("boot ranges: not comparable")
     elif s["overlap"]:
@@ -231,8 +263,11 @@ def main(argv=None):
                 console = f.read()
         except OSError:
             console = ""
+        swapin, swap_used = boot_swap(run_dir, marks)
         record["done"].append({
             "arm": arm_name,
+            "boot_swapin": swapin,
+            "swap_used_start_mb": swap_used,
             "run_args": arm.get("run_args", ""),
             "dir": os.path.basename(run_dir),
             "boot_s": boot_seconds(marks),
