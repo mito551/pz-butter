@@ -1,4 +1,4 @@
--- Plan 19: handler census and the shared fix helper.
+-- Plan 17: handler census and the shared fix helper.
 local here = debug.getinfo(1, "S").source:sub(2)
 local root = here:gsub("/test/lua/.*$", "")
 dofile(root .. "/test/lua/stubs.lua")

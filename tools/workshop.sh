@@ -70,7 +70,7 @@ cp -a "$SRC" "$DEST/Contents/mods/PZButter" || die "copy failed"
 # Build bookkeeping and local test leftovers do not belong in a release.
 find "$DEST/Contents/mods/PZButter" \( -name '.keep' -o -name '.DS_Store' -o -name '*.class' -o -name '*.tmp' -o -name 'test-*' \) -delete
 find "$DEST/Contents/mods/PZButter" -type d -name 'test' -prune -exec rm -rf {} +
-# Fix mods (Plan 19): every shipped PZButter_<Target> beside PZButter, without its tools/ and upstream/.
+# Fix mods (Plan 17): every shipped PZButter_<Target> beside PZButter, without its tools/ and upstream/.
 FIX_NOTE=""
 while IFS= read -r fm; do
     id="$(basename "$fm")"

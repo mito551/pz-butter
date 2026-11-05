@@ -296,7 +296,7 @@ if [[ "$CHOSEN_IDS" != "$BENCH_IDS" ]]; then
     die "save mod list does not match chosen list"
 fi
 
-# step 5b: A/B of a fix mod (Plan 19) is "list" against "list plus the fix mod" on the same save. After I2, so I2
+# step 5b: A/B of a fix mod (Plan 17) is "list" against "list plus the fix mod" on the same save. After I2, so I2
 # still compares the user's own list with the save. The trap restores default.txt; the bench copy is per run.
 for m in "${ADD_MODS[@]}"; do
     [[ -d "$Z/mods/$m" ]] || die "--add-mod $m: not installed in $Z/mods (./build.sh --install installs the fix mods)"
