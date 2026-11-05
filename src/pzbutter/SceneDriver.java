@@ -169,6 +169,7 @@ public final class SceneDriver {
     /** Settle start: devPopulation, then the devWeather/devHour hook. Both run once per scene (S6/S8). */
     private static void settleStart() {
         try { protectPlayer(); } catch (Throwable t) { guard.fail(t); }
+        try { unpause("settle start"); } catch (Throwable t) { guard.fail(t); }
         try { spawnPopulationIfNeeded(); } catch (Throwable t) { guard.fail(t); }
         try { applyWeatherOnce(); } catch (Throwable t) { guard.fail(t); }
     }
@@ -188,6 +189,18 @@ public final class SceneDriver {
             f.setBoolean(p, true);
         }
         System.out.println("[PZButter] devScene: player invincible " + p.isInvincible());
+    }
+
+    /**
+     * A scene measures a running world. Mods such as Pause on Start (3392136394) set the game speed to 0 a few ticks
+     * after OnGameStart; the full-list runs of 2026-11-05 then measured a paused world (the walk moved 0 tiles).
+     * Checked at the settle start and again at the scene start, because the pause can land after the first check.
+     */
+    private static void unpause(String when) {
+        zombie.ui.SpeedControls sc = zombie.ui.UIManager.getSpeedControls();
+        if (sc == null || sc.getCurrentGameSpeed() != 0) return;
+        sc.SetCurrentGameSpeed(1);
+        System.out.println("[PZButter] devScene: game was paused at " + when + "; speed set to 1");
     }
 
     private static void applyWeatherOnce() {
@@ -251,6 +264,7 @@ public final class SceneDriver {
                     if (phase == Phase.DONE) { fireQuitIfNeeded(nowMs); return; }
                 }
                 phase = Phase.WINDOW;
+                try { unpause("scene start"); } catch (Throwable t) { guard.fail(t); }
                 Path f = marksFileForWrite();
                 DevMarks.write(f, DevMarks.line("scene.start", nowMs, null));
                 if (action != null) try { action.start(); } catch (Throwable t) { guard.fail(t); }
