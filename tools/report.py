@@ -105,7 +105,7 @@ def _gpu_busy(run_dir, ws, we):
     return (sum(vals) / len(vals)) if vals else None
 
 
-GC_LINE = re.compile(r"^\[([\d.]+)s\].*?Pause.*?([\d.]+)ms\s*$")
+GC_LINE = re.compile(r"^(?:\[\d{4}-[^\]]*\])?\[([\d.]+)s\].*?Pause.*?([\d.]+)ms\s*$")  # run.sh adds the time decorator first
 
 
 def _gc(run_dir, ws, we, slow_spans):

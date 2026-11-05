@@ -58,6 +58,13 @@ def make_inputs(root, vehicle="none"):
 
 
 class ReportTest(unittest.TestCase):
+    def test_gcTimeDecorator(self):
+        d = tempfile.mkdtemp()
+        write(os.path.join(d, "marks.out"), "mark jvm.start 1000\n")
+        write(os.path.join(d, "gc.log"),
+              "[2026-11-05T15:36:40.123+0100][79.500s][info][gc] GC(0) Pause Young (Normal) 12M->2M(256M) 3.456ms\n")
+        self.assertEqual(report._gc(d, 0, 10**9, [])["count"], 1)
+
     def test_reportReproduces(self):
         root = tempfile.mkdtemp(prefix="ptrep-")
         run, notes = make_inputs(root)
