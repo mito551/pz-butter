@@ -80,6 +80,9 @@ mkdir -p "$out/run$(wc -l < '%s')"
     def test_loadFromMarks(self):
         marks = frames.read_marks(["mark menu.ready 39000", "mark world.ready 60000"])
         self.assertEqual(ab.load_seconds(marks), 21.0)
+        early = frames.read_marks(["mark world.ready 10000", "mark menu.ready 39000",
+                                   "mark world.ready 60000", "mark world.ready 60001"])
+        self.assertEqual(ab.load_seconds(early), 21.0)
         self.assertIsNone(ab.boot_seconds(marks))
 
     def test_gameLoadingFromConsole(self):
