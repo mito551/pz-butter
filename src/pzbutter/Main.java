@@ -34,7 +34,7 @@ public class Main {
         System.out.println("[PZButter] " + Settings.VERSION + ", enabled=" + Settings.enabled);
         System.out.println("[PZButter] workers: " + Preload.status());
         if (Settings.flag("devCensus")) System.out.println("[PZButter] census: " + Census.status());
-        pzbutter.luabudget.Budget.init();
+        LuaBudget.init();
         LuaFast.init();
         LuaTiming.init();
         HitchSampler.init(); ServerTick.init(); NetStats.init();

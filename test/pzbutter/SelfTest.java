@@ -30,7 +30,7 @@ public final class SelfTest {
         frameLogRotates();
         frameFailureDisables();   // last: it switches the clock off
         DeliveryTest.run();
-        pzbutter.luabudget.BudgetTest.run();
+        LuaBudgetTest.run();
         LuaUiTest.run();
         UiRetainTest.run();
         SoundTest.run();

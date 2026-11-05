@@ -3,7 +3,6 @@ package pzbutter;
 import java.lang.invoke.VarHandle;
 
 import me.zed_0xff.zombie_buddy.Patch;
-import pzbutter.luabudget.Budget;
 import se.krka.kahlua.j2se.KahluaTableImpl;
 import se.krka.kahlua.vm.JavaFunction;
 import se.krka.kahlua.vm.KahluaTable;
@@ -20,12 +19,12 @@ public final class LuaPatches {
 
     /** Event.trigger entry / exit (main thread): which event the handlers below belong to. */
     public static void onTriggerEnter(Object event) {
-        Budget.eventEnter(event);
+        LuaBudget.eventEnter(event);
         if (LuaTiming.guard.on) LuaTiming.eventEnter(event);
     }
 
     public static void onTriggerExit() {
-        Budget.eventExit();
+        LuaBudget.eventExit();
         if (LuaTiming.guard.on) LuaTiming.eventExit();
     }
 
@@ -34,7 +33,7 @@ public final class LuaPatches {
         boolean skip = false;
         try {
             if (LuaFast.skipEmpty && fn instanceof LuaClosure c && LuaFast.isEmpty(c.prototype)) skip = true;
-            else if (a2 instanceof Object[] args) skip = Budget.shouldSkip(fn, args);
+            else if (a2 instanceof Object[] args) skip = LuaBudget.shouldSkip(fn, args);
             if (LuaTiming.guard.on) LuaTiming.callEnter(fn, skip);
         } catch (Throwable t) { LuaTiming.guard.fail(t); }
         return skip;

@@ -1,7 +1,6 @@
 package pzbutter;
 
 import me.zed_0xff.zombie_buddy.Patch;
-import pzbutter.luabudget.Budget;
 
 public final class Patches {
     private Patches() {}
@@ -9,9 +8,9 @@ public final class Patches {
     @Patch(className = "zombie.GameWindow", methodName = "frameStep")
     public static class Frame {
         @Patch.OnEnter
-        public static void enter() { LuaPatches.onFrameYield(); DeliveryPatches.onFrameGate(); FrameClock.enter(); DeliveryPatches.onFrameStarted(); Budget.frameStart(); }
+        public static void enter() { LuaPatches.onFrameYield(); DeliveryPatches.onFrameGate(); FrameClock.enter(); DeliveryPatches.onFrameStarted(); LuaBudget.frameStart(); }
 
         @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
-        public static void exit() { FrameClock.exit(); DeliveryPatches.onFrameEnd(); Budget.frameEnd(); LuaPatches.onFrameEndFiles(); LogPatches.onFrameEnd(); ZombiePatches.onFrameEnd(); if (Census.guard.on) Census.frameEnd(System.nanoTime()); }
+        public static void exit() { FrameClock.exit(); DeliveryPatches.onFrameEnd(); LuaBudget.frameEnd(); LuaPatches.onFrameEndFiles(); LogPatches.onFrameEnd(); ZombiePatches.onFrameEnd(); if (Census.guard.on) Census.frameEnd(System.nanoTime()); }
     }
 }
