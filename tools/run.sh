@@ -329,7 +329,7 @@ else
     echo "+ would copy $JDK_JFC -> $JFC and set jdk.ExecutionSample period ${JFR_PERIOD}ms"
 fi
 
-JVM_STR="${JVM_EXTRA:+$JVM_EXTRA }-XX:StartFlightRecording=settings=$JFC,filename=$RUN_DIR/game.jfr,dumponexit=true -Xlog:gc*,safepoint:file=$RUN_DIR/gc.log:uptime,tags -XX:+UnlockDiagnosticVMOptions -XX:+DumpPerfMapAtExit"
+JVM_STR="${JVM_EXTRA:+$JVM_EXTRA }-XX:StartFlightRecording=settings=$JFC,filename=$RUN_DIR/game.jfr,dumponexit=true -Xlog:gc*,safepoint:file=$RUN_DIR/gc.log:time,uptime,tags -XX:+UnlockDiagnosticVMOptions -XX:+DumpPerfMapAtExit"
 LAUNCH_ENV=""
 if (( MANGO )); then
     LAUNCH_ENV="MANGOHUD=1 "

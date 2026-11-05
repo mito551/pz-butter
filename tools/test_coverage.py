@@ -63,6 +63,14 @@ class CoverageTest(unittest.TestCase):
             rows = dict(coverage.coverage(d))
         self.assertEqual(rows["perf.data"], "ok")
 
+    def test_gcWallClock(self):
+        d = make_dir()
+        t = lambda ms: datetime.datetime.fromtimestamp(ms / 1000).astimezone().strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] \
+            + datetime.datetime.fromtimestamp(ms / 1000).astimezone().strftime("%z")
+        open(os.path.join(d, "gc.log"), "w").write(
+            "[%s][0.006s][gc,init] Initializing\n[%s][176.502s][gc,exit] Metaspace\n" % (t(WIN[0] - 5000), t(WIN[1] + 1000)))
+        self.assertEqual(coverage.gc_stamps(d), (WIN[0] - 5000, WIN[1] + 1000))
+
     def test_perfTodStamps(self):
         d = make_dir(perf=True)
         out = "2026-11-05 14:04:30.687038 \n2026-11-05 14:04:31.000000 \n"
