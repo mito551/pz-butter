@@ -21,7 +21,6 @@ Events.OnPlayerUpdate.Add(everyFn)
 Events.OnPlayerUpdate.Add(uncheckedFn)
 Events.OnPlayerUpdate.Add(badFn)
 Events.OnPlayerUpdate.Add(neighbourFn)
-PZButter.Census.finish()
 
 PZButter.ki5Bundle = true
 PZButter.ki5SyncMs = 100
@@ -34,6 +33,10 @@ PZButter.Ki5Table = {
 }
 local now = 0
 dofile(root .. "/mod/PZButter/42/media/lua/client/PZButter/Ki5.lua")
+-- the game loads Ki5.lua before the census finishes; the takeover happens at OnGameStart
+assert(Stubs.count("OnPlayerUpdate", syncFn) == 1, "Ki5 took handlers over before OnGameStart")
+for _, cb in ipairs(Events.OnGameStart.callbacks) do cb() end
+assert(Stubs.count("OnPlayerUpdate", syncFn) == 0, "Ki5 did not take the sync handler over at OnGameStart")
 Ki5 = PZButter.Ki5
 Ki5.now = function() return now end
 

@@ -45,18 +45,6 @@ end
 
 local handlers = {}
 local by_name = {}
-for _, row in ipairs(rows) do
-    local fn = resolve(row)
-    if fn then
-        local h = {row = row, fn = fn, last = -math.huge}
-        handlers[#handlers + 1] = h
-        by_name[row.name] = h
-    end
-end
-if #handlers == 0 then
-    print("[PZButter] ki5Bundle: off (no recognised handlers)")
-    return
-end
 
 local paused = {}
 local fails = {}
@@ -130,5 +118,23 @@ function Ki5.dispatch(player)
     end
 end
 
-Events.OnPlayerUpdate.Add(Ki5.dispatch)
-print("[PZButter] ki5Bundle: " .. #handlers .. " handler(s)")
+-- Census.route answers only after the census has finished, at OnGameStart; this file loads before that, so the
+-- handlers are taken over then (finish is idempotent, so the order of the two OnGameStart handlers does not matter)
+function Ki5.install()
+    PZButter.Census.finish()
+    for _, row in ipairs(rows) do
+        local fn = resolve(row)
+        if fn then
+            local h = {row = row, fn = fn, last = -math.huge}
+            handlers[#handlers + 1] = h
+            by_name[row.name] = h
+        end
+    end
+    if #handlers == 0 then
+        print("[PZButter] ki5Bundle: off (no recognised handlers)")
+        return
+    end
+    Events.OnPlayerUpdate.Add(Ki5.dispatch)
+    print("[PZButter] ki5Bundle: " .. #handlers .. " handler(s)")
+end
+Events.OnGameStart.Add(Ki5.install)
