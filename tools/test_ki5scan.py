@@ -76,6 +76,17 @@ class Ki5ScanTest(unittest.TestCase):
         rows = ki5scan.scan(root, ki5scan.active_ids(listfile))
         self.assertEqual([r["name"] for r in rows], ["M.SyncRearWindows"])
 
+    def test_sameModTwiceGivesOneRow(self):
+        root = self.tree()
+        copy = os.path.join(root, "ModA2", "mods", "ModA")
+        import shutil
+        shutil.copytree(os.path.join(root, "ModA", "mods", "ModA"), copy)
+        listfile = os.path.join(root, "default.txt")
+        with open(listfile, "w") as f:
+            f.write("mod=ModA\n")
+        rows = ki5scan.scan(root, ki5scan.active_ids(listfile))
+        self.assertEqual([r["name"] for r in rows], ["M.SyncRearWindows"])
+
     def test_tableIsData(self):
         rows = [{"id": "M:a.lua:2", "name": "M.F", "kind": "sync",
                  "types": ["x", "y"], "onFoot": "none"}]
