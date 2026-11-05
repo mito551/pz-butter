@@ -290,8 +290,9 @@ public final class VehTrack {
         if (discard) {
             resetCorrection();
         } else {
-            // the correction is first advanced to this instant, then the jump at this instant is folded into it:
-            // the drawn car continues exactly where last frame's drawn car was heading
+            // DECISION (2026-11-05, Plan 15 Task 8): relax first, then fold. SmoothRide.md §3.7 folds before relaxing; that
+            // order runs one frame of spring motion on a correction that was aligned at this very instant, and moved the
+            // drawn car about 0.3 m in the fold frame (VehTrackTest.correctionNoOvershoot checks the continuity).
             if (dt > 0) relax(dt);
             if (prevValid && !natural(mode, left, right)) fold(dt);
         }
@@ -408,8 +409,10 @@ public final class VehTrack {
         dst[7] = spT * (float) Math.sin(headingT);
         dst[8] = capped || ageS > MAX_PREDICT_S ? 0 : d[8];
         dst[9] = spT * (float) Math.cos(headingT);
-        // the turn about world up applied to the newest rotation; heading and rotation come from the same forward-axis
-        // formula (bodyHeading), so the sign follows from it
+        // DECISION (2026-11-05, Plan 15 Task 8): +turn about world up. SmoothRide.md §3.6 inverts the sign for its own heading
+        // convention; here heading (bodyHeading, atan2 of the forward axis) and this rotation use the same convention, so
+        // + is self-consistent. Not yet seen in game: if a predicted car's body turns against its path during a packet
+        // drop (Plan 15 Task 8 Step 4), negate turnT on the next two lines.
         float s = (float) Math.sin(turnT / 2), c = (float) Math.cos(turnT / 2);
         float qx = d[3], qy = d[4], qz = d[5], qw = d[6];
         dst[3] = c * qx + s * qz;
