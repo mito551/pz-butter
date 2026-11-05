@@ -15,7 +15,9 @@ cp "$HERE"/src/pzbutter/workers-*.txt "$B/classes/pzbutter/"
 cp "$HERE"/src/pzbutter/workers-*.txt "$B/test-classes/pzbutter/"
 cp "$HERE"/src/pzbutter/census-*.txt "$B/classes/pzbutter/"
 cp "$HERE"/src/pzbutter/census-*.txt "$B/test-classes/pzbutter/"
-"$JDK/bin/java" -ea -cp "$B/test-classes:$CP" pzbutter.SelfTest
+# tests get their own home: SceneDriver/DevMarks tests wrote 21 world.ready marks into a live run's ~/Zomboid/pzbutter/marks.out
+TEST_HOME="$(mktemp -d -t pzbutter-home.XXXXXX)"
+"$JDK/bin/java" -ea -Duser.home="$TEST_HOME" -cp "$B/test-classes:$CP" pzbutter.SelfTest
 "$HERE"/tools/test_lua.sh
 python3 "$HERE/tools/check_readme.py"
 "$HERE"/tools/test_workshop.sh
