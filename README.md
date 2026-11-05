@@ -266,8 +266,14 @@ Values can be `true`/`false`, `yes`/`no`, `on`/`off` or `1`/`0`. If the file can
 |---|---|
 | `./build.sh` | Compiles, runs the self-tests (`test/pzbutter/SelfTest.java`) and builds `build/PZButter.jar`. |
 | `./bench.sh` | Microbenchmark of the frame clock's per-frame cost. |
+| `tools/run.sh … --add-mod ID` | One measured run with mod `ID` added to the list and to the save's copy (repeatable). An A/B of a fix mod is `tools/ab.py … --arm-run-args on="--add-mod PZButter_<Target>"`. |
+| `python3 tools/fixmods.py mod/PZButter_*` | The fix-mod rules (`./build.sh` runs them): the id starts with `PZButter_`, the mod requires and loads after its target, and a mod that requires PZ Butter guards its Lua. |
 
 **CI.** Every push builds the mod and runs the self-tests on GitHub Actions; it can also be started by hand (Actions → Build → Run workflow). **Releases.** Bump `modversion` in `mod/PZButter/42/mod.info`, then push a commit to `main` whose message contains `[build]`. GitHub Actions downloads the free Project Zomboid dedicated server (cached) to compile against, builds the mod, runs the self-tests, and publishes a release `v<modversion>` with `PZButter-<modversion>.zip`. Only the newest commit of a push is checked. If that version already has a release, the run fails.
+
+## Fix mods for other mods
+
+Fixes for other mods ship in the same Workshop item as separate mods, one per target mod, named `PZButter_<Target>`. Enabling one switches its fix on; there is no setting for it. Each one requires its target mod, so it cannot be enabled without it. A fix that gets cheaper through PZ Butter's own hooks also requires PZ Butter; the others work on their own. `mod/UNSHIPPED` lists fix mods that are kept in the repository but not packed or installed, for targets that are not available at the moment.
 
 ## Recommended JVM flags (optional)
 

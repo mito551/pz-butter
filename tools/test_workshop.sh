@@ -38,6 +38,19 @@ grep -q '^description=PZ Butter is' "$TMP/out/PZButter/workshop.txt" && ok descr
 [[ ! -e "$TMP/out/PZButter/Contents/mods/PZButter/42/test-notes.txt" ]] && ok noTestFiles || bad noTestFiles
 [[ -f "$TMP/out/PZButter/Contents/mods/PZButter/42/media/java/common/PZButter.jar.zbs" ]] && ok signatureKept || bad signatureKept
 
+# fix mods: a shipped one is packed without upstream/, an UNSHIPPED one is left out, the text names the shipped one
+FM="$TMP/build/mod/PZButter_CompanionDogs"
+mkdir -p "$FM/42/media/lua/client" "$FM/upstream"
+printf 'id=PZButter_CompanionDogs\nrequire=\\CompanionDogs\nloadModAfter=CompanionDogs\n' > "$FM/42/mod.info"
+mkdir -p "$TMP/build/mod/PZButter_VES/42"
+printf 'id=PZButter_VES\nrequire=\\VES\nloadModAfter=VES\n' > "$TMP/build/mod/PZButter_VES/42/mod.info"
+echo "PZButter_VES" > "$TMP/build/mod/UNSHIPPED"
+PZ_BUILD_MOD="$BUILD" "$TOOLS/workshop.sh" "$TMP/out" >"$TMP/fix.log" 2>&1
+if [[ $? -eq 0 && -f "$TMP/out/PZButter/Contents/mods/PZButter_CompanionDogs/42/mod.info" ]]; then ok fixModPacked; else bad fixModPacked; cat "$TMP/fix.log"; fi
+[[ ! -e "$TMP/out/PZButter/Contents/mods/PZButter_CompanionDogs/upstream" ]] && ok fixModNoUpstream || bad fixModNoUpstream
+[[ ! -e "$TMP/out/PZButter/Contents/mods/PZButter_VES" ]] && ok unshippedLeftOut || bad unshippedLeftOut
+grep -q 'PZButter_CompanionDogs (standalone)' "$TMP/out/PZButter/workshop.txt" && ok fixModListed || bad fixModListed
+
 BUILD2="$TMP/build2/mod/PZButter"
 make_build "$BUILD2" no
 PZ_BUILD_MOD="$BUILD2" "$TOOLS/workshop.sh" "$TMP/out2" >"$TMP/unsigned.log" 2>&1

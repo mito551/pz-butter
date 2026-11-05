@@ -152,6 +152,7 @@ public final class LuaPatches {
 
     /** LuaManager.LoadDirBase entry (the Lua environment exists, the Lua files are about to load). */
     public static void onLuaLoad() {
+        ThirdParty.resetActive();   // a Lua load can follow a change of the mod list
         try {
             // the game runs LoadDirBase more than once per session in the same Lua env: keep the table, so what the
             // first load put in it (PZButter.Census, PZButter.Ki5) survives; a new table made Ki5.lua see no Census

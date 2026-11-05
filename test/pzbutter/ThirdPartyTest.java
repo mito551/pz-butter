@@ -8,7 +8,24 @@ public final class ThirdPartyTest {
         gateWindow();
         gateOff();
         flushOnEndEvery();
+        activeReadsList();
         ThirdParty.resetForTest();
+    }
+
+    /** Plan 19 Task 0: a fix mod is on when it is in the game's activated-mods list, read once per Lua load. */
+    static void activeReadsList() {
+        ThirdParty.resetForTest();
+        int[] reads = {0};
+        ThirdParty.modIds = () -> { reads[0]++; return java.util.List.of("PZButter", "\\PZButter_KI5"); };
+        assert ThirdParty.active("PZButter_KI5") : "listed mod is active (a leading backslash is ignored)";
+        assert !ThirdParty.active("PZButter_DamnLib") : "unlisted mod is not active";
+        assert reads[0] == 1 : "the list is read once, then cached";
+        ThirdParty.resetActive();
+        ThirdParty.modIds = () -> java.util.List.of();
+        assert !ThirdParty.active("PZButter_KI5") : "a new Lua load reads the list again";
+        ThirdParty.modIds = () -> { throw new IllegalStateException("no file system yet"); };
+        ThirdParty.resetActive();
+        assert !ThirdParty.active("PZButter_KI5") : "an unreadable list means not active";
     }
 
     static void gateWindow() {
