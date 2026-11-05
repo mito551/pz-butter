@@ -11,7 +11,11 @@ end
 function getFilenameOfClosure(fn) return Stubs.files[fn] end
 function getFirstLineOfClosure(fn) return Stubs.lines[fn] end
 function isServer() return false end
-function getActivatedMods() return { "modA", "modB" } end
+-- shaped like the game's java.util.List: size()/get(i), not a Lua table
+function getActivatedMods()
+    local ids = { "modA", "modB" }
+    return { size = function(self) return #ids end, get = function(self, i) return ids[i + 1] end }
+end
 function getModInfoByID(id)
     if id ~= "modA" and id ~= "modB" then return nil end
     return { getDir = function() return "/mods/" .. id end }

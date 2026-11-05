@@ -104,13 +104,24 @@ for _, name in ipairs(EVENT_NAMES) do wrap(name) end
 local function mod_dirs()
     local dirs = {}
     local ok, ids = pcall(getActivatedMods)
-    if not ok or type(ids) ~= "table" then return dirs end
-    for _, id in ipairs(ids) do
+    if not ok or ids == nil then return dirs end
+    -- the game returns a java.util.List (userdata in Lua): every owner was nil while this required a Lua table
+    local okN, n = pcall(function() return ids:size() end)
+    local list = {}
+    if okN and type(n) == "number" then
+        for i = 0, n - 1 do list[#list + 1] = ids:get(i) end
+    elseif type(ids) == "table" then
+        list = ids
+    end
+    for _, id in ipairs(list) do
         local got, info = pcall(getModInfoByID, id)
         if got and info then
-            local okDir, dir = pcall(function() return info:getDir() end)
-            dir = normalize(dir)
-            if okDir and dir then dirs[#dirs + 1] = { id = id, dir = dir } end
+            -- the root, its 42.x folder and common/: a handler's file lies in one of them
+            for _, getter in ipairs({ "getDir", "getVersionDir", "getCommonDir" }) do
+                local okDir, dir = pcall(function() return info[getter](info) end)
+                dir = okDir and normalize(dir) or nil
+                if dir then dirs[#dirs + 1] = { id = id, dir = dir } end
+            end
         end
     end
     return dirs
