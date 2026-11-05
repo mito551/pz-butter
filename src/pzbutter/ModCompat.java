@@ -273,7 +273,7 @@ Map.entry("LoadPatches.WaitFileTask", k("textureBufferMb")),
         Map.entry("MpClientPatches.ClientTick", k("vehicleEarlyParse", "chunkRefill")),
         Map.entry("NetStatsPatches.PacketSend", k("netStats")),
         Map.entry("NetStatsPatches.PacketSent", k("netStats")),
-        Map.entry("ThirdPartyPatches.PartModData", k("ki5PartModThrottle")),
+        Map.entry("ThirdPartyPatches.PartModData", k("mod:PZButter_KI5")),   // a fix mod has no key: Settings.forcedOff gets "mod:<id>"
         Map.entry("NetStatsPatches.ClientReceive", k("netStats")),
         Map.entry("NetStatsPatches.ClientLoading", k("netStats")),
         Map.entry("NetStatsPatches.ServerReceive", k("netStats")));

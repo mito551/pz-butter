@@ -22,10 +22,8 @@ Events.OnPlayerUpdate.Add(uncheckedFn)
 Events.OnPlayerUpdate.Add(badFn)
 Events.OnPlayerUpdate.Add(neighbourFn)
 
-PZButter.ki5Bundle = true
-PZButter.ki5SyncMs = 100
 local now = 0
-dofile(root .. "/mod/PZButter/42/media/lua/client/PZButter/Ki5.lua")
+dofile(root .. "/mod/PZButter_KI5/42/media/lua/client/PZButter_KI5/Ki5.lua")
 -- the game loads Ki5.lua before ki5table.lua ("K" < "k") and before the census finishes
 PZButter.Ki5Table = {
     {id = "modA:sync.lua:1", name = "Sync", kind = "sync", types = {"carA"}, onFoot = "none", last = 4},
@@ -86,5 +84,15 @@ now = 9000; Ki5.dispatch(inCarC)
 assert(calls.bad == badBefore + 3, "bad handler ran inside its 30 s pause")
 now = 36200; Ki5.dispatch(inCarC)
 assert(calls.bad == badBefore + 4, "bad handler did not retry after 30 s")
+
+-- offWithoutPZButter: without the PZButter global the fix mod returns at once and installs nothing
+do
+    local saved, savedEvents = PZButter, #Events.OnGameStart.callbacks
+    PZButter = nil
+    local ok = pcall(dofile, root .. "/mod/PZButter_KI5/42/media/lua/client/PZButter_KI5/Ki5.lua")
+    assert(ok and PZButter == nil, "Ki5.lua did not return at once without PZButter")
+    assert(#Events.OnGameStart.callbacks == savedEvents, "Ki5.lua registered a handler without PZButter")
+    PZButter = saved
+end
 
 Stubs.realPrint("ki5_test: ok")

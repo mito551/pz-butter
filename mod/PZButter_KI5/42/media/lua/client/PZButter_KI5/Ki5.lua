@@ -1,8 +1,9 @@
 -- KI5 handler bundle: one OnPlayerUpdate dispatcher for recognised vehicle handlers.
 -- The table is data from tools/ki5scan.py; this file never parses mod code.
-if not (PZButter and PZButter.ki5Bundle) then return end
--- with the key on, every exit says why: the 2026-11-05 A/B ran with no ki5Bundle line and measured nothing
-if not PZButter.Census then print("[PZButter] ki5Bundle: off (needs handlerCensus=true)") return end
+-- PZButter_KI5 (fix mod): enabling the mod is the switch. Every exit says why: the 2026-11-05 A/B ran with no
+-- line at all and measured nothing.
+if not PZButter then return end
+if not PZButter.Census then print("[PZButter_KI5] off (needs handlerCensus=true in PZButter.properties)") return end
 if isServer and isServer() then return end
 if _G.PZButterKi5Installed then return end
 _G.PZButterKi5Installed = true
@@ -11,7 +12,7 @@ local Ki5 = {}
 PZButter.Ki5 = Ki5
 -- read at install: "Ki5.lua" loads before "ki5table.lua" (byte order puts K before k)
 local rows = {}
-local syncMs = tonumber(PZButter.ki5SyncMs) or 100
+local syncMs = 100   -- shortest gap between two sync calls while the vehicle, type and seat stay the same
 Ki5.now = getTimestampMs
 
 local function normalize(path)
@@ -90,7 +91,7 @@ local function run(h, player, now, vehicle, vtype, seat)
         local wait = n == 1 and 1000 or (n == 2 and 5000 or 30000)
         paused[k] = now + wait
         if n == 1 then
-            print("[PZButter] ki5Bundle: " .. tostring(row.name) .. " error: " .. tostring(err))
+            print("[PZButter_KI5] " .. tostring(row.name) .. " error: " .. tostring(err))
         end
     end
 end
@@ -135,7 +136,7 @@ function Ki5.install()
     end
     if #handlers == 0 then
         local entries = PZButter.Census.list("OnPlayerUpdate")
-        print("[PZButter] ki5Bundle: off (no recognised handlers; " .. #rows .. " rows, "
+        print("[PZButter_KI5] off (no recognised handlers; " .. #rows .. " rows, "
             .. #entries .. " OnPlayerUpdate handlers in the census)")
         -- why: the census entries in each row's file (a line, count or owner that differs explains the miss)
         local shown = 0
@@ -145,16 +146,16 @@ function Ki5.install()
             for _, e in ipairs(entries) do
                 local actual = normalize(e.file)
                 if file and actual and (actual == file or actual:sub(-(#file + 1)) == "/" .. file) then
-                    print("[PZButter] ki5Bundle: row " .. row.id .. " vs census line " .. tostring(e.line)
+                    print("[PZButter_KI5] row " .. row.id .. " vs census line " .. tostring(e.line)
                         .. ", count " .. tostring(e.count) .. ", owner " .. tostring(e.owner))
                     shown = shown + 1
                 end
             end
         end
-        if shown == 0 then print("[PZButter] ki5Bundle: no census entry is in any row's file") end
+        if shown == 0 then print("[PZButter_KI5] no census entry is in any row's file") end
         return
     end
     Events.OnPlayerUpdate.Add(Ki5.dispatch)
-    print("[PZButter] ki5Bundle: " .. #handlers .. " handler(s)")
+    print("[PZButter_KI5] " .. #handlers .. " handler(s)")
 end
 Events.OnGameStart.Add(Ki5.install)

@@ -161,9 +161,6 @@ public final class LuaPatches {
             t.rawset("uiLuaFast", uiLuaFast);
             t.rawset("containerSendGuard", Settings.flag("containerSendGuard"));
             t.rawset("handlerCensus", Settings.flag("handlerCensus"));
-            t.rawset("ki5Bundle", Settings.flag("ki5Bundle"));
-            t.rawset("ki5SyncMs", Settings.num("ki5SyncMs", 100, 0, 60000));
-            t.rawset("ki5PartModThrottle", Settings.flag("ki5PartModThrottle"));
             t.rawset("ki5EveryStart", new JavaFunction() {
                 public int call(LuaCallFrame frame, int n) { ThirdParty.beginEvery(); return 0; }
             });

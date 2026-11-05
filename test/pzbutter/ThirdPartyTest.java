@@ -9,6 +9,7 @@ public final class ThirdPartyTest {
         gateOff();
         flushOnEndEvery();
         activeReadsList();
+        onFollowsTheFixMod();
         ThirdParty.resetForTest();
     }
 
@@ -26,6 +27,25 @@ public final class ThirdPartyTest {
         ThirdParty.modIds = () -> { throw new IllegalStateException("no file system yet"); };
         ThirdParty.resetActive();
         assert !ThirdParty.active("PZButter_KI5") : "an unreadable list means not active";
+    }
+
+    /** The throttle is on while PZButter_KI5 is enabled, off when it is not or when modCompat=auto forced it off. */
+    static void onFollowsTheFixMod() {
+        ThirdParty.resetForTest();
+        Side.forTest(false, false);
+        ThirdParty.modIds = () -> java.util.List.of("PZButter", "PZButter_KI5");
+        assert ThirdParty.on() : "on while the fix mod is enabled";
+        Settings.forcedOff.add("mod:PZButter_KI5");
+        assert !ThirdParty.on() : "modCompat=auto switched it off";
+        Settings.forcedOff.remove("mod:PZButter_KI5");
+        ThirdParty.resetActive();
+        ThirdParty.modIds = () -> java.util.List.of("PZButter");
+        assert !ThirdParty.on() : "off while the fix mod is not enabled";
+        Side.forTest(true, false);
+        ThirdParty.resetActive();
+        ThirdParty.modIds = () -> java.util.List.of("PZButter", "PZButter_KI5");
+        assert !ThirdParty.on() : "off on a server";
+        Side.resetForTest();
     }
 
     static void gateWindow() {

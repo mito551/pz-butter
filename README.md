@@ -200,16 +200,6 @@ These keys act only on a dedicated server or a game hosted from the menu; on a c
 |---|---|
 | `handlerCensus` | Diagnostic and public API. Wraps `Events.<Name>.Add/.Remove` for per-tick and per-frame events, records each handler's function, source file, first line and registration count, then at `OnGameStart`/`OnGameBoot` assigns it to its mod folder and prints one overview line. Run-time registrations only bump a counter. On by default. |
 
-### Vehicle mod handlers (Plan 19)
-
-These keys act on a multiplayer client only; on a dedicated server they stay off.
-
-| Key | What it does |
-|---|---|
-| `ki5Bundle` | Removes the recognised KI5 vehicle handlers from `OnPlayerUpdate` and calls them from one dispatcher at the end. On foot, handlers whose on-foot effect is none do not run; in a vehicle only handlers whose type filter matches. Off by default. |
-| `ki5SyncMs` | How often a `sync` handler may run while the vehicle, type and seat stay the same. A change runs it at once. Default 100 ms. |
-| `ki5PartModThrottle` | While an `every` handler runs, lets one `BaseVehicle.transmitPartModData` call per vehicle part through per 100 ms and sends the last suppressed state when the handler returns. Off by default. |
-
 ### Multiplayer client (Plan 18)
 
 These keys act only on a multiplayer client; on a server they stay off.
@@ -273,7 +263,11 @@ Values can be `true`/`false`, `yes`/`no`, `on`/`off` or `1`/`0`. If the file can
 
 ## Fix mods for other mods
 
-Fixes for other mods ship in the same Workshop item as separate mods, one per target mod, named `PZButter_<Target>`. Enabling one switches its fix on; there is no setting for it. Each one requires its target mod, so it cannot be enabled without it. A fix that gets cheaper through PZ Butter's own hooks also requires PZ Butter; the others work on their own. `mod/UNSHIPPED` lists fix mods that are kept in the repository but not packed or installed, for targets that are not available at the moment.
+Fixes for other mods ship in the same Workshop item as separate mods, one per target mod, named `PZButter_<Target>`. Enabling one switches its fix on; there is no setting for it. Each one requires its target mod, so it cannot be enabled without it. A fix that gets cheaper through PZ Butter's own hooks also requires PZ Butter; the others work on their own. | Fix mod | Target | Needs PZ Butter | What it does |
+|---|---|---|---|
+| `PZButter_KI5` | damnlib (the KI5 vehicles) | yes: it takes handlers over through `handlerCensus` | Runs the recognised `OnPlayerUpdate` handlers of KI5 vehicles and the other mods `tools/ki5scan.py` lists from one dispatcher at the end. On foot, handlers whose work needs a vehicle are skipped; a sync-only handler runs at most every 100 ms while the vehicle, type and seat stay the same. While an every-frame handler runs, one `BaseVehicle.transmitPartModData` call per vehicle part passes per 100 ms, and the last state is sent afterwards. A multiplayer client only. |
+
+`mod/UNSHIPPED` lists fix mods that are kept in the repository but not packed or installed, for targets that are not available at the moment.
 
 ## Recommended JVM flags (optional)
 

@@ -8,7 +8,7 @@ import zombie.vehicles.VehiclePart;
 
 /** Fix-mod switch (Plan 19: a fix is on when its PZButter_<Target> mod is enabled) and the KI5 part-mod throttle helpers (SPEC 6.8.1). */
 public final class ThirdParty {
-    static final Guard guard = new Guard("ki5PartModThrottle");
+    static final Guard guard = new Guard("PZButter_KI5 part-mod throttle");
     static final long WINDOW_MS = 100;
     static volatile int everyDepth;
     static volatile Boolean testOn;
@@ -43,7 +43,9 @@ public final class ThirdParty {
 
     static boolean on() {
         Boolean t = testOn;
-        return t != null ? t : Settings.flag("ki5PartModThrottle");
+        if (t != null) return t;
+        // PZButter_KI5 is the switch: on while that fix mod is enabled, unless modCompat=auto switched it off; client only
+        return !Side.server() && active("PZButter_KI5") && !Settings.forcedOff.contains("mod:PZButter_KI5");
     }
 
     public static void beginEvery() {
