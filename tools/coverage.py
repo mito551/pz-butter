@@ -94,21 +94,19 @@ def jfr_stamps(run_dir, cmd="jfr"):
     return (start, start + dur_ms)
 
 
-def _epoch_boot_offset_ms():
-    """epoch ms minus the CLOCK_MONOTONIC stamps perf events are stamped with."""
-    uptime = float(open("/proc/uptime").read().split()[0])
-    return _ms(datetime.datetime.now().timestamp()) - _ms(uptime)
-
-
 def perf_stamps(run_dir):
-    """perf.data: first/last timestamp of `perf script`, converted to epoch ms."""
-    out = subprocess.run(["perf", "script", "-i", os.path.join(run_dir, "perf.data")],
-                         capture_output=True, text=True, check=True).stdout
+    """perf.data: first/last wall-clock stamp from `perf script -F tod`, in epoch ms.
+    tod needs the clock data `perf record -k CLOCK_MONOTONIC` stores; the kernel
+    refuses CLOCK_REALTIME for hardware events, and older recordings have no clock data."""
+    r = subprocess.run(["perf", "script", "-F", "tod", "-i", os.path.join(run_dir, "perf.data")],
+                       capture_output=True, text=True)
+    if "clock data" in r.stderr:
+        raise ValueError("unknown clock")
     first = last = None
-    for line in out.splitlines():
-        m = re.search(r"\s(\d{9,}\.\d{3})", line)
+    for line in r.stdout.splitlines():
+        m = re.match(r"\s*(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d+)", line)
         if m:
-            t = float(m[1]) * 1000 + _epoch_boot_offset_ms()
+            t = _ms(datetime.datetime.strptime(m[1], "%Y-%m-%d %H:%M:%S.%f").timestamp())
             if first is None:
                 first = t
             last = t
