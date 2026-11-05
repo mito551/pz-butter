@@ -271,7 +271,16 @@ Values can be `true`/`false`, `yes`/`no`, `on`/`off` or `1`/`0`. If the file can
 
 ## Recommended JVM flags (optional)
 
-No JVM flag is recommended yet. The arms that compare G1, Shenandoah, a larger heap and `-Xms`/`-XX:+AlwaysPreTouch` against the stock ZGC collector have not run, so this section will name a flag only after a measured gain in p99 or the worst GC pause. The game's bundled JRE already starts with ZGC.
+No JVM flag is recommended yet. Measured so far (S6, 200 zombies, ZombieBuddy and PZ Butter only, 2026-11-04/05; medians of 2-3 runs per arm):
+
+| Flags | Against the stock ZGC collector |
+|---|---|
+| `-XX:+UseG1GC` | The world loads 17-23 s faster (29.5 s against 46.5 s), but the game boots 11-19 s slower. |
+| `-XX:+UseG1GC -XX:MaxGCPauseMillis=5` | p99 15.5 ms against 20.0 ms in one session. Stock's own p99 moved between 13.0 and 20.0 ms from one session to the next, so this needs a same-session repeat before it is a recommendation. |
+| `-XX:+UseShenandoahGC` | Worse in p50, p99, 1 % low and boot. |
+| `-Xmx4g` | Within noise. |
+
+Boot times on a machine that is already swapping vary by a minute or more, whatever the flags. This section will name a flag after a gain in p99 or the worst GC pause that repeats in one session.
 
 If you want to try flags yourself, put them in the Steam launch options before `--`, or in `vmArgs` in the launcher JSON. A game update can change the bundled JRE, so recheck any flag after an update.
 
@@ -294,6 +303,7 @@ PZ Butter is inspired by the mods below and aims to cover what they do, in one m
 | Tempo - A Performance & FPS Optimizer | Vyper | not stated | [3736629791](https://steamcommunity.com/sharedfiles/filedetails/?id=3736629791) |
 | ZombieBuddy | see page | not stated | [3619862853](https://steamcommunity.com/sharedfiles/filedetails/?id=3619862853) |
 | Oz's Fast Boot & Loading Screens (OzFastBoot) | Oz (Oz Server Modpack) | not stated | [3819476262](https://steamcommunity.com/sharedfiles/filedetails/?id=3819476262) |
+| Zed's Better FPS | Zed (Andrey Zaikin) | MIT | not found on this machine |
 | Zed's Better FPS KA | zed_0xff, Kaoeutsu | not stated | [3793137588](https://steamcommunity.com/sharedfiles/filedetails/?id=3793137588) |
 | PzPerformanceFixes (formerly Alex Perf Fixes) | Alex | not stated | [3826630779](https://steamcommunity.com/sharedfiles/filedetails/?id=3826630779) |
 | Smooth Performance Optimizer by Erunest (Lua, Java, Vehicles) | Erunest | not stated | [3826681202](https://steamcommunity.com/sharedfiles/filedetails/?id=3826681202) |
