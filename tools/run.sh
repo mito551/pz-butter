@@ -464,6 +464,10 @@ while kill -0 "$GAME_PID_ACTUAL" 2>/dev/null; do
     if [[ -n "$DEADLINE" && $(date +%s) -ge "$DEADLINE" ]]; then
         echo "[step9] timeout expired; killing game pid $GAME_PID_ACTUAL"
         kill "$GAME_PID_ACTUAL" 2>/dev/null || true
+        # the next run refuses while a game process exists: wait until it is really gone
+        for _ in $(seq 30); do kill -0 "$GAME_PID_ACTUAL" 2>/dev/null || break; sleep 1; done
+        kill -0 "$GAME_PID_ACTUAL" 2>/dev/null && { echo "[step9] still running after 30 s; SIGKILL"; kill -9 "$GAME_PID_ACTUAL" 2>/dev/null || true; }
+        for _ in $(seq 30); do pgrep -x ProjectZomboid6 >/dev/null 2>&1 || break; sleep 1; done
         TIMED_OUT=1
         break
     fi
