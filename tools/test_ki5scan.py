@@ -87,6 +87,18 @@ class Ki5ScanTest(unittest.TestCase):
         rows = ki5scan.scan(root, ki5scan.active_ids(listfile))
         self.assertEqual([r["name"] for r in rows], ["M.SyncRearWindows"])
 
+    def test_linesSpanTheFunction(self):
+        root = self.tree()
+        p = os.path.join(root, "ModA", "mods", "ModA", "media/lua/client/sync.lua")
+        with open(p, "w") as f:
+            f.write("local M = {}\r\n\r\n" + SYNC.split("\n", 1)[1].replace("\n", "\r\n"))
+        listfile = os.path.join(root, "default.txt")
+        with open(listfile, "w") as f:
+            f.write("mod=ModA\n")
+        row = ki5scan.scan(root, ki5scan.active_ids(listfile))[0]
+        self.assertEqual(row["id"], "ModA:media/lua/client/sync.lua:3")  # the function line, not the blank line 2
+        self.assertEqual(row["last"], 7)
+
     def test_tableIsData(self):
         rows = [{"id": "M:a.lua:2", "name": "M.F", "kind": "sync",
                  "types": ["x", "y"], "onFoot": "none"}]

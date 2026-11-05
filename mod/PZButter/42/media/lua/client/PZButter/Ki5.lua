@@ -28,8 +28,9 @@ local function parse_id(id)
     return mod, normalize(file), tonumber(line)
 end
 
-local function match_row(entry, mod, file, line)
-    if entry.count ~= 1 or entry.line ~= line then return false end
+-- entry.line is the closure's first instruction (inside the function); the row spans line .. last
+local function match_row(entry, mod, file, line, last)
+    if entry.count ~= 1 or type(entry.line) ~= "number" or entry.line < line or entry.line > (last or line) then return false end
     if normalize(entry.file) == nil then return false end
     local actual = normalize(entry.file)
     return actual == file or actual:sub(-(#file + 1)) == "/" .. file
@@ -39,7 +40,7 @@ local function resolve(row)
     local mod, file, line = parse_id(row.id)
     if not mod then return nil end
     return PZButter.Census.route("OnPlayerUpdate", function(e)
-        return match_row(e, mod, file, line)
+        return match_row(e, mod, file, line, tonumber(row.last))
     end)
 end
 
@@ -131,7 +132,24 @@ function Ki5.install()
         end
     end
     if #handlers == 0 then
-        print("[PZButter] ki5Bundle: off (no recognised handlers)")
+        local entries = PZButter.Census.list("OnPlayerUpdate")
+        print("[PZButter] ki5Bundle: off (no recognised handlers; " .. #rows .. " rows, "
+            .. #entries .. " OnPlayerUpdate handlers in the census)")
+        -- why: the census entries in each row's file (a line, count or owner that differs explains the miss)
+        local shown = 0
+        for _, row in ipairs(rows) do
+            if shown >= 5 then break end
+            local _, file = parse_id(row.id)
+            for _, e in ipairs(entries) do
+                local actual = normalize(e.file)
+                if file and actual and (actual == file or actual:sub(-(#file + 1)) == "/" .. file) then
+                    print("[PZButter] ki5Bundle: row " .. row.id .. " vs census line " .. tostring(e.line)
+                        .. ", count " .. tostring(e.count) .. ", owner " .. tostring(e.owner))
+                    shown = shown + 1
+                end
+            end
+        end
+        if shown == 0 then print("[PZButter] ki5Bundle: no census entry is in any row's file") end
         return
     end
     Events.OnPlayerUpdate.Add(Ki5.dispatch)
