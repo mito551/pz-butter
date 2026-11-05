@@ -12,7 +12,7 @@ import zombie.network.packets.vehicle.VehicleUpdatePacket;
 import zombie.vehicles.VehicleInterpolation;
 import zombie.vehicles.VehicleManager;
 
-/** Game seams for the MP client rows of Plan 18. */
+/** Game seams for the MP client rows of Plan 15. */
 public final class MpClientPatches {
 
     private MpClientPatches() {}

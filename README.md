@@ -154,7 +154,7 @@ The mod creates `~/Zomboid/PZButter.properties` on first start and reads it once
 | `bakeBudgetGpu` | With `bakeBudgetAdaptive`: the bake budget also counts the GPU's time for the frame, from GPU timestamps read three frames later. It never waits for the GPU. Off by default. |
 | `gpuStats` | Diagnostic. Once a minute the console gets what the Plan 9 keys did: mappings saved, storage waits, uploads and storage changes, textures given back, names from the pool, answers from the records, GPU time per frame. With `frameLog`, the same as one line a minute in `Zomboid/pzbutter/gpu.out`. Off by default. |
 
-### Server and hosting (Plan 18)
+### Server and hosting (Plan 15)
 
 These keys act only on a dedicated server or a game hosted from the menu; on a client they stay off with one console line.
 
@@ -169,7 +169,7 @@ These keys act only on a dedicated server or a game hosted from the menu; on a c
 | `hostZombieBuddy` | Carries a ZombieBuddy `-javaagent:` entry into the hosted server's child JVM, but only when that agent already runs a non-interactive policy (`deny-new` or `allow-all`); an untrusted headless child would otherwise wait on a console prompt. Off by default. |
 | `hostJvmArgs` | Uses `Zomboid/PZButter-host.args` as an extra `@file` in the hosted server's child JVM, after the game's `-Xms/-Xmx`. The file is ignored unless it is at most 4 KB, ASCII and 16 lines of blanks, comments, a small `-Xms` or a plain `-Xlog` line. Off by default. |
 
-### Multiplayer client (Plan 18)
+### Multiplayer client (Plan 15)
 
 These keys act only on a multiplayer client; on a server they stay off.
 
