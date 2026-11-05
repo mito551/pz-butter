@@ -109,9 +109,9 @@ class RefusalTest(unittest.TestCase):
     def test_jfrNotCoveringRefuses(self):
         with tempfile.TemporaryDirectory() as run:
             with open(os.path.join(run, "marks.out"), "w") as f:
-                f.write("mark scene.start 1000\nmark scene.end 2000\n")
+                f.write("mark scene.start 1000\nmark scene.end 10000\n")
             orig = owners._jfr_stamps
-            owners._jfr_stamps = lambda rd: (1500, 2500)
+            owners._jfr_stamps = lambda rd: (4000, 12000)  # 3 s late: past coverage's 2 s tolerance
             try:
                 err = io.StringIO()
                 with contextlib.redirect_stderr(err), contextlib.redirect_stdout(err):
