@@ -449,7 +449,7 @@ if (( PERF )); then
         if [[ -f "$Z/pzbutter/marks.out" ]] && grep -q 'scene.start' "$Z/pzbutter/marks.out" 2>/dev/null; then break; fi
         sleep 1
       done
-      perf record -g --call-graph dwarf -p "$GAME_PID_ACTUAL" -o "$RUN_DIR/perf.data" -- sleep "$PERF_SECONDS"
+      perf record -k CLOCK_MONOTONIC -g --call-graph dwarf -p "$GAME_PID_ACTUAL" -o "$RUN_DIR/perf.data" -- sleep "$PERF_SECONDS"
     ) &
     PERF_PID=$!
 fi

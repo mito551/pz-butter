@@ -1,4 +1,6 @@
 import os
+import datetime
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -54,6 +56,22 @@ class CoverageTest(unittest.TestCase):
         with patch("coverage.perf_stamps", lambda run_dir: (WIN[0] + 2000, WIN[1])):
             rows = dict(coverage.coverage(d))
         self.assertEqual(rows["perf.data"], "starts late by 2000 ms")
+
+    def test_perfTodStamps(self):
+        d = make_dir(perf=True)
+        out = "2026-11-05 14:04:30.687038 \n2026-11-05 14:04:31.000000 \n"
+        fake = lambda *a, **k: subprocess.CompletedProcess(a, 0, out, "")
+        with patch("coverage.subprocess.run", fake):
+            s, e = coverage.perf_stamps(d)
+        t0 = datetime.datetime(2026, 11, 5, 14, 4, 30, 687038).timestamp()
+        self.assertEqual((s, e), (round(t0 * 1000), round(t0 * 1000) + 313))
+
+    def test_perfWithoutClockData(self):
+        d = make_dir(perf=True)
+        err = "Can't provide 'tod' time, missing clock data. Please record with -k/--clockid option.\n"
+        fake = lambda *a, **k: subprocess.CompletedProcess(a, 255, "", err)
+        with patch("coverage.subprocess.run", fake), self.assertRaisesRegex(ValueError, "unknown clock"):
+            coverage.perf_stamps(d)
 
     def test_mangohudAbsentIsNotAFailure(self):
         d = make_dir()
