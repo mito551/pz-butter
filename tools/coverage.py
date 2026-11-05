@@ -55,8 +55,22 @@ def _parse_utc(s):
     raise ValueError(f"unparsable jfr Start: {s}")
 
 
+GC_TIME = re.compile(r"\[(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d+[+-]\d{4})\]")
+
+
 def gc_stamps(run_dir):
-    """gc.log: JVM start (run.opts start=) plus the first/last uptime stamps."""
+    """gc.log: the `time` decorator's wall clock; older logs (uptime only) fall back to run.opts start= plus uptime,
+    which reads about 2 s early because the JVM starts after run.sh writes start=."""
+    first = last = None
+    with open(os.path.join(run_dir, "gc.log")) as f:
+        for line in f:
+            m = GC_TIME.match(line)
+            if m:
+                last = _ms(datetime.datetime.strptime(m[1], "%Y-%m-%dT%H:%M:%S.%f%z").timestamp())
+                if first is None:
+                    first = last
+    if first is not None:
+        return (first, last)
     start = None
     with open(os.path.join(run_dir, "run.opts")) as f:
         for line in f:
@@ -68,7 +82,7 @@ def gc_stamps(run_dir):
     first = last = None
     with open(os.path.join(run_dir, "gc.log")) as f:
         for line in f:
-            m = re.match(r"\[([0-9.]+)s\]", line)
+            m = re.search(r"\[([0-9.]+)s\]", line)
             if m:
                 last = float(m[1])
                 if first is None:
