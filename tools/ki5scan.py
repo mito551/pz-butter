@@ -137,7 +137,8 @@ def scan(root, active):
                 rows.append({"id": "%s:%s:%d" % (mid, rel, line),
                              "name": name, "kind": kind, "types": types,
                              "onFoot": on_foot})
-    rows.sort(key=lambda r: r["id"])
+    # one mod id in two workshop items gives the same id twice
+    rows = sorted({r["id"]: r for r in rows}.values(), key=lambda r: r["id"])
     return rows
 
 

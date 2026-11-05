@@ -1,6 +1,8 @@
 -- KI5 handler bundle: one OnPlayerUpdate dispatcher for recognised vehicle handlers.
 -- The table is data from tools/ki5scan.py; this file never parses mod code.
-if not (PZButter and PZButter.ki5Bundle and PZButter.Census) then return end
+if not (PZButter and PZButter.ki5Bundle) then return end
+-- with the key on, every exit says why: the 2026-11-05 A/B ran with no ki5Bundle line and measured nothing
+if not PZButter.Census then print("[PZButter] ki5Bundle: off (needs handlerCensus=true)") return end
 if isServer and isServer() then return end
 if _G.PZButterKi5Installed then return end
 _G.PZButterKi5Installed = true
