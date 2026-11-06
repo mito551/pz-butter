@@ -1,4 +1,4 @@
--- Options page (Plan 19 Task 6): the boolean keys of the README's main Settings table, in its order.
+-- Options page (Plan 19 Task 6): the boolean keys of the README's main Settings table, alphabetical.
 -- The values live in Zomboid/PZButter.properties: read from Java at page registration (PZButter.setting),
 -- written through it on Accept (PZButter.setFromUi); ModOptions.ini, which the game saves anyway, is never the
 -- source. A write the key rejects keeps the old value and the tickbox goes back to it. Every change applies
@@ -108,8 +108,8 @@ local opts = PZAPI.ModOptions:create("PZButter", "PZ Butter")
 for _, key in ipairs(KEYS) do
 	local option = opts:addTickBox(key, key, PZButter.setting(key) == true, "Restart to apply.")
 	option.onChangeApply = function(self, v)
-		local applied = PZButter.setFromUi(key, v and "true" or "false")
-		if applied ~= (v and "true" or "false") and self.element ~= nil then
+		local applied = PZButter.setFromUi(key, v and "true" or "false")   -- a boolean back from Java
+		if applied ~= v and self.element ~= nil then
 			self.element:setSelected(1, applied)   -- rejected: the tickbox goes back to the stored value
 		end
 	end
