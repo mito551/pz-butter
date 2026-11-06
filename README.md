@@ -179,6 +179,8 @@ The mod creates `~/Zomboid/PZButter.properties` on first start and reads it once
 | `cursorLatch` | Move the cursor to the newest pointer position just before the frame is drawn. Off by default. |
 | `aimHoldMs` | Right-button hold before aiming starts, in ms (default `150`; `0` aims at once). |
 
+The options page (Plan 19): Options > Mods > "PZ Butter" offers this main table's boolean keys as tickboxes. A tickbox writes the settings file at once (`Settings.setFromUi` accepts only the canonical `true`/`false` — anything else is rejected, the old value stays, and the tickbox goes back to it) and applies at the next game start. The `ModOptions.ini` file the game saves for every mod is never read back for these values.
+
 ### Server and hosting (Plan 15)
 
 These keys act only on a dedicated server or a game hosted from the menu; on a client they stay off with one console line.

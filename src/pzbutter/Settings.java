@@ -427,6 +427,7 @@ public final class Settings {
     public static volatile boolean enabled;
     public static volatile boolean frameLog;
     private static volatile Properties props = new Properties();
+    private static volatile File file;   // the loaded file's path: the page's writes go back there (setFromUi)
 
     /** Keys modCompat=auto switched off (ModCompat.init, after load): they answer the stock value whatever the file says. Cleared by load. */
     static final java.util.Set<String> forcedOff = java.util.concurrent.ConcurrentHashMap.newKeySet();
@@ -440,10 +441,32 @@ public final class Settings {
 
     private Settings() {}
 
+    /** The boolean keys: their template default is exactly true or false. The options page offers only these. */
+    static final java.util.Set<String> BOOLEAN_KEYS;
+    static final java.util.Map<String, String> BOOLEAN_DEFAULTS;
+    static {
+        java.util.Set<String> keys = new java.util.HashSet<>();
+        java.util.Map<String, String> dflt = new java.util.HashMap<>();
+        for (String line : DEFAULTS.split("\n")) {
+            int eq = line.indexOf('=');
+            if (!line.startsWith("#") && eq > 0) {
+                String v = line.substring(eq + 1);
+                if (v.equals("true") || v.equals("false")) {
+                    String k = line.substring(0, eq);
+                    keys.add(k);
+                    dflt.put(k, v);
+                }
+            }
+        }
+        BOOLEAN_KEYS = java.util.Collections.unmodifiableSet(keys);
+        BOOLEAN_DEFAULTS = java.util.Collections.unmodifiableMap(dflt);
+    }
+
     public static void load() { load(new File(System.getProperty("user.home"), "Zomboid/PZButter.properties")); }
 
     public static void load(File f) {
         enabled = frameLog = false;
+        file = f;
         props = new Properties();
         forcedOff.clear();
         try {
@@ -458,6 +481,7 @@ public final class Settings {
             frameLog = bool(p, "frameLog", false);
         } catch (Throwable t) {
             enabled = frameLog = false;
+            file = null;   // a failed load leaves nothing the page could write back to
             props = new Properties();
             System.out.println("[PZButter] settings failed, all features off: " + t);
         }
@@ -592,5 +616,32 @@ public final class Settings {
             case "false": case "no": case "off": case "0": return false;
             default: return dflt;
         }
+    }
+
+    /** A boolean key's effective value as "true"/"false" (profile overrides and stock-on forced-offs included); null when the key is not boolean. */
+    static String uiBoolean(String key) {
+        if (key == null || !BOOLEAN_KEYS.contains(key)) return null;
+        if (forcedOff.contains(key)) return Boolean.toString(STOCK_ON.contains(key));
+        String raw = raw(key);
+        return Boolean.toString(bool(raw, Boolean.parseBoolean(BOOLEAN_DEFAULTS.get(key))));
+    }
+
+    /**
+     * setFromUi (Plan 19 Task 6): the options page's write. Only a boolean key with exactly "true"/"false" is
+     * accepted: it is stored and the file is rewritten atomically (upgrade's .tmp + move), and the stored value
+     * is returned. Anything else writes nothing; the old value is returned and the page shows it (Focus 4).
+     * The in-memory switches (enabled, frameLog) are not touched: the change applies at the next start.
+     */
+    public static String setFromUi(String key, String value) {
+        String v = value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+        File f = file;
+        if (f != null && BOOLEAN_KEYS.contains(key) && (v.equals("true") || v.equals("false"))) {
+            props.setProperty(key, v);
+            upgrade(f, props);
+            return v;
+        }
+        System.out.println("[PZButter] page: " + key + "=" + value + " rejected, keeping the old value");
+        String old = uiBoolean(key);
+        return old == null ? "false" : old;
     }
 }
