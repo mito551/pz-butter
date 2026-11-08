@@ -1,7 +1,4 @@
-package pzbutter.luabudget;
-
-import pzbutter.Main;
-import pzbutter.Settings;
+package pzbutter;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -26,7 +23,7 @@ import java.util.WeakHashMap;
  * Pressure is the main thread's CPU time per frame, so vsync, fps caps and GPU waits don't count.
  * A rule is "over" when that time is above 1000/fps ms, where fps is the rule's own or targetFps.
  */
-public final class Budget {
+public final class LuaBudget {
     static final class Rule {
         final String needle;       // lower-case, '/' separated part of the Lua file path
         final int every;           // run a handler (or entity) once every N frames while over
@@ -86,10 +83,10 @@ public final class Budget {
     private static Field nameField;
     private static long frameNo, frames, overFrames, lastReportNs, startCpu;
     private static double emaMs;
-    private static int failures;
+    static final Guard guard = new Guard("luaBudget");
     private static ThreadMXBean cpuBean;
 
-    private Budget() {}
+    private LuaBudget() {}
 
     static boolean isEnabled() { return enabled; }
 
@@ -106,6 +103,7 @@ public final class Budget {
     static void init(File f) {
         enabled = false;
         if (!Settings.flag("luaBudget")) return;
+        guard.on = true;
         oldModChecked = false;
         if (oldModPresent()) return;
         try {
@@ -259,6 +257,7 @@ public final class Budget {
     }
 
     private static void fail(Throwable t) {
-        if (++failures >= 5) { enabled = false; System.out.println("[PZButter] luaBudget: disabled after errors: " + t); }
+        guard.fail(t);
+        if (!guard.on) enabled = false;
     }
 }
