@@ -22,6 +22,9 @@ public final class SelfTest {
         settingsDefaultsWritten();
         settingsRead();
         settingsGarbage();
+        setFromUiValid();
+        setFromUiRejects();
+        setFromUiUnknownKey();
         frameEnd();
         frameInterval();
         frameEnterTwice();
@@ -104,6 +107,40 @@ public final class SelfTest {
         File d = tmp("dir.properties"); d.mkdirs();
         Settings.load(d);
         assert !Settings.enabled && !Settings.frameLog;
+    }
+
+    static String read(File f) {
+        try { return new String(Files.readAllBytes(f.toPath()), java.nio.charset.StandardCharsets.ISO_8859_1); }
+        catch (IOException e) { throw new RuntimeException(e); }
+    }
+
+    // Plan 19 Task 6: a valid page write is stored and the file updated, atomically (no .tmp left behind)
+    static void setFromUiValid() {
+        File f = write("enabled=true\nuiTiming=false\n");
+        Settings.load(f);
+        String r = Settings.setFromUi("uiTiming", "true");
+        assert "true".equals(r) && "true".equals(Settings.raw("uiTiming")) && !new File(f.getPath() + ".tmp").exists();
+        assert read(f).contains("uiTiming=true");
+        Settings.load(f);   // the written file loads it back
+        assert "true".equals(Settings.raw("uiTiming"));
+    }
+
+    // "yes" is not the page's currency (Focus 4): the old value is returned and the file is unchanged
+    static void setFromUiRejects() {
+        File f = write("enabled=true\nuiTiming=false\n");
+        Settings.load(f);
+        String before = read(f);
+        String r = Settings.setFromUi("uiTiming", "yes");
+        assert "false".equals(r) && "false".equals(Settings.raw("uiTiming")) && before.equals(read(f));
+    }
+
+    // a non-boolean key is rejected too: nothing stored, nothing written
+    static void setFromUiUnknownKey() {
+        File f = write("enabled=true\nuiTiming=false\n");
+        Settings.load(f);
+        String before = read(f);
+        String r = Settings.setFromUi("gpuMaxFrames", "true");
+        assert "false".equals(r) && before.equals(read(f));
     }
 
     // 16.667 ms since the last frame started, 4.2 ms inside frameStep, 3.5 ms CPU

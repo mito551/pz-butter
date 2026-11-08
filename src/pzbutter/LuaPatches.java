@@ -170,6 +170,25 @@ public final class LuaPatches {
             t.rawset("ki5Flush", new JavaFunction() {
                 public int call(LuaCallFrame frame, int n) { ThirdParty.flush(); return 0; }
             });
+            // the options page's read and write (Plan 19 Task 6); setting(key) -> boolean, setFromUi(key, "true"/"false") -> boolean
+            t.rawset("setting", new JavaFunction() {
+                public int call(LuaCallFrame frame, int n) {
+                    Object key = n > 0 ? frame.get(0) : null;
+                    String v = Settings.uiBoolean(key instanceof String s ? s : null);
+                    frame.push(Boolean.parseBoolean(v == null ? "false" : v));
+                    return 1;
+                }
+            });
+            t.rawset("setFromUi", new JavaFunction() {
+                public int call(LuaCallFrame frame, int n) {
+                    Object key = n > 0 ? frame.get(0) : null;
+                    Object value = n > 1 ? frame.get(1) : null;
+                    String r = Settings.setFromUi(key instanceof String s ? s : null,
+                        value instanceof String s ? s : String.valueOf(value));
+                    frame.push(Boolean.parseBoolean(r));
+                    return 1;
+                }
+            });
             zombie.Lua.LuaManager.env.rawset("PZButter", t);
         } catch (Throwable x) { System.out.println("[PZButter] Lua settings table not set: " + x); }
     }

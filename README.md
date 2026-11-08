@@ -179,6 +179,8 @@ The mod creates `~/Zomboid/PZButter.properties` on first start and reads it once
 | `cursorLatch` | Move the cursor to the newest pointer position just before the frame is drawn. Off by default. |
 | `aimHoldMs` | Right-button hold before aiming starts, in ms (default `150`; `0` aims at once). |
 
+The options page (Plan 19): Options > Mods > "PZ Butter" offers this main table's boolean keys as tickboxes. A tickbox writes the settings file at once (`Settings.setFromUi` accepts only the canonical `true`/`false` — anything else is rejected, the old value stays, and the tickbox goes back to it) and applies at the next game start. The `ModOptions.ini` file the game saves for every mod is never read back for these values.
+
 ### Server and hosting (Plan 15)
 
 These keys act only on a dedicated server or a game hosted from the menu; on a client they stay off with one console line.
@@ -277,7 +279,17 @@ Fixes for other mods ship in the same Workshop item as separate mods, one per ta
 
 ## Recommended JVM flags (optional)
 
-No JVM flag is recommended yet. The arms that compare G1, Shenandoah, a larger heap and `-Xms`/`-XX:+AlwaysPreTouch` against the stock ZGC collector have not run, so this section will name a flag only after a measured gain in p99 or the worst GC pause. The game's bundled JRE already starts with ZGC.
+**Recommended:** `-XX:-UseZGC -XX:+UseG1GC -XX:MaxGCPauseMillis=5` (G1 with a 5 ms pause target instead of the bundled JRE's ZGC). In one session of 3 runs per arm (S6, 200 zombies, ZombieBuddy and PZ Butter only, 2026-11-05) it gave p99 17.0 ms against 20.4 ms, p50 9.6 against 10.8 ms and the 1 % low 51 against 40 fps, and the world loaded in 19 s against 34 s; boot was the same. The p99, p50 and load ranges did not overlap, and an earlier session pointed the same way.
+
+Measured and not recommended:
+
+| Flags | Against the stock ZGC collector |
+|---|---|
+| `-XX:+UseG1GC` (no pause target) | The world loads 17-23 s faster, but the game boots 11-19 s slower. |
+| `-XX:+UseShenandoahGC` | Worse in p50, p99, 1 % low and boot. |
+| `-Xmx4g` | Within noise. |
+
+Boot times on a machine that is already swapping vary by a minute or more, whatever the flags.
 
 If you want to try flags yourself, put them in the Steam launch options before `--`, or in `vmArgs` in the launcher JSON. A game update can change the bundled JRE, so recheck any flag after an update.
 
@@ -287,7 +299,7 @@ PZ Butter is inspired by the mods below and aims to cover what they do, in one m
 
 | Mod | Author | Licence | Workshop |
 |---|---|---|---|
-| PZ_Optimization (pzopt) | xD3I | none stated | [3805285544](https://steamcommunity.com/sharedfiles/filedetails/?id=3805285544) |
+| PZ_Optimization (pzopt) | xD3I | not stated | 3805285544 (removed from the Workshop, November 2026) |
 | [B42] PZ Optimization Preloader | Antikristianos | not stated | [3818209799](https://steamcommunity.com/sharedfiles/filedetails/?id=3818209799) |
 | Undying Optimizer | Mister K | not stated | [3777958977](https://steamcommunity.com/sharedfiles/filedetails/?id=3777958977) |
 | Viewpoint - Smooth Frames | EhChad | MIT | [3816784011](https://steamcommunity.com/sharedfiles/filedetails/?id=3816784011) |
@@ -295,17 +307,18 @@ PZ Butter is inspired by the mods below and aims to cover what they do, in one m
 | Viewpoint Fixes | not stated | not stated | [3817842243](https://steamcommunity.com/sharedfiles/filedetails/?id=3817842243) |
 | Viewpoint PZO Shader Compatibility | not stated | not stated | [3815225881](https://steamcommunity.com/sharedfiles/filedetails/?id=3815225881) |
 | VRAM Steady | "VRAM Steady authors" | MIT | [3819844505](https://steamcommunity.com/sharedfiles/filedetails/?id=3819844505) |
-| Character Texture VRAM Leak Fix [ZombieBuddy] | syeon | not stated | [3821525282](https://steamcommunity.com/sharedfiles/filedetails/?id=3821525282) |
+| Character Texture VRAM Leak Fix [ZombieBuddy] | syeon | MIT ([source](https://github.com/OX-nd/SmartTextureLeakFix)) | [3821525282](https://steamcommunity.com/sharedfiles/filedetails/?id=3821525282) |
 | Project Zomboid Optimiser (PZO) | prop11 | not stated | [3787481250](https://steamcommunity.com/sharedfiles/filedetails/?id=3787481250) |
 | Tempo - A Performance & FPS Optimizer | Vyper | not stated | [3736629791](https://steamcommunity.com/sharedfiles/filedetails/?id=3736629791) |
 | ZombieBuddy | see page | not stated | [3619862853](https://steamcommunity.com/sharedfiles/filedetails/?id=3619862853) |
 | Oz's Fast Boot & Loading Screens (OzFastBoot) | Oz (Oz Server Modpack) | not stated | [3819476262](https://steamcommunity.com/sharedfiles/filedetails/?id=3819476262) |
+| Zed's Better FPS | Zed (Andrey Zaikin) | MIT | not found on this machine |
 | Zed's Better FPS KA | zed_0xff, Kaoeutsu | not stated | [3793137588](https://steamcommunity.com/sharedfiles/filedetails/?id=3793137588) |
 | PzPerformanceFixes (formerly Alex Perf Fixes) | Alex | not stated | [3826630779](https://steamcommunity.com/sharedfiles/filedetails/?id=3826630779) |
 | Smooth Performance Optimizer by Erunest (Lua, Java, Vehicles) | Erunest | not stated | [3826681202](https://steamcommunity.com/sharedfiles/filedetails/?id=3826681202) |
-| ZPH Hotfix Pack [B42.20 MP] (ZPHFixes) | ZomboiderPH | none stated | [3806264950](https://steamcommunity.com/sharedfiles/filedetails/?id=3806264950) |
-| SmoothRide MP [B42] | druid | none stated | [3827367565](https://steamcommunity.com/sharedfiles/filedetails/?id=3827367565) |
-| Viewpoint GPU Fix | not stated | none stated | [3828842183](https://steamcommunity.com/sharedfiles/filedetails/?id=3828842183) |
+| ZPH Hotfix Pack [B42.20 MP] (ZPHFixes) | ZomboiderPH | not stated | [3806264950](https://steamcommunity.com/sharedfiles/filedetails/?id=3806264950) |
+| SmoothRide MP [B42] | druid (druidqwerty) | MIT ([source](https://github.com/druidqwerty/SmoothRide)) | [3827367565](https://steamcommunity.com/sharedfiles/filedetails/?id=3827367565) |
+| Viewpoint GPU Fix | not stated | not stated | [3828842183](https://steamcommunity.com/sharedfiles/filedetails/?id=3828842183) |
 | Lua Budget | mito551 | not stated | not on the Workshop; merged into PZ Butter (its rules stay in `Zomboid/LuaBudget.properties`; remove the LuaBudget mod from the mod list) |
 
 The table lists what the project aims to cover; not everything each mod does is covered yet. The Viewpoint add-ons above need the Viewpoint mod itself ([3809306528](https://steamcommunity.com/sharedfiles/filedetails/?id=3809306528)). PZ Butter covers what the add-ons do, not Viewpoint.
