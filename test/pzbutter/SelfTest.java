@@ -58,6 +58,7 @@ public final class SelfTest {
         HostTest.run();
         MpClientTest.run();
         NetStatsTest.run();
+        CellSpreadTest.run();
         ThirdPartyTest.run();
         PreloadSafetyTest.run();
         VehTrackTest.run();

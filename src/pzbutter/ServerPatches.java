@@ -28,6 +28,20 @@ public final class ServerPatches {
         public static void enter() { ServerTick.begin(); }
     }
 
+    /** serverCellSpread: Load2's RecalcAll2 body runs budgeted per tick (state lives in CellSpread). */
+    @Patch(className = "zombie.network.ServerMap$ServerCell", methodName = "Load2")
+    public static class Load2Spread {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This zombie.network.ServerMap.ServerCell cell) { return CellSpread.onLoad2Enter(cell); }
+    }
+
+    /** serverCellSpread: while a cell is mid-spread, a direct RecalcAll2 call waits for the slices. */
+    @Patch(className = "zombie.network.ServerMap$ServerCell", methodName = "RecalcAll2")
+    public static class RecalcAll2Spread {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This zombie.network.ServerMap.ServerCell cell) { return CellSpread.onRecalcAll2Enter(cell); }
+    }
+
     @Patch(className = "zombie.network.ServerMap", methodName = "preupdate")
     public static class NetDone {
         @Patch.OnEnter

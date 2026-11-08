@@ -424,6 +424,8 @@ public final class Settings {
 + "vehicleEarlyParse=off\n"
 + "# chunkRefill (MP client): request a dropped chunk slot again while the player stays in one chunk; at most 6 per pass, one pass every 3 s.\n"
 + "chunkRefill=false\n"
++ "# serverCellSpread (server): spread a cell's second-stage load over ticks inside a per-tick budget (at least one chunk per tick); prefetches cells along fast players' headings, keeps a 120 ms floor near a player.\n"
++ "serverCellSpread=false\n"
 + "#\n"
 + "# Remote vehicles (Plan 15 Task 8, covers SmoothRide). vehicleSendMs: driver physics send period, 16-150, 150 = stock. vehicleRemoteSmooth: buffer and draw other players' cars smoothly.\n"
 + "vehicleSendMs=150\n"

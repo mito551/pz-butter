@@ -20,6 +20,10 @@ public final class ServerTick {
 
     public static volatile boolean on;
     static volatile long tickNo, tickStartNs;   // read by HitchSampler's server mode
+    static volatile long lastIntervalNs;        // begin-to-begin, set at end(); the spread budget's tick target
+
+    /** Observed last tick interval in ms (0 until the second tick). */
+    public static long lastIntervalMs() { return lastIntervalNs / 1_000_000L; }
 
     static LogSink log;   // nullable; tests open it directly
     static long logLimit = 50L << 20;
@@ -55,7 +59,7 @@ public final class ServerTick {
     }
 
     /** Tick start: PoolCaps.updateServerCaps, the first server call after the loop's nanoTime. */
-    public static void begin() { ServerFixes.prewarmOnce(); beginAt(System.nanoTime()); }
+    public static void begin() { ServerFixes.prewarmOnce(); CellSpread.tickStart(); beginAt(System.nanoTime()); }
 
     static void beginAt(long nowNs) { beginAt(nowNs, cpu()); }
 
@@ -104,6 +108,8 @@ public final class ServerTick {
             running = false;
             long tickNs = Math.max(0, nowNs - tickStartNs);
             long intervalNs = prevStartNs == 0 ? tickNs : Math.max(0, tickStartNs - prevStartNs);
+            lastIntervalNs = intervalNs;
+            if (CellSpread.armed) CellSpread.noteRestTick(Math.round(tickNs * 1e-6));
             long cpuNs = CPU ? Math.max(0, nowCpuNs - cpuStartNs) : tickNs;
             prevStartNs = tickStartNs;
 

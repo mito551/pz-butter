@@ -266,6 +266,8 @@ Map.entry("LoadPatches.WaitFileTask", k("textureBufferMb")),
         Map.entry("ServerPatches.StopOnClose", k("serverTickLog", "serverLuaSample")),
         Map.entry("ServerPatches.SendGuard", k("containerSendGuard")),
         Map.entry("ServerPatches.ProcessItems", k("processItemsMerge")),
+        Map.entry("ServerPatches.Load2Spread", k("serverCellSpread")),
+        Map.entry("ServerPatches.RecalcAll2Spread", k("serverCellSpread")),
         Map.entry("HostPatches.Args", k("hostJvmArgs", "hostZombieBuddy")),
         // MP client (Plan 15)
         Map.entry("MpClientPatches.VehicleAnswer", k("vehicleEarlyParse")),
