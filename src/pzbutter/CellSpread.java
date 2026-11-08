@@ -151,6 +151,10 @@ public final class CellSpread {
     private static void finishSlice(Host host) {
         host.setLoaded(true);
         host.loadVehicles();
+        // GameHost holds only a VarHandle per cell; drop the entry once its slice
+        // has been drained so a re-arrived cell re-creates it instead of keeping
+        // (potentially stale) state forever.
+        if (host instanceof GameHost) hosts.remove(keyOf(((GameHost) host).cell));
     }
 
     private static Slice sliceState(Object cell) {
@@ -365,6 +369,7 @@ public final class CellSpread {
             chunk.loaded = true;
             for (int level = chunk.minLevel; level <= chunk.maxLevel; level++) {
                 zombie.iso.IsoGridSquare[] squares = chunk.squares[chunk.squaresIndexOfLevel(level)];
+                if (squares == null) continue;   // level never populated: fixed 8x8 geometry, 64 squares max
                 for (int slot = 0; slot < 64; slot++) {
                     zombie.iso.IsoGridSquare sq = squares[slot];
                     if (sq == null) continue;
@@ -414,7 +419,9 @@ public final class CellSpread {
                 double dirX = 0, dirY = 0;
                 if (st != null) {
                     double dx = cx - st[0], dy = cy - st[1];
-                    if (dx * dx + dy * dy >= 0.0625) { dirX = dx; dirY = dy; }   // moved at least a quarter cell
+                    // set a heading once the player has moved a tile (1/64 of a cell),
+                    // rather than a quarter cell, so prefetches start with the first movement
+                    if (dx * dx + dy * dy >= 1.0 / 4096.0) { dirX = dx; dirY = dy; }
                     else { dirX = st[2]; dirY = st[3]; }
                 }
                 prefetchUpdate(now, cx, cy, dirX, dirY);
