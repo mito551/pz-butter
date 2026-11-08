@@ -147,7 +147,7 @@ public final class LuaPatches {
 
     // ---- the PZButter global for pz-butter's own Lua ----
 
-    static volatile boolean uiLuaFast;
+    static volatile boolean uiLuaFast, modOptionsFast;
 
     /** LuaManager.LoadDirBase entry (the Lua environment exists, the Lua files are about to load). */
     public static void onLuaLoad() {
@@ -158,6 +158,7 @@ public final class LuaPatches {
             Object old = zombie.Lua.LuaManager.env.rawget("PZButter");
             KahluaTableImpl t = old instanceof KahluaTableImpl k ? k : new KahluaTableImpl(new java.util.HashMap<>());
             t.rawset("uiLuaFast", uiLuaFast);
+            t.rawset("modOptionsFast", modOptionsFast);
             t.rawset("containerSendGuard", Settings.flag("containerSendGuard"));
             t.rawset("handlerCensus", Settings.flag("handlerCensus"));
             t.rawset("ki5EveryStart", new JavaFunction() {

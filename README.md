@@ -175,6 +175,7 @@ The mod creates `~/Zomboid/PZButter.properties` on first start and reads it once
 | `luaInternConstants` | Intern the string constants of loaded Lua, so table lookups match by identity first. On by default. |
 | `uiTickStagger` | Run each window's ten-per-second Lua update in its own slot instead of all in one frame. On by default. |
 | `uiLuaFast` | The inventory item list skips its second drawing pass when nothing is dragged. On by default. |
+| `modOptionsFast` | While Lua (re)loads (game boot, and a save load that reloads Lua), `PZAPI.ModOptions.load` reads `ModOptions.ini` once instead of once per mod, about 2 s at boot by the profile. Options registered later still get their saved values; stock `load` is back at the main menu. Off by default until the in-game check. |
 | `textWidthCache` | Keep measured text widths; context menus otherwise re-measure every option on every opening. On by default. |
 | `mapStreetMemo` | Keep street lengths and names per view and language, and one index map per label sort. On by default. |
 | `mapStreetCache` | Reuse the street-label layout while the map view is unchanged. On by default. |

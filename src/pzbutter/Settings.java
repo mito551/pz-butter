@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.FileWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.util.Arrays;
 import java.util.Locale;
 import java.util.Properties;
 
@@ -109,6 +110,8 @@ public final class Settings {
       + "uiTickStagger=true\n"
       + "# uiLuaFast: the inventory item list skips its second drawing pass when nothing is dragged.\n"
       + "uiLuaFast=true\n"
+      + "# modOptionsFast: during a Lua (re)load, PZAPI.ModOptions.load reads ModOptions.ini once instead of once per mod (about 2 s at boot); stock load() returns at the main menu.\n"
+      + "modOptionsFast=false\n"
       + "# textWidthCache: measured text widths are kept (context menus re-measure every option on every opening).\n"
       + "textWidthCache=true\n"
       + "#\n"
@@ -477,24 +480,39 @@ public final class Settings {
 
     public static void load() { load(new File(System.getProperty("user.home"), "Zomboid/PZButter.properties")); }
 
+    /**
+     * Parses the file once per distinct content: loading the same bytes again (premain, then Main) keeps the parsed
+     * values and the lookup memo. forcedOff is cleared either way.
+     */
     public static void load(File f) {
         enabled = frameLog = false;
         file = f;
-        props = new Properties();
         forcedOff.clear();
         try {
             if (!f.exists()) try (FileWriter w = new FileWriter(f)) { w.write(DEFAULTS); }
-            Properties p = new Properties();
             byte[] bytes = Files.readAllBytes(f.toPath());
+            if (f.equals(loadedFile) && Arrays.equals(bytes, loadedBytes)) {
+                enabled = bool(props, "enabled", false);
+                frameLog = bool(props, "frameLog", false);
+                return;
+            }
+            loadedFile = null;
+            clearMemo();
+            props = new Properties();
+            Properties p = new Properties();
             int bom = bytes.length >= 3 && bytes[0] == (byte) 0xEF && bytes[1] == (byte) 0xBB && bytes[2] == (byte) 0xBF ? 3 : 0;
             p.load(new java.io.ByteArrayInputStream(bytes, bom, bytes.length - bom));   // a UTF-8 mark (Notepad) is not a key
             props = p;
             upgrade(f, p);
             enabled = bool(p, "enabled", false);
             frameLog = bool(p, "frameLog", false);
+            loadedBytes = bytes;
+            loadedFile = f;
         } catch (Throwable t) {
             enabled = frameLog = false;
             file = null;   // a failed load leaves nothing the page could write back to
+            loadedFile = null;
+            clearMemo();
             props = new Properties();
             System.out.println("[PZButter] settings failed, all features off: " + t);
         }
@@ -567,11 +585,27 @@ public final class Settings {
         "containerSendGuard",   // Plan 15: stock drops these calls anyway
         "handlerCensus");   // Plan 17
 
+    /**
+     * Lookup memo: each key's parsed value, filled on first read after a load and cleared by every load that parses and
+     * by setFromUi. The master switch, the side gate and forcedOff (ModCompat sets it after load) are checked on every call.
+     */
+    private static final java.util.Map<String, Object> flagMemo = new java.util.concurrent.ConcurrentHashMap<>();   // Boolean
+    private static final java.util.Map<String, Object> numMemo = new java.util.concurrent.ConcurrentHashMap<>();    // Integer, or ABSENT
+    private static final java.util.Map<String, Object> textMemo = new java.util.concurrent.ConcurrentHashMap<>();   // String, or ABSENT
+    private static final java.util.Map<String, Object> modeMemo = new java.util.concurrent.ConcurrentHashMap<>();   // String
+    private static final Object ABSENT = new Object();
+    private static volatile File loadedFile;
+    private static volatile byte[] loadedBytes;
+
+    private static void clearMemo() { flagMemo.clear(); numMemo.clear(); textMemo.clear(); modeMemo.clear(); }
+
     public static boolean flag(String key) {
         if (!enabled) return false;
         if (!Side.allowed(key)) return false;   // side tags live in Side.SERVER / Side.BOTH
         if (forcedOff.contains(key)) return STOCK_ON.contains(key);
-        return bool(raw(key), ON_BY_DEFAULT.contains(key));
+        Object c = flagMemo.get(key);
+        if (c == null) flagMemo.put(key, c = bool(raw(key), ON_BY_DEFAULT.contains(key)));
+        return (Boolean) c;
     }
 
     /**
@@ -595,23 +629,39 @@ public final class Settings {
     /** A number key, clamped to [min, max]; the default when missing or unreadable. */
     public static int num(String key, int dflt, int min, int max) {
         if (!Side.allowed(key)) return dflt;
-        String v = forcedOff.contains(key) ? null : raw(key);
         int n = dflt;
-        if (v != null) try { n = Integer.parseInt(v.trim()); } catch (NumberFormatException e) { n = dflt; }
+        if (!forcedOff.contains(key)) {
+            Object c = numMemo.get(key);
+            if (c == null) numMemo.put(key, c = parseNum(raw(key)));
+            if (c != ABSENT) n = (Integer) c;
+        }
         return Math.max(min, Math.min(max, n));
+    }
+
+    private static Object parseNum(String v) {
+        if (v == null) return ABSENT;
+        try { return Integer.parseInt(v.trim()); } catch (NumberFormatException e) { return ABSENT; }
     }
 
     /** A text key; the default when missing. */
     public static String text(String key, String dflt) {
-        if (!Side.allowed(key)) return dflt;
-        String v = forcedOff.contains(key) ? null : raw(key);
-        return v == null ? dflt : v.trim();
+        if (!Side.allowed(key) || forcedOff.contains(key)) return dflt;
+        Object c = textMemo.get(key);
+        if (c == null) textMemo.put(key, c = parseText(raw(key)));
+        return c == ABSENT ? dflt : (String) c;
     }
+
+    private static Object parseText(String v) { return v == null ? ABSENT : v.trim(); }
 
     /** "off", "on" or "auto"; "off" when the master switch is off or the value is unreadable. */
     public static String mode(String key) {
         if (!enabled || forcedOff.contains(key) || !Side.allowed(key)) return "off";
-        String v = raw(key);
+        Object c = modeMemo.get(key);
+        if (c == null) modeMemo.put(key, c = parseMode(raw(key)));
+        return (String) c;
+    }
+
+    private static String parseMode(String v) {
         if (v == null) return "off";
         switch (v.trim().toLowerCase(Locale.ROOT)) {
             case "on": case "true": case "yes": case "1": return "on";
@@ -650,6 +700,7 @@ public final class Settings {
         File f = file;
         if (f != null && BOOLEAN_KEYS.contains(key) && (v.equals("true") || v.equals("false"))) {
             props.setProperty(key, v);
+            clearMemo();   // a live key read after this must see the new value
             upgrade(f, props);
             return v;
         }

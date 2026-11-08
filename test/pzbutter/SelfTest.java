@@ -25,6 +25,8 @@ public final class SelfTest {
         setFromUiValid();
         setFromUiRejects();
         setFromUiUnknownKey();
+        settingsCache();
+        settingsMemoSeesPageWrite();
         frameEnd();
         frameInterval();
         frameEnterTwice();
@@ -114,6 +116,34 @@ public final class SelfTest {
     static String read(File f) {
         try { return new String(Files.readAllBytes(f.toPath()), java.nio.charset.StandardCharsets.ISO_8859_1); }
         catch (IOException e) { throw new RuntimeException(e); }
+    }
+
+    // Settings parses the same bytes once and memoises each key; a different file, forcedOff and the page's write must show through
+    static void settingsCache() {
+        File f = write("enabled=true\nuiRetained=true\nbakeFrameBudget=5\nzoomEase=0.1,0.2,0.3,0.4\n");
+        Settings.load(f);
+        assert Settings.flag("uiRetained") && Settings.num("bakeFrameBudget", 8, 1, 64) == 5;
+        Settings.load(f);   // same bytes: same answers
+        assert Settings.flag("uiRetained") && Settings.num("bakeFrameBudget", 8, 1, 64) == 5;
+        Settings.forcedOff.add("uiRetained");   // ModCompat changes forcedOff after a load
+        assert !Settings.flag("uiRetained");
+        Settings.load(f);   // a load clears forcedOff; the same bytes still give the value
+        assert Settings.flag("uiRetained");
+        try (FileWriter w = new FileWriter(f)) { w.write("enabled=true\nuiRetained=false\nbakeFrameBudget=99\n"); }
+        catch (IOException e) { throw new RuntimeException(e); }
+        Settings.load(f);   // other bytes: parsed again
+        assert !Settings.flag("uiRetained") && Settings.num("bakeFrameBudget", 8, 1, 64) == 64;
+        Settings.load(write("enabled=true\n"));
+        assert Settings.num("bakeFrameBudget", 8, 1, 64) == 8 && Settings.text("zoomEase", "x").equals("x");
+    }
+
+    // the options page writes into the loaded properties: a key read before the write must answer the new value after it
+    static void settingsMemoSeesPageWrite() {
+        File f = write("enabled=true\nuiTiming=false\n");
+        Settings.load(f);
+        assert !Settings.flag("uiTiming");
+        assert "true".equals(Settings.setFromUi("uiTiming", "true"));
+        assert Settings.flag("uiTiming") : "the memo kept the old answer after setFromUi";
     }
 
     // Plan 19 Task 6: a valid page write is stored and the file updated, atomically (no .tmp left behind)

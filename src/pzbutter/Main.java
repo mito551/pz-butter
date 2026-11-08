@@ -86,6 +86,7 @@ public class Main {
         RemoteVehicles.init();
         SoundPatches.onFmodInit();
         LuaPatches.uiLuaFast = Settings.flag("uiLuaFast");
+        LuaPatches.modOptionsFast = Settings.flag("modOptionsFast");
     }
 
     /** True when the system class loader can load the class (not initialised). */
