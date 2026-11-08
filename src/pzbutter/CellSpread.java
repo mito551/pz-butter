@@ -19,8 +19,6 @@ public final class CellSpread {
 
     static final long SAFETY_NET_BAND = 120;      // ms, near an active player
     static final int REST_CAP_MS = 50;
-    static final int PREFETCH_AHEAD_TILES = 192;
-    static final int PREFETCH_KEEP_MS = 3000;
 
     // ---- pure budget ----
 
@@ -52,41 +50,6 @@ public final class CellSpread {
 
     public static long safetyNet(long budgetMs, boolean near) {
         return near ? Math.max(budgetMs, SAFETY_NET_BAND) : budgetMs;
-    }
-
-    // ---- prefetch: cells along the player's heading, kept 3 s after last ahead ----
-
-    private static final Map<Long, Long> aheadCells = new HashMap<>();
-
-    public static void prefetchUpdate(long nowMs, int cellX, int cellY, double dirX, double dirY) {
-        double len = Math.hypot(dirX, dirY);
-        int r = (PREFETCH_AHEAD_TILES + 63) / 64 + 1;   // window big enough for the ray
-        for (int dy = -r; dy <= r; dy++) {
-            for (int dxx = -r; dxx <= r; dxx++) {
-                if (segmentHitsCell(cellX, cellY, dirX, dirY, len, cellX + dxx, cellY + dy))
-                    aheadCells.put(key(cellX + dxx, cellY + dy), nowMs + PREFETCH_KEEP_MS);
-            }
-        }
-    }
-
-    public static boolean prefetchKeeps(int cx, int cy, long nowMs) {
-        Long exp = aheadCells.get(key(cx, cy));
-        return exp != null && nowMs <= exp;
-    }
-
-    private static long key(int cx, int cy) { return ((long) cx << 32) | (cy & 0xffffffffL); }
-
-    /** Does the segment from the player cell center along dir (192 tiles) touch the cell? */
-    static boolean segmentHitsCell(int pCX, int pCY, double dx, double dy, double len, int cx, int cy) {
-        if (dx == 0 && dy == 0) return cx == pCX && cy == pCY;
-        long px = (long) pCX * 64 + 32, py = (long) pCY * 64 + 32;
-        long x0 = (long) cx * 64, x1 = x0 + 63, y0 = (long) cy * 64, y1 = y0 + 63;
-        double txMin = (x0 - px) / dx, txMax = (x1 - px) / dx;
-        if (txMin > txMax) { double t = txMin; txMin = txMax; txMax = t; }
-        double tyMin = (y0 - py) / dy, tyMax = (y1 - py) / dy;
-        if (tyMin > tyMax) { double t = tyMin; tyMin = tyMax; tyMax = t; }
-        double tMin = Math.max(Math.max(txMin, tyMin), 0), tMax = Math.min(Math.min(txMax, tyMax), PREFETCH_AHEAD_TILES);
-        return tMax >= tMin;
     }
 
     // ---- the spread runner ----
@@ -136,7 +99,6 @@ public final class CellSpread {
             if (s.done()) resetSlice(s);
             long startNs = host.nanoTime();
             long limitNs = budgetMs <= 0 || budgetMs >= Long.MAX_VALUE / 1_000_000 ? Long.MAX_VALUE : startNs + budgetMs * 1_000_000L;
-            if (s.done()) { finishSlice(host); return; }
             do {
                 step(host, s, wxTiles, wyTiles);
             } while (!s.done() && host.nanoTime() <= limitNs);   // floor: at least one unit per slice
@@ -207,7 +169,11 @@ public final class CellSpread {
             }
             case PH_LOADSQ: {
                 Object c = host.chunk(s.chunkIdx & 7, s.chunkIdx >> 3);
-                if (c != null) host.doLoadGridsquare(c);
+                if (c != null) {
+                    long t0 = host.nanoTime();
+                    host.doLoadGridsquare(c);
+                    noteChunkCostMs((host.nanoTime() - t0) / 1e6);   // the floor follows the real cost of one chunk
+                }
                 if (++s.chunkIdx >= 64) nextPhase(s, PH_INC);
                 return;
             }
@@ -262,10 +228,8 @@ public final class CellSpread {
     static void resetForTest() {
         chunkCostMs = 10.0;
         restEstimateMs = 0;
-        aheadCells.clear();
         slices.clear();
         hosts.clear();
-        lastCells.clear();
         ANON.phase = PH_A_ROOMS;
         ANON.phaseStarted = false;
         armed = false;
@@ -397,36 +361,5 @@ public final class CellSpread {
                     if (c != null && !c.isNewChunk()) zombie.vehicles.VehiclesDB2.instance.loadChunkMain(c);
                 }
         }
-    }
-
-    private static final Map<Integer, double[]> lastCells = new HashMap<>();   // conn slot -> {cellX, cellY, dirX, dirY}
-
-    /** ServerTick.begin: refresh the prefetch cells from every connected player's heading. */
-    public static void tickStart() {
-        if (!armed) return;
-        try {
-            long now = System.currentTimeMillis();
-            zombie.core.raknet.UdpConnection[] cons = zombie.network.GameServer.SlotToConnection;
-            for (int i = 0; i < cons.length; i++) {
-                zombie.core.raknet.UdpConnection conn = cons[i];
-                zombie.characters.IsoPlayer p = null;
-                if (conn != null && conn.players != null)
-                    for (zombie.characters.IsoPlayer q : conn.players)
-                        if (q != null) { p = q; break; }
-                if (p == null) { lastCells.remove(i); continue; }
-                int cx = (int) Math.floor(p.getX() / 64.0), cy = (int) Math.floor(p.getY() / 64.0);
-                double[] st = lastCells.get(i);
-                double dirX = 0, dirY = 0;
-                if (st != null) {
-                    double dx = cx - st[0], dy = cy - st[1];
-                    // set a heading once the player has moved a tile (1/64 of a cell),
-                    // rather than a quarter cell, so prefetches start with the first movement
-                    if (dx * dx + dy * dy >= 1.0 / 4096.0) { dirX = dx; dirY = dy; }
-                    else { dirX = st[2]; dirY = st[3]; }
-                }
-                prefetchUpdate(now, cx, cy, dirX, dirY);
-                lastCells.put(i, new double[] { cx, cy, dirX, dirY });
-            }
-        } catch (Throwable t) { guard.fail(t); }
     }
 }

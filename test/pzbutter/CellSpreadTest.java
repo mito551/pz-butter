@@ -3,7 +3,7 @@ package pzbutter;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Cell spread: same order stock, chunk-budget floor, near-player safety net, heading prefetch. */
+/** Cell spread: same order stock, chunk-budget floor, near-player safety net, re-arrival, measured chunk cost. */
 final class CellSpreadTest {
     private CellSpreadTest() {}
 
@@ -13,7 +13,8 @@ final class CellSpreadTest {
         sameStepsSameOrder();
         budgetFloor();
         safetyNetNearPlayer();
-        prefetchKeepsAheadCells();
+        cellReArrives();
+        chunkCostIsMeasured();
     }
 
     private static final class FakeChunk { final int id; FakeChunk(int id) { this.id = id; } }
@@ -46,7 +47,6 @@ final class CellSpreadTest {
             }
             public void doLoadGridsquare(Object chunk) {
                 log.add("loadsq " + ((FakeChunk) chunk).id);
-                CellSpread.noteChunkCostMs(1.0);
             }
             public void roomDec(Object def) { log.add("dec " + ((FakeDef) def).id); }
             public void roomInc(Object def) { log.add("inc " + ((FakeDef) def).id); }
@@ -125,19 +125,27 @@ final class CellSpreadTest {
         assert CellSpread.safetyNet(300, 5, 5, 5, 5) == 300 : "never lowers a bigger budget";
     }
 
-    // ---- 4. prefetch keeps cells along the heading for 3 s ----
+    // ---- 4. a finished cell that arrives again is spread again, not marked loaded untouched ----
 
-    private static void prefetchKeepsAheadCells() {
+    private static void cellReArrives() {
+        Object cell = new Object();
+        Fake first = new Fake();
         CellSpread.resetForTest();
-        long t = 1_000;
-        CellSpread.prefetchUpdate(t, 5, 5, 1, 0);        // heading east
-        assert CellSpread.prefetchKeeps(5, 5, t) : "the cell under the player is kept";
-        assert CellSpread.prefetchKeeps(6, 5, t) : "one cell ahead";
-        assert CellSpread.prefetchKeeps(7, 5, t) : "two cells ahead";
-        assert !CellSpread.prefetchKeeps(9, 5, t) : "far ahead is not kept";
-        assert !CellSpread.prefetchKeeps(5, 6, t) : "sideways is not kept";
-        // three seconds later, the last update's cells have expired
-        assert CellSpread.prefetchKeeps(6, 5, t + 2_900);
-        assert !CellSpread.prefetchKeeps(6, 5, t + 3_100) : "expired after 3 s";
+        CellSpread.spread(first.host, cell, 128, 64, Long.MAX_VALUE);
+        assert first.loaded && first.log.contains("loadsq 63");
+        Fake again = new Fake();
+        CellSpread.spread(again.host, cell, 128, 64, Long.MAX_VALUE);   // same cell object, re-used for new data
+        assert stripLoadedFlags(again.log).equals(stripLoadedFlags(first.log))
+                : "re-arrival must repeat every step:\nfirst " + first.log + "\nagain " + again.log;
+    }
+
+    // ---- 5. the budget floor follows the measured time of a chunk ----
+
+    private static void chunkCostIsMeasured() {
+        CellSpread.resetForTest();
+        Fake f = new Fake();
+        CellSpread.spread(f.host, null, 128, 64, Long.MAX_VALUE);
+        // tick already over budget, so the budget is the floor; the fake clock makes a chunk 1 ms, the start value is 10 ms
+        assert CellSpread.budgetMs(100, 20, 10, 95) < 10 : "floor still the fixed 10 ms: " + CellSpread.budgetMs(100, 20, 10, 95);
     }
 }
