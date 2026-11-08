@@ -133,6 +133,7 @@ public final class CellSpread {
     public static void spread(Host host, Object cell, int wxTiles, int wyTiles, long budgetMs) {
         try {
             Slice s = sliceState(cell);
+            if (s.done()) resetSlice(s);
             long startNs = host.nanoTime();
             long limitNs = budgetMs <= 0 || budgetMs >= Long.MAX_VALUE / 1_000_000 ? Long.MAX_VALUE : startNs + budgetMs * 1_000_000L;
             if (s.done()) { finishSlice(host); return; }
@@ -320,7 +321,11 @@ public final class CellSpread {
         return h;
     }
 
-    /** Host over one real server cell; every callback mirrors the stock bytecode exactly. */
+    private static void resetSlice(Slice s) {
+        s.phase = PH_A_ROOMS; s.phaseStarted = false; s.scanIdx = 0;
+        s.minLevel = Integer.MAX_VALUE; s.maxLevel = Integer.MIN_VALUE;
+        s.level = 0; s.x = 0; s.part = 0; s.chunkIdx = 0; s.roomIdx = 0; s.rooms.clear();
+    }
     static final class GameHost implements Host {
         final zombie.network.ServerMap.ServerCell cell;
         final java.lang.invoke.VarHandle unexploredRooms;
