@@ -44,6 +44,7 @@ public final class SelfTest {
         SpikeTest.run();
         ChunkShimTest.run();
         ZombieTest.run();
+        AnimSkipTest.run();
         WorkerTest.run();
         RuntimeTest.run();
         CoresTest.run();
