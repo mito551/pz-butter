@@ -89,6 +89,7 @@ public final class ZombiePatches {
      * (game thread, a key on).
      */
     public static void onCullEnter() {
+        if (CullSort.guard.on) CullSort.begin();
         boolean timing = EntityTiming.guard.on;
         if (!timing && !ZombieLod.blendGuard.on && !ZombieLod.capGuard.on && !ZombieLod.budgetGuard.on) return;
         if (Thread.currentThread() != FrameClock.mainThread) return;
@@ -104,6 +105,7 @@ public final class ZombiePatches {
 
     /** IsoWorld.sceneCullZombies exit (also on a throw): closes a cull this thread opened, whatever the keys say now, then the clock. */
     public static void onCullExit() {
+        if (CullSort.active) CullSort.end();
         if (ZombieLod.inCull) {
             try {
                 if (Thread.currentThread() == ZombieLod.cullThread) ZombieLod.exitCull();
@@ -280,49 +282,30 @@ public final class ZombiePatches {
 
     // ---- zombieCullSortFast: the 3D-model sort ----
 
-    /**
-     * TimSort.doSort entry: the comparator the sort runs with. The game's {@code compScoreToPlayer} (found by its class the first
-     * time, bound once) on the game thread, for two or more elements, becomes a comparator over scores worked out once; every other
-     * comparator, thread and range is the caller's. A score that throws lets the game's own sort run (and throw as it would).
-     */
-    @SuppressWarnings({"rawtypes", "unchecked"})
-    public static java.util.Comparator onSortEnter(Object[] a, java.util.Comparator c, int lo, int hi) {
-        if (!CullSort.guard.on) return c;
-        try {
-            java.util.Comparator s = CullSort.stock;
-            if (c != s && (s != null || c == null || c.getClass() != CullSort.scoreClass)) return c;
-            if (Thread.currentThread() != FrameClock.mainThread || hi - lo < 2) return c;
-            if (s == null) {
-                CullSort.bind(c);
-                System.out.println("[PZButter] zombieCullSortFast: bound to the game's cull comparator");
-            }
-            java.util.Comparator r = CullSort.prepare(a, lo, hi, CullSort.score);
-            CullSort.sorts++;
-            return r;
-        } catch (Throwable t) {
-            CullSort.guard.fail(t);
-            return c;
+    /** CompScoreToPlayer.compare entry: the stock answer from stored scores (-1, 0 or 1), or NO_ANSWER to run the game's compare. */
+    public static int onCullCompare(Object self, Object a, Object b) {
+        if (!CullSort.active) return CullSort.NO_ANSWER;
+        try { return CullSort.compare(self, a, b); }
+        catch (Throwable t) {
+            CullSort.guard.fail(t);   // the game's compare runs next, and throws what it would
+            return CullSort.NO_ANSWER;
         }
     }
 
-    /** TimSort.doSort exit (also on a throw): drops the stored scores of a comparator ours made. */
-    public static void onSortExit(java.util.Comparator c) {
-        if (!(c instanceof CullSort.Prepared)) return;
-        try { CullSort.done(c); }
-        catch (Throwable t) { CullSort.guard.fail(t); }
-    }
-
-    /** The only overload with a Comparator. Other callers (render code) pass other comparators and cost one compare. */
-    @Patch(className = "zombie.entity.util.TimSort", methodName = "doSort")
-    public static class CullSortHook {
-        @Patch.OnEnter
-        public static void enter(@Patch.Argument(0) Object[] a, @Patch.Argument(value = 1, readOnly = false) java.util.Comparator c,
-                                 @Patch.Argument(2) int lo, @Patch.Argument(3) int hi) {
-            c = ZombiePatches.onSortEnter(a, c, lo, hi);
+    /** Both compare overloads (the typed one and the bridge); every other comparator and every call outside a cull runs stock. */
+    @Patch(className = "zombie.iso.IsoWorld$CompScoreToPlayer", methodName = "compare")
+    public static class CullSortCompare {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This Object self, @Patch.Argument(0) Object a, @Patch.Argument(1) Object b,
+                                    @Patch.Local("r") int r) {
+            r = ZombiePatches.onCullCompare(self, a, b);
+            return r != CullSort.NO_ANSWER;
         }
 
-        @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
-        public static void exit(@Patch.Argument(1) java.util.Comparator c) { ZombiePatches.onSortExit(c); }
+        @Patch.OnExit
+        public static void exit(@Patch.Return(readOnly = false) int ret, @Patch.Local("r") int r) {
+            if (r != CullSort.NO_ANSWER) ret = r;
+        }
     }
 
     // ---- statsNoBox: an allocation saver ----

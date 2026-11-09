@@ -24,7 +24,7 @@ public final class CensusPatches {
         }
     }
 
-    @Patch(className = "zombie.iso.IsoMovingObject", methodName = "frameStep")
+    @Patch(className = "zombie.characters.ecs.ECSEntity", methodName = "frameStep")   // 42.22: frameStep is a default method of the ECS entity interface (42.21: IsoMovingObject)
     public static class FrameStep {
         @Patch.OnEnter
         public static void enter(@Patch.This Object self) {

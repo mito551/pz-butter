@@ -5,11 +5,12 @@ import java.lang.invoke.MethodType;
 import java.util.Comparator;
 
 /**
- * zombieCullSortFast: {@code IsoWorld.sceneCullZombies} sorts its zombies with {@code IsoWorld.compScoreToPlayer}, whose compare works
- * out both zombies' relevance scores every time (about n log n compares, two scores each). Ours works each score out once, stores it
- * in an identity table, and hands the game's own {@code TimSort} a comparator with the stock compare arithmetic over the stored
- * floats. The comparison sequence, the answers (NaN gives 0) and so the result are the game's. Game thread only (the shims in
- * ZombiePatches pass every other thread through).
+ * zombieCullSortFast: {@code IsoWorld.sceneCullZombies} sorts its zombies with {@code List.sort(compScoreToPlayer)} (42.22; 42.21 used the
+ * game's own TimSort), whose compare works out both zombies' relevance scores every time (about n log n compares, two scores each).
+ * Here {@code CompScoreToPlayer.compare} answers from scores stored by element identity: each score is worked out the first time the
+ * sort asks for it, in the order the stock compare asks (first argument, then second), and kept until the cull ends. The comparison
+ * sequence, the answers (NaN gives 0) and so the result are the game's. Game thread only, and only inside a cull (the shims in
+ * ZombiePatches pass every other call through).
  */
 final class CullSort {
     private CullSort() {}
@@ -26,10 +27,10 @@ final class CullSort {
     static Comparator<?> stock;
     static Score score;
 
-    /** Scores computed outside the stored range during a sort (an element the table does not hold). */
+    /** Scores worked out (one per distinct zombie and cull). */
     static long misses;
 
-    /** Sorts that ran through a prepared comparator (the zombies line); counted by the shim, not by prepare. */
+    /** Culls whose sort ran on stored scores (the zombies line). */
     static long sorts;
 
     static void init() {
@@ -62,95 +63,108 @@ final class CullSort {
         return 0;
     }
 
-    /** The comparator of one sort: scores stored by element identity (open addressing, load at most one half). */
-    static final class Prepared implements Comparator<Object> {
-        /** Tables larger than this (slots) are dropped after their sort instead of kept. */
+    /** Stored scores of one cull, by element identity (open addressing, load at most one half), filled as the sort asks. */
+    static final class Memo implements Comparator<Object> {
+        /** Tables larger than this (slots) are dropped after their cull instead of kept. */
         static final int MAX_KEPT = 1 << 16;
-        Object[] keys = new Object[0];
-        float[] vals = new float[0];
-        int mask;
-        boolean inUse;
+        Object[] keys = new Object[64];
+        float[] vals = new float[64];
+        int mask = 63, count;
         Score s;
-
-        void load(Object[] a, int lo, int hi, Score score) throws Throwable {
-            int n = hi - lo;
-            int cap = Integer.highestOneBit(Math.max(2, n * 2 - 1)) << 1;
-            if (keys.length < cap) { keys = new Object[cap]; vals = new float[cap]; }
-            mask = cap - 1;
-            s = score;
-            for (int i = lo; i < hi; i++) {
-                Object z = a[i];
-                float v = score.of(z);
-                if (z != null) put(z, v);
-            }
-        }
-
-        private void put(Object z, float v) {
-            Object[] k = keys;
-            int m = mask, i = slot(z, m);
-            for (Object e; (e = k[i]) != null; i = (i + 1) & m) if (e == z) { vals[i] = v; return; }
-            k[i] = z;
-            vals[i] = v;
-        }
+        boolean used;
 
         private static int slot(Object z, int m) {
             int h = System.identityHashCode(z);
             return (h ^ (h >>> 15)) & m;
         }
 
-        float get(Object z) {
-            if (z != null) {
-                Object[] k = keys;
-                int m = mask;
-                for (int i = slot(z, m); ; i = (i + 1) & m) {
-                    Object e = k[i];
-                    if (e == z) return vals[i];
-                    if (e == null) break;
-                }
-            }
+        float get(Object z) throws Throwable {
+            if (z == null) return s.of(z);   // the game's score decides what null does
+            Object[] k = keys;
+            int m = mask, i = slot(z, m);
+            for (Object e; (e = k[i]) != null; i = (i + 1) & m) if (e == z) return vals[i];
+            float v = s.of(z);               // may throw, as the game's does: nothing stored then
             misses++;
-            try { return s.of(z); }
-            catch (Throwable t) { throw CullSort.<RuntimeException>sneaky(t); }
+            if ((count + 1) * 2 > keys.length) grow();
+            put(z, v);
+            return v;
+        }
+
+        private void put(Object z, float v) {
+            Object[] k = keys;
+            int m = mask, i = slot(z, m);
+            while (k[i] != null) i = (i + 1) & m;
+            k[i] = z;
+            vals[i] = v;
+            count++;
+        }
+
+        private void grow() {
+            Object[] ok = keys;
+            float[] ov = vals;
+            keys = new Object[ok.length * 2];
+            vals = new float[ok.length * 2];
+            mask = keys.length - 1;
+            count = 0;
+            for (int i = 0; i < ok.length; i++) if (ok[i] != null) put(ok[i], ov[i]);
         }
 
         @Override
         public int compare(Object x, Object y) {
-            return compareScores(get(x), get(y));
+            try { return compareScores(get(x), get(y)); }
+            catch (Throwable t) { throw CullSort.<RuntimeException>sneaky(t); }
         }
 
-        void release() {
-            if (keys.length > MAX_KEPT) { keys = new Object[0]; vals = new float[0]; }
-            else java.util.Arrays.fill(keys, 0, Math.min(keys.length, mask + 1), null);
+        void clear() {
+            if (keys.length > MAX_KEPT) { keys = new Object[64]; vals = new float[64]; mask = 63; }
+            else java.util.Arrays.fill(keys, null);
+            count = 0;
             s = null;
-            inUse = false;
+            used = false;
         }
     }
 
     @SuppressWarnings("unchecked")
     private static <T extends Throwable> T sneaky(Throwable t) throws T { throw (T) t; }
 
-    /** The one table reused by every sort; a sort that starts while it is in use gets a table of its own. */
-    private static final Prepared shared = new Prepared();
+    /** The one table reused by every cull. */
+    static final Memo memo = new Memo();
+    /** A cull this thread opened is running (set by begin, cleared by end). */
+    static volatile boolean active;
 
-    /**
-     * A comparator for sorting {@code a[lo..hi)} that calls {@code s.of} exactly once for each element of the range and answers
-     * {@code compare(x, y)} as {@link #compareScores} of their stored scores. Pass it to {@link #done} after the sort.
-     */
-    static Comparator<Object> prepare(Object[] a, int lo, int hi, Score s) throws Throwable {
-        Prepared p = shared.inUse ? new Prepared() : shared;
-        p.inUse = true;
-        try {
-            p.load(a, lo, hi, s);
-        } catch (Throwable t) {
-            p.release();
-            throw t;
-        }
-        return p;
+    /** IsoWorld.sceneCullZombies entry (game thread, key on): opens the table. */
+    static void begin() {
+        if (!guard.on || Thread.currentThread() != FrameClock.mainThread) return;
+        memo.clear();
+        active = true;
     }
 
-    /** Releases the stored scores and the element references (the arrays stay for the next sort). */
-    static void done(Comparator<?> c) {
-        if (c instanceof Prepared p) p.release();
+    /** IsoWorld.sceneCullZombies exit, also on a throw: counts the cull if the sort used the table, and empties it. */
+    static void end() {
+        if (!active) return;
+        active = false;
+        if (memo.used) sorts++;
+        memo.clear();
+    }
+
+    /**
+     * CompScoreToPlayer.compare: the stock answer from stored scores, or {@code NO_ANSWER} when the game's own compare should run
+     * (not in a cull, not the game thread, not the game's comparator). The first call binds the score function to the game's instance.
+     */
+    static final int NO_ANSWER = 2;
+
+    static int compare(Object self, Object a, Object b) throws Throwable {
+        if (!active || !guard.on || self == null || self.getClass() != scoreClass) return NO_ANSWER;
+        if (Thread.currentThread() != FrameClock.mainThread) return NO_ANSWER;
+        if (stock == null) {
+            bind((Comparator<?>) self);
+            System.out.println("[PZButter] zombieCullSortFast: bound to the game's cull comparator");
+        }
+        Memo m = memo;
+        m.s = score;
+        int r = m.compare(a, b);
+        m.used = true;
+        return r;
     }
 
     static void resetForTest() {
@@ -160,6 +174,7 @@ final class CullSort {
         stock = null;
         score = null;
         misses = sorts = 0;
-        shared.release();
+        active = false;
+        memo.clear();
     }
 }
