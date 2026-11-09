@@ -1,0 +1,6 @@
+name=PZ Butter fix: Xen's Enhanced GUI
+id=PZButter_XensEnhancedGUI
+versionMin=42.21
+require=\ZombieBuddy,\XensEnhancedGUI
+description=Load-after patch for Xen's Enhanced GUI. Early-out on the hotbar key wrapper for non-digit keys (XEG-1).
+loadModAfter=XensEnhancedGUI

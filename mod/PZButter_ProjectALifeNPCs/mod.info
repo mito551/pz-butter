@@ -1,0 +1,6 @@
+name=PZ Butter fix: Project A-Life NPCs
+id=PZButter_ProjectALifeNPCs
+versionMin=42.21
+require=\ProjectALifeNPCs
+description=Load-after patch for Project A-Life NPCs. Skips per-zombie engine calls that cannot matter for ordinary zombies and thins out per-frame handlers that only check a timer.
+loadModAfter=ProjectALifeNPCs

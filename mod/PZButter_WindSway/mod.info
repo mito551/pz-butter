@@ -1,0 +1,6 @@
+name=PZ Butter fix: Wind Sway
+id=PZButter_WindSway
+versionMin=42.21
+require=\ZombieBuddy,\WindSway
+description=Load-after patch for Wind Sway. Defers its boot-time sync and warm-up, and registers the claim protocol.
+loadModAfter=WindSway

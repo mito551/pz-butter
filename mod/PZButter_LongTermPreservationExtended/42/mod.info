@@ -1,0 +1,6 @@
+name=PZ Butter fix: Long Term Preservation Extended
+id=PZButter_LongTermPreservationExtended
+versionMin=42.21
+require=\ZombieBuddy,\LongTermPreservationExtended
+description=Load-after patch for Long Term Preservation Extended: one walk of the distribution tables instead of ten (LTPE-1), identical inserted entries and weights.
+loadModAfter=LongTermPreservationExtended
