@@ -1,0 +1,6 @@
+name=PZ Butter fix: Long Term Preservation Extended (distribution index)
+id=PZButter_LongTermPreservationExtended_Index
+versionMin=42.21
+require=\ZombieBuddy,\LongTermPreservationExtended,\PZButter
+description=Load-after patch for Long Term Preservation Extended: uses PZ Butter's inverted distribution index so mirroring is O(hits) instead of O(tree) (LTPE-2); LTPE-1 is the standalone fallback.
+loadModAfter=LongTermPreservationExtended,PZButter
