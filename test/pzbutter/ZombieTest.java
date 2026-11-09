@@ -506,11 +506,11 @@ final class ZombieTest {
             // with NaN scores (equal to everything) the game's TimSort may itself reject the comparator: then ours must reject it the same way
             // and leave the array in the same half-sorted state, since the comparison sequence is the same
             String stockEnd = null, fastEnd = null;
-            try { java.util.Arrays.sort(a, lo, hi, (x, y) -> CullSort.compareScores(sc.get(x), sc.get(y))); }
+            try { new zombie.entity.util.TimSort<Object>().doSort(a, (x, y) -> CullSort.compareScores(sc.get(x), sc.get(y)), lo, hi); }
             catch (IllegalArgumentException e) { stockEnd = e.getMessage(); threw++; }
             int[] calls = {0};
             java.util.Comparator<Object> fast = CullSort.prepare(b, lo, hi, z -> { calls[0]++; return sc.get(z); });
-            try { java.util.Arrays.sort(b, lo, hi, fast); }
+            try { new zombie.entity.util.TimSort<Object>().doSort(b, fast, lo, hi); }
             catch (IllegalArgumentException e) { fastEnd = e.getMessage(); }
             CullSort.done(fast);
             assert java.util.Objects.equals(stockEnd, fastEnd) : run;
