@@ -70,11 +70,13 @@ public final class SelfTest {
         return f;
     }
 
-    // missing file: written, everything off
+    // missing file: written, mod on, frame log off
     static void settingsDefaultsWritten() {
         File f = tmp("missing.properties"); f.delete();
         Settings.load(f);
-        assert f.exists() && !Settings.enabled && !Settings.frameLog;
+        assert f.exists() && Settings.enabled && !Settings.frameLog;
+        Settings.load(write("enabled=false\n"));
+        assert !Settings.enabled;
     }
 
     static void settingsRead() {

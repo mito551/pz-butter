@@ -15,7 +15,7 @@ public final class Settings {
         "# PZ Butter. Read at game start.\n"
       + "#\n"
       + "# enabled: master switch. When false every feature below stays off and the game runs stock.\n"
-      + "enabled=false\n"
+      + "enabled=true\n"
       + "#\n"
       + "# frameLog: one line per frame in Zomboid/pzbutter/frames.out:\n"
       + "#   <epoch ms> <frame no> <ms since the last frame started> <ms in the frame step> <its main-thread CPU ms>\n"
@@ -345,7 +345,7 @@ public final class Settings {
             p.load(new java.io.ByteArrayInputStream(bytes, bom, bytes.length - bom));   // a UTF-8 mark (Notepad) is not a key
             props = p;
             upgrade(f, p);
-            enabled = bool(p, "enabled", false);
+            enabled = bool(p, "enabled", true);
             frameLog = bool(p, "frameLog", false);
         } catch (Throwable t) {
             enabled = frameLog = false;
