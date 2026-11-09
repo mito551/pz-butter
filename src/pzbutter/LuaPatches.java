@@ -146,13 +146,16 @@ public final class LuaPatches {
 
     // ---- the PZButter global for pz-butter's own Lua ----
 
-    static volatile boolean uiLuaFast;
+    static volatile boolean uiLuaFast, modOptionsFast;
 
     /** LuaManager.LoadDirBase entry (the Lua environment exists, the Lua files are about to load). */
     public static void onLuaLoad() {
         try {
             KahluaTableImpl t = new KahluaTableImpl(new java.util.HashMap<>());
             t.rawset("uiLuaFast", uiLuaFast);
+            t.rawset("modOptionsFast", modOptionsFast);
+            t.rawset("gpu", GpuOverTarget.luaHolder);
+            t.rawset("windSwayAutoTreeDetail", Settings.flag("windSwayAutoTreeDetail"));
             zombie.Lua.LuaManager.env.rawset("PZButter", t);
         } catch (Throwable x) { System.out.println("[PZButter] Lua settings table not set: " + x); }
     }

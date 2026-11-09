@@ -78,6 +78,7 @@ public final class FrameClock {
                 long now = System.currentTimeMillis();
                 s.begin(now).num(frameNo).ms(intervalNs).ms(stepNs).ms(cpuNs).end(now);
             }
+            GpuOverTarget.tick();
         } catch (Throwable t) { fail(t); }
     }
 

@@ -39,6 +39,7 @@ public class Main {
         LogDedupe.init();
         ZombiePatches.init();
         GpuPatches.init();
+        GpuOverTarget.init();
         UiTiming.init();
         UiCensus.init();
         UiRetain.init();
@@ -55,6 +56,9 @@ public class Main {
         DriveTrace.init();
         ClockPatches.init();
         LightChecks.init();
+        FramePhase.init();
+        GetterMemo.init();
+        PZButterSquares.init();
         GridGate.init();
         Cutaways.init();
         BakeHold.init();
@@ -67,7 +71,8 @@ public class Main {
         AudioLimiter.init();
         SoundPatches.onFmodInit();
         LuaPatches.uiLuaFast = Settings.flag("uiLuaFast");
-    }
+        LuaPatches.modOptionsFast = Settings.flag("modOptionsFast");
+        DistributionInsert.init();    }
 
     /** True when the system class loader can load the class (not initialised). */
     public static boolean classPresent(String name) {
