@@ -103,7 +103,7 @@ public final class Census {
             File f = new File(dir, "census.out");
             try (FileWriter w = new FileWriter(f, StandardCharsets.UTF_8, false)) {
                 CensusSites s = sites;
-                if (s == null) s = CensusSites.load("4a0e9546ec");
+                if (s == null) s = CensusSites.load(Preload.gameRevision());
                 StringBuilder hdr = new StringBuilder();
                 hdr.append("revision ").append(s == null ? "" : s.revision()).append(" minutes ").append(minutes)
                     .append(" calmUpdates ").append(calmUpdates).append(" otherUpdates ").append(otherUpdates)
@@ -139,7 +139,7 @@ public final class Census {
         minutes = 0;
         minuteStartNs = 0;
         started = false;
-        if (sites == null) sites = CensusSites.load("4a0e9546ec");
+        if (sites == null) sites = CensusSites.load(Preload.gameRevision());
         if (sites == null) {
             calm = new long[0];
             other = new long[0];

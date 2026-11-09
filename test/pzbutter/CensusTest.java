@@ -107,7 +107,7 @@ final class CensusTest {
         Census.guard.on = true;
         Census.dir = SelfTest.tmp("census/out");
         Census.facts = o -> new Calm.Facts(true, false, false, true, false, false, false, false, false, false, false, false, false, false, false, 20f);
-        Census.sites = CensusSites.load("4a0e9546ec");
+        Census.sites = CensusSites.load(Preload.gameRevision());
         Census.allocate(Census.sites.size());
         Object o = new Object();
         Census.enter(o);
@@ -119,12 +119,12 @@ final class CensusTest {
         Census.frameEnd(t + 60_000_000_000L);
         java.io.File f = new java.io.File(Census.dir, "census.out");
         String got = java.nio.file.Files.readString(f.toPath());
-        assert got.contains("revision 4a0e9546ec minutes 1") : got.substring(0, Math.min(200, got.length()));
+        assert got.contains("revision " + Preload.gameRevision() + " minutes 1") : got.substring(0, Math.min(200, got.length()));
         assert got.contains("0 ") : got.substring(0, 100);
     }
 
     static void censusListReviewReadsRealList() throws Exception {
-        try (java.io.InputStream in = CensusTest.class.getResourceAsStream("/pzbutter/workers-4a0e9546ec.txt")) {
+        try (java.io.InputStream in = CensusTest.class.getResourceAsStream("/pzbutter/workers-" + Preload.gameRevision() + ".txt")) {
             assert in != null;
             java.util.Set<String> review = new java.util.TreeSet<>();
             for (String line : new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8).split("\\r?\\n")) {
@@ -165,7 +165,7 @@ final class CensusTest {
     }
 
     static void censusTransformVerifiesOnGameClasses() throws Exception {
-        CensusSites s = CensusSites.load("4a0e9546ec");
+        CensusSites s = CensusSites.load(Preload.gameRevision());
         for (String c : CensusTestSynth.listedClasses(s)) {
             byte[] out = CensusTransform.transform(CensusTestSynth.gameBytes(c), s);
             assert out != null : c + ": untouched";
