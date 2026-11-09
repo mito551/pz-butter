@@ -1,0 +1,11 @@
+name=PZ Butter fix: Expanded Storage (from ExpandedStorageZB)
+id=PZButter_ExpandedStorage
+description=Java-backed container capacity overrides for Expanded Storage sprites via ZombieBuddy. Replaces the per-square Lua scan with game-code hooks; the Lua path stays as a fallback.
+modversion=0.2.0
+versionMin=42.0.0
+require=\ExpandedStorage,\ZombieBuddy
+ZBVersionMin=2.0.0
+javaJarFile=media/java/common/ExpandedStorageZB.jar
+javaPkgName=expandedstorage
+javaPreload=true
+loadModAfter=ExpandedStorage
