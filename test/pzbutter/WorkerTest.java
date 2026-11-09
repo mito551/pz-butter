@@ -57,7 +57,7 @@ final class WorkerTest {
     }
 
     static void workersResourceInJar() {
-        assert WorkerTest.class.getResource("/pzbutter/workers-4a0e9546ec.txt") != null;
+        assert WorkerTest.class.getResource("/pzbutter/workers-" + Preload.gameRevision() + ".txt") != null;
     }
 
     static void preloadDecideOrder() {
@@ -96,7 +96,7 @@ final class WorkerTest {
         assert ZbAccess.instrumentation("no.such.Loader") == null;
     }
 
-    static void gameRevisionRead() { assert Preload.gameRevision().equals("4a0e9546ec"); }   // projectzomboid.jar on the test class path
+    static void gameRevisionRead() { assert Preload.gameRevision().matches("[0-9a-f]{10}"); }   // projectzomboid.jar on the test class path
 
     static void workerListParses() {
         WorkerList l = WorkerList.parse("revision r\nclass t.A\nscratch 0 t/A L Ljava/util/ArrayList;\nfield t.A pzbIdx I\n");
@@ -183,7 +183,7 @@ final class WorkerTest {
 
     /** Every listed game class, transformed, passes the class file verifier. */
     static void transformVerifiesOnGameClasses() throws Exception {
-        WorkerList list = WorkerList.load("4a0e9546ec");
+        WorkerList list = WorkerList.load(Preload.gameRevision());
         java.lang.classfile.ClassFile cf = java.lang.classfile.ClassFile.of(java.lang.classfile.ClassFile.ClassHierarchyResolverOption.of(
             java.lang.classfile.ClassHierarchyResolver.ofResourceParsing(ClassLoader.getSystemClassLoader())
                 .orElse(java.lang.classfile.ClassHierarchyResolver.defaultResolver())));
@@ -416,7 +416,7 @@ final class WorkerTest {
     }
 
     static void scratchListResolvesOnGameJar() throws Exception {
-        WorkerList l = WorkerList.load("4a0e9546ec");
+        WorkerList l = WorkerList.load(Preload.gameRevision());
         java.lang.invoke.MethodHandles.Lookup lookup = java.lang.invoke.MethodHandles.lookup();
         for (WorkerList.Scratch s : l.scratch()) {
             Class<?> owner = Class.forName(s.owner().replace('/', '.'), false, ClassLoader.getSystemClassLoader());

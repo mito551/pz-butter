@@ -1,0 +1,54 @@
+[h1][b]ZOMBIEBUDDY EXTENSIONS IS OPTIONAL. ONLY IF YOU RUN A LOCALLY HOSTED MULTIPLAYER SESSION (NOT DEDICATED SERVER)[/b][/h1]
+
+[img]HEADER_IMAGE_URL[/img]
+
+[h1]PZ Butter[/h1]
+PZ Butter makes Project Zomboid Build 42 run smoother. It is one mod that covers the work of many performance mods: sound, lighting, wall cutaways, weather, zombie updates, vehicles, UI redraws, texture memory and loading. It works out of the box: subscribe, enable, play. Every feature has a switch in Options > Mods, and anything you switch off runs the way the game normally does.
+
+[h2]Vanilla vs PZ Optimization vs PZ Butter[/h2]
+[table]
+[tr][th]Scene[/th][th]Metric[/th][th]Vanilla[/th][th]PZ Optimization[/th][th]PZ Butter[/th][/tr]
+[tr][td]S3 (town walk)[/td][td]p50 frame ms[/td][td]TBD[/td][td]TBD[/td][td]TBD[/td][/tr]
+[tr][td]S3 (town walk)[/td][td]p99 frame ms[/td][td]TBD[/td][td]TBD[/td][td]TBD[/td][/tr]
+[tr][td]S3 (town walk)[/td][td]1% low fps[/td][td]TBD[/td][td]TBD[/td][td]TBD[/td][/tr]
+[tr][td]S6 (horde)[/td][td]p99 frame ms[/td][td]TBD[/td][td]TBD[/td][td]TBD[/td][/tr]
+[tr][td]Boot[/td][td]seconds to main menu[/td][td]TBD[/td][td]TBD[/td][td]TBD[/td][/tr]
+[tr][td]Load[/td][td]seconds to playable[/td][td]TBD[/td][td]TBD[/td][td]TBD[/td][/tr]
+[/table]
+[i]Test machine: Intel Core i7-8700K (6 cores, 12 threads) at 3.7 GHz, NVIDIA GeForce RTX 3080, 16 GB RAM, Fedora Linux, Project Zomboid Build 42.21, vanilla game with no other mods. Three runs per setting, median shown.[/i]
+
+[h2]Mechanics it covers[/h2]
+[list]
+[*] Sound: ambience and zombie sound updates, world-sound cleanup, hearing, audio limiter, FMOD slot-exhaustion crash
+[*] Lighting: light lookups, light switches, lighting thread rate, rebake budgets
+[*] Walls, roofs and cutaways: cutaway walk, occlusion grid, roof flicker, buildings-in-front scan
+[*] Weather: rain splashes, weather mask, puddles, fog
+[*] Trees, chunks and glass: tree cutaway, chunk texture baking and its scheduler, translucent tiles
+[*] Zombies: model add budget, simulation level of detail, line of sight, culling sort, facing fix
+[*] Vehicles and driving: idle animation skip, chunk handoff, smooth driving look, glove box fix
+[*] Frame pacing: frame clock smoothing, input latency, zoom ease
+[*] UI: windows that did not change are drawn from a recorded draw list, tooltips always run live
+[*] Lua: a per-frame Lua time budget, throttled mod file writes, log de-duplication
+[*] Memory: texture release, persistent vertex buffers, steady VRAM uploads
+[*] Boot and loading: mod options loading
+[/list]
+
+[h2]Planned for the future[/h2]
+[list]
+[*] Project Viewpoint support (waiting for 0.1.7 public release)
+[*] A separate Lua speedup mod, if the research shows it works
+[*] Fixes for the gaps found in the final review against vanilla and PZ Optimization
+[*] A compatibility list: which mods overlap with PZ Butter and what to set for each
+[/list]
+
+[h2]For mod authors[/h2]
+If PZ Butter covers or patches your mod and you want that support removed, tell me and I will remove it. If you want the optimized code for your mod to include in your own release, I will give it to you. Contact: comments on this page.
+
+[h2]Install[/h2]
+[b]You only need ZombieBuddy.[/b] Nothing else to download, no extra programs, no files to copy.
+[list]
+[*] Project Zomboid Build 42.21 or later.
+[*] ZombieBuddy (a free Workshop mod), subscribed and enabled. On the first start it asks you to approve this mod: approve it and trust the author.
+[*] Enable this mod. It is on by default; fine-tune it in Options > Mods if you like.
+[/list]
+Source and full settings reference: https://github.com/mito551/pz-butter

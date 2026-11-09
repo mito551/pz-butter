@@ -16,7 +16,7 @@ public final class Settings {
         "# PZ Butter. Read at game start.\n"
       + "#\n"
       + "# enabled: master switch. When false every feature below stays off and the game runs stock.\n"
-      + "enabled=false\n"
+      + "enabled=true\n"
       + "#\n"
       + "# frameLog: one line per frame in Zomboid/pzbutter/frames.out:\n"
       + "#   <epoch ms> <frame no> <ms since the last frame started> <ms in the frame step> <its main-thread CPU ms>\n"
@@ -112,6 +112,10 @@ public final class Settings {
       + "uiLuaFast=true\n"
       + "# modOptionsFast: during a Lua (re)load, PZAPI.ModOptions.load reads ModOptions.ini once instead of once per mod (about 2 s at boot); stock load() returns at the main menu.\n"
       + "modOptionsFast=false\n"
+      + "# windSwayAutoTreeDetail: auto-tune WindSway tree detail from PZ Butter's GPU timer (PZButter_WindSway WS-2).\n"
+      + "windSwayAutoTreeDetail=true\n"
+      + "# ltpeVirtualInsertion: LTPE-3 core variant inserts oats into parsed distribution data instead of mutating the Lua tables. Off by default; mutually exclusive with the LTPE fix mods in practice.\n"
+      + "ltpeVirtualInsertion=false\n"
       + "# textWidthCache: measured text widths are kept (context menus re-measure every option on every opening).\n"
       + "textWidthCache=true\n"
       + "#\n"
@@ -492,7 +496,7 @@ public final class Settings {
             if (!f.exists()) try (FileWriter w = new FileWriter(f)) { w.write(DEFAULTS); }
             byte[] bytes = Files.readAllBytes(f.toPath());
             if (f.equals(loadedFile) && Arrays.equals(bytes, loadedBytes)) {
-                enabled = bool(props, "enabled", false);
+                enabled = bool(props, "enabled", true);
                 frameLog = bool(props, "frameLog", false);
                 return;
             }
@@ -503,8 +507,9 @@ public final class Settings {
             int bom = bytes.length >= 3 && bytes[0] == (byte) 0xEF && bytes[1] == (byte) 0xBB && bytes[2] == (byte) 0xBF ? 3 : 0;
             p.load(new java.io.ByteArrayInputStream(bytes, bom, bytes.length - bom));   // a UTF-8 mark (Notepad) is not a key
             props = p;
+            flagMemo.clear(); numMemo.clear(); textMemo.clear(); modeMemo.clear();
             upgrade(f, p);
-            enabled = bool(p, "enabled", false);
+            enabled = bool(p, "enabled", true);
             frameLog = bool(p, "frameLog", false);
             loadedBytes = bytes;
             loadedFile = f;
@@ -514,6 +519,7 @@ public final class Settings {
             loadedFile = null;
             clearMemo();
             props = new Properties();
+            loadedFile = null;
             System.out.println("[PZButter] settings failed, all features off: " + t);
         }
     }
@@ -560,8 +566,22 @@ public final class Settings {
         return b.toString();
     }
 
-    /** key=value escaped the way Properties.store writes it (backslashes, line breaks, \\uXXXX past Latin-1). */
+    /** key=value escaped the way Properties.store writes it. Plain keys and values need no escaping and skip the store call. */
     static String entry(String key, String value) {
+        if (plain(key) && plain(value)) return key + "=" + value;
+        return entrySlow(key, value);
+    }
+
+    private static boolean plain(String s) {
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '.' || c == ',' || c == '-')) return false;
+        }
+        return true;
+    }
+
+    /** The general case: backslashes, line breaks, \\uXXXX past Latin-1, and the other characters Properties.store escapes. */
+    static String entrySlow(String key, String value) {
         try {
             Properties one = new Properties();
             one.setProperty(key, value);
@@ -583,7 +603,7 @@ public final class Settings {
         "wake", "handoffRecalcFast",
         "loaderCpuFixes", "scriptParserFast", "modWatchAsync", "texCompress",   // Plans 10b, 11b, 11d, 11e: on after their in-game checks
         "containerSendGuard",   // Plan 15: stock drops these calls anyway
-        "handlerCensus");   // Plan 17
+        "handlerCensus", "windSwayAutoTreeDetail");   // Plan 17
 
     /**
      * Lookup memo: each key's parsed value, filled on first read after a load and cleared by every load that parses and

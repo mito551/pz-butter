@@ -52,6 +52,7 @@ final class CensusTransform implements ClassFileTransformer {
     static void missOne() { missedCount++; }
     static void resetMissed() { missedCount = 0; }
 
+    @SuppressWarnings("unchecked")
     static byte[] transform(byte[] classFile, CensusSites sites) {
         ClassFile cf0 = ClassFile.of();
         ClassModel m = cf0.parse(classFile);

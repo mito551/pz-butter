@@ -27,6 +27,13 @@ public final class SelfTest {
         setFromUiUnknownKey();
         settingsCache();
         settingsMemoSeesPageWrite();
+        claims();
+        claimsResolve();
+        claimProtocol();
+        FramePhase.run();
+        GetterMemo.run();
+        PZButterSquares.run();
+        settingsEntry();
         frameEnd();
         frameInterval();
         frameEnterTwice();
@@ -92,11 +99,13 @@ public final class SelfTest {
         return f;
     }
 
-    // missing file: written, everything off
+    // missing file: written, mod on, frame log off
     static void settingsDefaultsWritten() {
         File f = tmp("missing.properties"); f.delete();
         Settings.load(f);
-        assert f.exists() && !Settings.enabled && !Settings.frameLog;
+        assert f.exists() && Settings.enabled && !Settings.frameLog;
+        Settings.load(write("enabled=false\n"));
+        assert !Settings.enabled;
     }
 
     static void settingsRead() {
@@ -173,6 +182,75 @@ public final class SelfTest {
         String before = read(f);
         String r = Settings.setFromUi("gpuMaxFrames", "true");
         assert "false".equals(r) && before.equals(read(f));
+    }
+
+    static void settingsEntry() {
+        // entry() writes plain text the way Properties.store does, and falls back to it for the rest
+        String[] samples = {"0", "0.25,0.1,0.25,1.0", "a b", "k=v", "t\tx", "u\u00e9", "#c", "", "ObjectTooltip,ISToolTip"};
+        for (String s : samples) assert Settings.entry("key", s).equals(Settings.entrySlow("key", s)) : s;
+        for (String line : Settings.render(new java.util.Properties()).split("\n")) {
+            int eq = line.indexOf('=');
+            if (eq > 0 && !line.startsWith("#"))
+                assert Settings.entry(line.substring(0, eq), line.substring(eq + 1)).equals(Settings.entrySlow(line.substring(0, eq), line.substring(eq + 1))) : line;
+        }
+    }
+
+    // claim protocol: 3 claims in every order -> same winner; single installs; late never evicts; tie -> smaller id
+    static void claims() { runClaimChecks(); }
+    static void claimsResolve() { runClaimChecks(); }
+    static void claimProtocol() { runClaimChecks(); }
+
+    static void runClaimChecks() {
+        // tie -> smaller mod id
+        PZBClaim.resetForTest();
+        int[] inst = { 0, 0 };
+        PZBClaim.claim("s", "b", 5, () -> inst[1]++, w -> {});
+        PZBClaim.claim("s", "a", 5, () -> inst[0]++, w -> {});
+        PZBClaim.resolve();
+        assert "a".equals(PZBClaim.owner("s")) : "tie winner";
+        // single claim installs
+        PZBClaim.resetForTest();
+        int[] n = { 0 };
+        PZBClaim.claim("s2", "m", 1, () -> n[0]++, w -> {});
+        PZBClaim.resolve();
+        assert n[0] == 1;
+        // 3 claims in all 6 orders -> same winner (core beats xeg beats vqol)
+        java.util.List<String> mods = java.util.Arrays.asList("core", "xeg", "vqol");
+        int[] prio = { 100, 60, 40 };
+        // map mods to priorities fixed
+        java.util.Map<String, Integer> pm = new java.util.HashMap<>();
+        pm.put("core", 100); pm.put("xeg", 60); pm.put("vqol", 40);
+        for (int i = 0; i < 6; i++) {
+            PZBClaim.resetForTest();
+            int[] calls = new int[3];
+            int[] downs = new int[3];
+            int idx = 0;
+            String[] order = mods.toArray(new String[0]);
+            // simple permutation by i
+            if (i == 1) { order = new String[]{"core","vqol","xeg"}; }
+            if (i == 2) { order = new String[]{"xeg","core","vqol"}; }
+            if (i == 3) { order = new String[]{"xeg","vqol","core"}; }
+            if (i == 4) { order = new String[]{"vqol","core","xeg"}; }
+            if (i == 5) { order = new String[]{"vqol","xeg","core"}; }
+            for (String m : order) {
+                final int j = mods.indexOf(m);
+                PZBClaim.claim("sec", m, pm.get(m), () -> calls[j]++, w -> downs[j]++);
+            }
+            PZBClaim.resolve();
+            assert "core".equals(PZBClaim.owner("sec")) : "winner " + i;
+            assert calls[0] == 1 && calls[1] == 0 && calls[2] == 0 : "install counts " + i;
+        }
+        // late claim never evicts
+        PZBClaim.resetForTest();
+        int[] a = { 0 }, b = { 0 };
+        int[] downB = { 0 };
+        PZBClaim.claim("late", "a", 10, () -> a[0]++, w -> {});
+        PZBClaim.resolve();
+        assert "a".equals(PZBClaim.owner("late"));
+        PZBClaim.claim("late", "b", 1, () -> b[0]++, w -> { downB[0]++; });
+        assert "a".equals(PZBClaim.owner("late"));
+        assert a[0] == 1 && b[0] == 0;
+        assert downB[0] == 1;
     }
 
     // 16.667 ms since the last frame started, 4.2 ms inside frameStep, 3.5 ms CPU

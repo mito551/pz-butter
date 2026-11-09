@@ -57,6 +57,7 @@ public class Main {
         ScriptComments.init();
         FileKnobs.init();
         TexCompress.init();
+        GpuOverTarget.init();
         UiTiming.init();
         UiCensus.init();
         UiRetain.init();
@@ -73,6 +74,9 @@ public class Main {
         DriveTrace.init();
         ClockPatches.init();
         LightChecks.init();
+        FramePhase.init();
+        GetterMemo.init();
+        PZButterSquares.init();
         GridGate.init();
         Cutaways.init();
         BakeHold.init();
@@ -87,6 +91,7 @@ public class Main {
         SoundPatches.onFmodInit();
         LuaPatches.uiLuaFast = Settings.flag("uiLuaFast");
         LuaPatches.modOptionsFast = Settings.flag("modOptionsFast");
+        DistributionInsert.init();
     }
 
     /** True when the system class loader can load the class (not initialised). */

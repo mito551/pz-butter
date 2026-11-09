@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check that every Settings key has a README row, and every README row a key."""
+"""Check that every Settings key has a row in SETTINGS.md (the README's settings reference), and every row a key."""
 
 import argparse
 import os
@@ -8,7 +8,7 @@ import sys
 
 KEY = re.compile(r'^\s*\+\s*"([A-Za-z0-9_]+)=')
 ROW = re.compile(r"^\|\s*`([A-Za-z0-9_]+)`\s*\|")
-HEADING = re.compile(r"^(#{2,3})\s+(.*)$")
+HEADING = re.compile(r"^(#{1,3})\s+(.*)$")
 
 
 def settings_keys(source):
@@ -24,8 +24,8 @@ def readme_rows(readme):
         h = HEADING.match(line)
         if h:
             level, title = h.group(1), h.group(2).strip()
-            if level == "##":
-                in_settings = title.lower().startswith("settings")
+            if level in ("#", "##"):
+                in_settings = "settings" in title.lower()
                 dev = False
             elif level == "###" and in_settings:
                 dev = "dev" in title.lower()
@@ -54,7 +54,7 @@ def main(argv=None):
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     ap = argparse.ArgumentParser()
     ap.add_argument("--settings", default=here + "/src/pzbutter/Settings.java")
-    ap.add_argument("--readme", default=here + "/README.md")
+    ap.add_argument("--readme", default=here + "/SETTINGS.md")
     args = ap.parse_args(argv)
     with open(args.settings) as f:
         keys = settings_keys(f.read())

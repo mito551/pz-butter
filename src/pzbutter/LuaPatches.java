@@ -189,6 +189,8 @@ public final class LuaPatches {
                     return 1;
                 }
             });
+            t.rawset("gpu", GpuOverTarget.luaHolder);
+            t.rawset("windSwayAutoTreeDetail", Settings.flag("windSwayAutoTreeDetail"));
             zombie.Lua.LuaManager.env.rawset("PZButter", t);
         } catch (Throwable x) { System.out.println("[PZButter] Lua settings table not set: " + x); }
     }

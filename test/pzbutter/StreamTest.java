@@ -43,6 +43,7 @@ final class StreamTest {
             for (String line : java.nio.file.Files.readAllLines(f.toPath()))
                 if (!line.startsWith("#") && line.endsWith("=true")) on.add(line.substring(0, line.length() - 5));
         } catch (java.io.IOException e) { throw new RuntimeException(e); }
+        on.remove("enabled");   // the master switch is not a feature flag
         java.util.Set<String> set = new java.util.TreeSet<>(Settings.ON_BY_DEFAULT);
         assert on.equals(set) : "DEFAULTS =true " + on + " vs ON_BY_DEFAULT " + set;
     }

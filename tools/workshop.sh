@@ -47,7 +47,7 @@ flush()
 
 out = []
 # The README intro is the first paragraph after the title.
-intro = [p for p in paras if p.lower().startswith("pz butter is")][:1]
+intro = [p for p in paras if p.lower().startswith(("pz butter is", "butter frames is"))][:1]
 # The optional flags section is prose only; no flags are recommended yet.
 flags = [p for p in paras if "jvm flag" in p.lower() or "no flag is recommended" in p.lower()][:1]
 for p in intro + flags:
@@ -55,7 +55,7 @@ for p in intro + flags:
     if p:
         out.append("description=" + p)
 if not out:
-    out.append("description=PZ Butter: smoother frames for Project Zomboid Build 42.")
+    out.append("description=Butter Frames: smoother frames for Project Zomboid Build 42.")
 for i, line in enumerate(out):
     if i and line != "description=":
         print("description=")

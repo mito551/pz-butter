@@ -6,7 +6,7 @@ import zombie.iso.IsoObject;
 import zombie.iso.SpriteDetails.IsoFlagType;
 import zombie.iso.objects.GridSquareEdgeFacingDirection;
 import zombie.iso.objects.IsoWindow;
-import zombie.util.list.PZArrayList;
+import java.util.List;
 
 /** Plan 6 edgeTestFast: hand-written isBlockedTo. The choices (sign-pattern table, shared neighbours, lambda leaves) are recorded in the Plan 6 progress ledger. */
 final class EdgeTest {
@@ -41,19 +41,17 @@ final class EdgeTest {
             && !sq.isWindow(dir);
 
     private static final Facing WINDOW = (sq, dir) -> {
-        PZArrayList<IsoObject> objs = sq.getObjects();
-        Object[] a = objs.getElements();
+        List<IsoObject> objs = sq.getObjects();
         for (int i = 0, n = objs.size(); i < n; i++) {
-            if (a[i] instanceof IsoWindow w && w.isBlocked(dir)) return true;
+            if (objs.get(i) instanceof IsoWindow w && w.isBlocked(dir)) return true;
         }
         return false;
     };
 
     private static final Facing DOOR = (sq, dir) -> {
-        PZArrayList<IsoObject> objs = sq.getObjects();
-        Object[] a = objs.getElements();
+        List<IsoObject> objs = sq.getObjects();
         for (int i = 0, n = objs.size(); i < n; i++) {
-            if (IsoGridSquare.isBlockedDoor((IsoObject) a[i], dir)) return true;
+            if (IsoGridSquare.isBlockedDoor(objs.get(i), dir)) return true;
         }
         return false;
     };

@@ -31,9 +31,9 @@ else
     cat "$TMP/signed.log"
 fi
 if [[ -f "$TMP/out/PZButter/preview.png" && -f "$TMP/out/PZButter/workshop.txt" ]]; then ok previewAndText; else bad previewAndText; fi
-grep -q '^title=PZ Butter$' "$TMP/out/PZButter/workshop.txt" && ok title || bad title
+grep -q '^title=\[B42\] Butter Frames (Comprehensive' "$TMP/out/PZButter/workshop.txt" && ok title || bad title
 grep -q '^tags=Build 42;Misc$' "$TMP/out/PZButter/workshop.txt" && ok tags || bad tags
-grep -q '^description=PZ Butter is' "$TMP/out/PZButter/workshop.txt" && ok description || bad description
+grep -q '^description=Butter Frames is' "$TMP/out/PZButter/workshop.txt" && ok description || bad description
 [[ ! -e "$TMP/out/PZButter/Contents/mods/PZButter/common/.keep" ]] && ok noKeep || bad noKeep
 [[ ! -e "$TMP/out/PZButter/Contents/mods/PZButter/42/test-notes.txt" ]] && ok noTestFiles || bad noTestFiles
 [[ -f "$TMP/out/PZButter/Contents/mods/PZButter/42/media/java/common/PZButter.jar.zbs" ]] && ok signatureKept || bad signatureKept

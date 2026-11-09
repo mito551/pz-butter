@@ -11,6 +11,7 @@ rm -rf "$B/classes" "$B/test-classes" "$B/mod"
 mapfile -t SRC < <(find "$HERE/src" -name '*.java')
 "$JDK/bin/javac" --release 25 -cp "$CP" -d "$B/classes" "${SRC[@]}"
 "$JDK/bin/javac" --release 25 -cp "$CP" -d "$B/test-classes" "${SRC[@]}" $(find "$HERE/test" -name '*.java')
+mkdir -p "$B/classes/pzbutter" "$B/test-classes/pzbutter"
 cp "$HERE"/src/pzbutter/workers-*.txt "$B/classes/pzbutter/"
 cp "$HERE"/src/pzbutter/workers-*.txt "$B/test-classes/pzbutter/"
 cp "$HERE"/src/pzbutter/census-*.txt "$B/classes/pzbutter/"
