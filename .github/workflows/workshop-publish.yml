@@ -54,7 +54,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: pz-42.21
+          ref: pz-42.22
           fetch-depth: 0
 
       - uses: actions/setup-java@v6
