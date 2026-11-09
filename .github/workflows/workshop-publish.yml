@@ -1,0 +1,210 @@
+# Workshop publish: rebuild Butter Frames from the newest commit against the newest Project Zomboid build and
+# update the existing Workshop item. OFF for now: it only runs by hand (Actions > Workshop publish > Run workflow).
+#
+# What a run does
+#   1. Finds the newest PZ build id on the dedicated-server branch (anonymous steamcmd).
+#   2. Stops with "up to date" if that build id AND this commit are what the last successful publish used
+#      (the tag workshop/last records both). A manual run can tick "force".
+#   3. Builds and tests against that PZ build. If the build or the tests fail, nothing is published and an issue
+#      is opened (once per PZ build): that is the "new PZ release needs a change" signal.
+#   4. Packs the Workshop layout, writes the steamcmd file from workshop/title.txt and workshop/description.bbcode
+#      and, only when "publish" is ticked (or the schedule is on), uploads it and moves workshop/last.
+#
+# To switch it on weekly
+#   - First upload once from the game (tools/workshop.sh, check A6) and set the repo variable WORKSHOP_ID to the item id.
+#   - Secrets: STEAM_USERNAME (an account that owns Project Zomboid) and STEAM_CONFIG_VDF (base64 of
+#     ~/.local/share/Steam/config/config.vdf after one interactive `steamcmd +login <user>` with Steam Guard; the saved
+#     login token expires after a while, then the upload step fails loudly and you log in again).
+#     Also ZBS_KEY_B64 and ZBS_STEAMID (same as the Build workflow): ZombieBuddy only loads a signed jar.
+#   - Set the repo variable WORKSHOP_AUTO=true and uncomment the schedule block below.
+# Not verified against the real Workshop yet: tags are left as the item has them (workshop_build_item does not set them).
+name: Workshop publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Upload to the Workshop (off: build, pack and check only)"
+        type: boolean
+        default: false
+      force:
+        description: "Run even if this commit and PZ build were already published"
+        type: boolean
+        default: false
+  # schedule:
+  #   - cron: "17 4 * * 1"   # Mondays 04:17 UTC
+
+permissions:
+  contents: write   # moves the workshop/last tag
+  issues: write     # opens the "needs a change" issue
+
+concurrency:
+  group: workshop-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    # a scheduled run needs the WORKSHOP_AUTO repo variable; a manual run always goes
+    if: github.event_name == 'workflow_dispatch' || vars.WORKSHOP_AUTO == 'true'
+    runs-on: ubuntu-latest
+    env:
+      ZB_VERSION: v2.3.4
+      PZ_SERVER_BETA: unstable
+      PUBLISH: ${{ github.event_name == 'schedule' || inputs.publish }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Install steamcmd
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq lib32gcc-s1 > /dev/null
+          mkdir -p "$RUNNER_TEMP/steamcmd" && cd "$RUNNER_TEMP/steamcmd"
+          curl -fsSL https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz | tar xz
+          echo "STEAMCMD=$RUNNER_TEMP/steamcmd/steamcmd.sh" >> "$GITHUB_ENV"
+
+      - name: Newest PZ build and what was published last
+        id: ver
+        run: |
+          for try in 1 2 3; do
+            "$STEAMCMD" +login anonymous +app_info_update 1 +app_info_print 380870 +quit > "$RUNNER_TEMP/info.txt" || true
+            grep -q '"branches"' "$RUNNER_TEMP/info.txt" && break
+          done
+          build=$(python3 - "$PZ_SERVER_BETA" "$RUNNER_TEMP/info.txt" <<'PY'
+          import re, sys
+          beta, path = sys.argv[1], sys.argv[2]
+          t = open(path, encoding="utf-8", errors="replace").read()
+          i = t.find('"branches"')
+          m = re.search(r'"%s"\s*\{[^{}]*?"buildid"\s*"(\d+)"' % re.escape(beta), t[i:]) if i >= 0 else None
+          print(m.group(1) if m else "")
+          PY
+          )
+          test -n "$build" || { echo "::error::could not read the build id of branch $PZ_SERVER_BETA"; exit 1; }
+          sha=$(git rev-parse HEAD)
+          last=$(git tag -l --format='%(contents)' workshop/last 2>/dev/null | head -1)
+          echo "pz build $build, commit $sha, last published: ${last:-never}"
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          if [ "$last" = "pz=$build sha=$sha" ] && [ "${{ inputs.force }}" != "true" ]; then
+            echo "same PZ build and same commit as the last publish: nothing to do"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Cache the dedicated server
+        if: steps.ver.outputs.skip != 'true'
+        id: server-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/pzserver
+          key: pzserver-${{ steps.ver.outputs.build }}
+
+      - name: Download the dedicated server
+        if: steps.ver.outputs.skip != 'true' && steps.server-cache.outputs.cache-hit != 'true'
+        run: |
+          for try in 1 2 3; do   # a first app_update often fails with "Missing configuration"
+            "$STEAMCMD" +force_install_dir "$HOME/pzserver" +login anonymous \
+              +app_update 380870 -beta "$PZ_SERVER_BETA" validate +quit || true
+            [ -d "$HOME/pzserver/java" ] && break
+          done
+          test -d "$HOME/pzserver/java" || { echo "::error::dedicated server download failed"; exit 1; }
+
+      - name: Fetch ZombieBuddy and collect the game jars
+        if: steps.ver.outputs.skip != 'true'
+        run: |
+          mkdir -p "$RUNNER_TEMP/pz"
+          curl -fsSL -o "$RUNNER_TEMP/pz/ZombieBuddy.jar" \
+            "https://github.com/zed-0xff/ZombieBuddy/releases/download/$ZB_VERSION/ZombieBuddy.jar"
+          J="$HOME/pzserver/java"
+          if [ -f "$J/projectzomboid.jar" ]; then cp "$J/projectzomboid.jar" "$RUNNER_TEMP/pz/"
+          else jar --create --file "$RUNNER_TEMP/pz/projectzomboid.jar" -C "$J" .; fi   # loose classes
+          echo "PZ_EXTRA_CP=$(find "$J" -name '*.jar' ! -name projectzomboid.jar | paste -sd:)" >> "$GITHUB_ENV"
+
+      - name: Signing key
+        if: steps.ver.outputs.skip != 'true'
+        env:
+          ZBS_KEY_B64: ${{ secrets.ZBS_KEY_B64 }}
+          ZBS_STEAMID: ${{ secrets.ZBS_STEAMID }}
+        run: |
+          if [ -n "$ZBS_KEY_B64" ] && [ -n "$ZBS_STEAMID" ]; then
+            umask 077
+            mkdir -p ~/.config/pz-butter
+            printf '%s' "$ZBS_KEY_B64" | base64 -d > ~/.config/pz-butter/zbs-ed25519.key
+            printf '%s\n' "$ZBS_STEAMID" > ~/.config/pz-butter/zbs-steamid
+          else
+            echo "::warning::no signing secrets: the build is unsigned, so it cannot be published"
+          fi
+
+      - name: Build and test
+        if: steps.ver.outputs.skip != 'true'
+        id: build
+        continue-on-error: true
+        run: JDK="$JAVA_HOME" PZ_GAME="$RUNNER_TEMP/pz" ./build.sh
+
+      - name: Open an issue when the build or the tests fail
+        if: steps.ver.outputs.skip != 'true' && steps.build.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          t="Workshop publish: build or tests fail against PZ build ${{ steps.ver.outputs.build }}"
+          if [ -z "$(gh issue list --state open --search "\"$t\" in:title" --json number --jq '.[0].number')" ]; then
+            gh issue create --title "$t" \
+              --body "The weekly run on commit ${{ steps.ver.outputs.sha }} could not build or pass the self-tests against PZ build ${{ steps.ver.outputs.build }}. Nothing was published. Log: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          fi
+          exit 1
+
+      - name: Pack the Workshop layout and the steamcmd file
+        if: steps.ver.outputs.skip != 'true'
+        run: |
+          test -f build/mod/PZButter/42/media/java/common/PZButter.jar.zbs || test -f build/mod/PZButter/42/media/java/client/PZButter.jar.zbs \
+            || { [ "$PUBLISH" != "true" ] || { echo "::error::unsigned build cannot be published"; exit 1; }; }
+          tools/workshop.sh --unsigned build/workshop
+          ID="${{ vars.WORKSHOP_ID }}"
+          if [ -z "$ID" ]; then   # a dry run may go without; an upload may not
+            [ "$PUBLISH" != "true" ] || { echo "::error::set the WORKSHOP_ID repo variable (upload once in the game first)"; exit 1; }
+            ID=1
+          fi
+          python3 tools/workshop_vdf.py --id "$ID" --content build/workshop/PZButter/Contents \
+            --preview build/workshop/PZButter/preview.png --title-file workshop/title.txt \
+            --desc-file workshop/description.bbcode \
+            --note "Rebuilt from ${GITHUB_SHA::8} against PZ build ${{ steps.ver.outputs.build }}" \
+            --out build/workshop/item.vdf
+
+      - name: Keep the packed layout
+        if: steps.ver.outputs.skip != 'true'
+        uses: actions/upload-artifact@v5
+        with:
+          name: workshop-layout
+          path: build/workshop
+
+      - name: Upload to the Workshop
+        if: steps.ver.outputs.skip != 'true' && env.PUBLISH == 'true'
+        env:
+          STEAM_USERNAME: ${{ secrets.STEAM_USERNAME }}
+          STEAM_CONFIG_VDF: ${{ secrets.STEAM_CONFIG_VDF }}
+        run: |
+          test -n "$STEAM_USERNAME" && test -n "$STEAM_CONFIG_VDF" || { echo "::error::set the STEAM_USERNAME and STEAM_CONFIG_VDF secrets"; exit 1; }
+          umask 077
+          mkdir -p ~/.local/share/Steam/config
+          printf '%s' "$STEAM_CONFIG_VDF" | base64 -d > ~/.local/share/Steam/config/config.vdf
+          "$STEAMCMD" +login "$STEAM_USERNAME" +workshop_build_item "$GITHUB_WORKSPACE/build/workshop/item.vdf" +quit 2>&1 | tee "$RUNNER_TEMP/upload.log"
+          grep -q "Success" "$RUNNER_TEMP/upload.log" || { echo "::error::steamcmd did not report success (login token expired?)"; exit 1; }
+
+      - name: Remember what was published
+        if: steps.ver.outputs.skip != 'true' && env.PUBLISH == 'true'
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git tag -f -a workshop/last -m "pz=${{ steps.ver.outputs.build }} sha=${{ steps.ver.outputs.sha }}" "${{ steps.ver.outputs.sha }}"
+          git push -f origin refs/tags/workshop/last
+
+      - name: Remove secrets
+        if: always()
+        run: rm -rf ~/.config/pz-butter ~/.local/share/Steam/config/config.vdf

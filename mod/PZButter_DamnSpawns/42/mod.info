@@ -1,0 +1,9 @@
+name=PZ Butter fix: DAMN Library spawns (from DAMNSpawnsPerf)
+id=PZButter_DamnSpawns
+versionMin=42.20
+require=\damnlib,\ZombieBuddy
+ZBVersionMin=2.3.0
+javaJarFile=media/java/client/DSPerf.jar
+javaPkgName=ds.perf
+description=Load-after patch for the DAMN Library forced vehicle spawns. Tests each streamed square with one native call (ZombieBuddy + DSPerf.jar) or a numeric Lua set, caches mod/map sets and ModData, retries blocked squares, and no longer marks disabled spawns as done.
+loadModAfter=damnlib

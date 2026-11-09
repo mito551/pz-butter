@@ -1,0 +1,9 @@
+name=PZ Butter fix: Better Generator Info (from BGI_Perf)
+id=PZButter_BetterGeneratorInfo
+versionMin=42.12
+require=\BetterGeneratorInfo,\ZombieBuddy
+ZBVersionMin=2.3.0
+javaJarFile=media/java/client/BGI_Perf.jar
+javaPkgName=bgi.perf
+description=Load-after performance patch for Better Generator Info. Unifies the electricity check, caches fuel-hour calculations, uses nested powered-tile sets, skips redundant edge rebuilds, and moves stencil construction to compiled code.
+loadModAfter=BetterGeneratorInfo
