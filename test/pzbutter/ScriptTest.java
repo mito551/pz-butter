@@ -13,6 +13,8 @@ public final class ScriptTest {
         defaultsGuard();
         missPathsEqualStock();
         fullTypeHit();
+        keptDefaults();
+        keptMatchesStockAndInvalidates();
     }
 
     static void check(String what, boolean ok) {
@@ -49,6 +51,38 @@ public final class ScriptTest {
         check("findOnce resolves a full type", ScriptPatches.findOnce(m, "probe.item", true) == probe);
         check("stock resolves the same full type", m.FindItem("probe.item", true) == probe);
     }
+
+    static void keptDefaults() throws Exception {
+        Settings.load(SelfTest.write("enabled=true\n" + "findItemKept=true\n"));
+        ScriptPatches.initKept();
+        check("findItemKept template turns the cache on", ScriptPatches.keptGuard.on);
+        Settings.load(SelfTest.write("enabled=true\n"));
+        ScriptPatches.initKept();
+        check("findItemKept default is off", !ScriptPatches.keptGuard.on);
+    }
+
+    static void keptMatchesStockAndInvalidates() throws Exception {
+        Settings.load(SelfTest.write("enabled=true\n" + "findItemKept=true\n"));
+        ScriptPatches.initKept();
+        ScriptPatches.kept.clear();
+        ScriptManager m = new ScriptManager();
+        Item probe = new Item();
+        ScriptBucketCollectionBridge.putFullType(m, "probe.item", probe);
+        check("kept first call matches stock", ScriptPatches.findKept(m, "probe.item", true) == probe);
+        check("kept repeat is the cached answer", ScriptPatches.findKept(m, "probe.item", true) == probe);
+        ScriptBucketCollectionBridge.dropFullType(m, "probe.item");
+        check("kept keeps its answer until invalidation", ScriptPatches.findKept(m, "probe.item", true) == probe);
+        ScriptPatches.gen++;
+        check("a generation bump drops kept answers", ScriptPatches.findKept(m, "probe.item", true) == null);
+        ScriptBucketCollectionBridge.putFullType(m, "probe.item", probe);
+        ScriptPatches.gen++;
+        check("kept recomputes after invalidation", ScriptPatches.findKept(m, "probe.item", true) == probe);
+        ScriptBucketCollectionBridge.dropFullType(m, "probe.item");
+        m.moduleList.add(new zombie.scripting.objects.ScriptModule());
+        check("an item or module count change drops kept answers", ScriptPatches.findKept(m, "probe.item", true) == null);
+        Settings.load(SelfTest.write("enabled=true\n"));
+        ScriptPatches.initKept();
+    }
 }
 
 /** Reflection glue for the tests: seeds the fresh manager's items collection. */
@@ -65,5 +99,13 @@ final class ScriptBucketCollectionBridge {
         f.setAccessible(true);
         java.util.HashMap<String, Item> map = (java.util.HashMap<String, Item>) f.get(items);
         map.put(fullType, probe);
+    }
+
+    static void dropFullType(ScriptManager m, String fullType) throws Exception {
+        Object items = ScriptPatches.items(m);
+        Field f = items.getClass().getSuperclass().getDeclaredField("fullTypeToScriptMap");
+        f.setAccessible(true);
+        java.util.HashMap<String, Item> map = (java.util.HashMap<String, Item>) f.get(items);
+        map.remove(fullType);
     }
 }
