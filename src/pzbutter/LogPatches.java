@@ -5,6 +5,7 @@ import me.zed_0xff.zombie_buddy.Patch;
 /**
  * logDedupe hooks: the two line funnels of {@code DebugLogStream}, one holder per game method (advice is inlined into the game class,
  * so it reaches only public members). A skipped line costs nothing further, not even the caller-prefix stack walk.
+ * quietLog rides the same funnels: a message on its noise-prefix list is dropped (the game already worked around that path).
  */
 public final class LogPatches {
     private LogPatches() {}
@@ -16,6 +17,7 @@ public final class LogPatches {
      * drops every later one, so it is neither recorded nor counted here (a summary would announce repeats stock never shows).
      */
     public static boolean onLine(Object stream, Object severity, Object msg, Object[] args, boolean repeatable) {
+        if (quietDrop(msg)) return true;
         if (!repeatable || !LogDedupe.guard.on) return false;
         try {
             // a line the stream's level filters out prints nothing in stock: it must not start a summary either
@@ -25,6 +27,38 @@ public final class LogPatches {
             LogDedupe.guard.fail(t);
             return false;
         }
+    }
+
+    // ---- quietLog ----
+
+    public static final Guard quietGuard = new Guard("quietLog");
+
+    static void initQuiet() {
+        try {
+            quietGuard.on = Settings.flag("quietLog");
+        } catch (Throwable t) {
+            quietGuard.fail(t);
+        }
+    }
+
+    static final String[] QUIET_PREFIXES = {
+        "AngelCodeFont failed to load page ",
+        "Sanitizing container name '",
+        "Sanitizing AttributeType name '",
+        "SkeletonBone not resolved for bone: ",
+        "ERROR: part \"",
+        "Error: Dupe item ID",
+    };
+
+    /** quietLog: a message that starts with a known noise prefix is dropped; the game already worked around the path. */
+    public static boolean quietDrop(Object msg) {
+        if (!quietGuard.on || msg == null || !(msg instanceof String s)) return false;
+        try {
+            for (String p : QUIET_PREFIXES) if (s.startsWith(p)) return true;
+        } catch (Throwable t) {
+            quietGuard.fail(t);
+        }
+        return false;
     }
 
     /** DebugLogStream.writeln(PrintStream, LogSeverity, Object, Object...), protected: bound once, null when the game has no such member. */

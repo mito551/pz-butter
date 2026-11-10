@@ -202,8 +202,8 @@ Map.entry("LoadPatches.WaitFileTask", k("textureBufferMb")),
         Map.entry("GpuPatches.UseProgram", k("bakeNoSync", "bakeNoSyncCheck", "gpuStats")),
         Map.entry("GpuPatches.GetInteger", k("bakeNoSync", "bakeNoSyncCheck", "gpuStats")),
         // log
-        Map.entry("LogPatches.Writeln", k("logDedupe")),
-        Map.entry("LogPatches.PrefixLine", k("logDedupe")),
+        Map.entry("LogPatches.Writeln", k("logDedupe", "quietLog")),
+        Map.entry("LogPatches.PrefixLine", k("logDedupe", "quietLog")),
         // runtime
         Map.entry("RuntimePatches.CollectGarbage", k("luaGcNoop")),
         Map.entry("RuntimePatches.LightSync", k("lightingSyncPark", "corePlacement")),

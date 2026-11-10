@@ -72,6 +72,7 @@ final class LuaGateTest {
         fileHoldersShape();
         firstPrintedRepeatsDropped();
         argsLinesNeverDropped();
+        quietLogLinesDropped();
         otherStreamOrSeverityPrinted();
         summaryPassesThrough();
         keyCapPassesThrough();
@@ -111,14 +112,14 @@ final class LuaGateTest {
     static void plan7KeysDefaults() {
         // the written template itself, master on: every Plan 7 key at its shipped value
         Settings.load(SelfTest.write(Settings.render(new java.util.Properties()).replace("\nenabled=false\n", "\nenabled=true\n")));
-        for (String k : new String[] {"luaWorkerGate", "luaFileWriteThrottle", "logDedupe"}) assert !Settings.flag(k) : k;
+        for (String k : new String[] {"luaWorkerGate", "luaFileWriteThrottle", "logDedupe", "quietLog"}) assert !Settings.flag(k) : k;
         assert Settings.text("modProfile", "?").equals("custom") && Settings.text("modCompat", "?").equals("off");
         assert Settings.flag("uiRetainedMods");
     }
 
     static void settingsTemplateHasPlan7Keys() {
         String t = Settings.render(new java.util.Properties());
-        for (String k : new String[] {"luaWorkerGate=false", "luaFileWriteThrottle=false", "logDedupe=false", "modProfile=custom", "modCompat=off"})
+        for (String k : new String[] {"luaWorkerGate=false", "luaFileWriteThrottle=false", "logDedupe=false", "quietLog=false", "modProfile=custom", "modCompat=off"})
             assert t.contains("\n" + k + "\n") : k;
         assert t.indexOf("\nluaInternConstants=true\n") < t.indexOf("\nluaWorkerGate=false\n");
     }
@@ -952,6 +953,28 @@ final class LuaGateTest {
         LogDedupe.resetForTest();
     }
 
+    // ---- quietLog: known-noise lines the game already worked around are dropped; everything else passes ----
+    static void quietLogLinesDropped() {
+        LogPatches.initQuiet();
+        assert !LogPatches.quietGuard.on;                                              // off by default
+        assert !LogPatches.quietDrop(null) && !LogPatches.quietDrop(new Object());
+        assert !LogPatches.quietDrop("Error: something real");
+        Settings.load(SelfTest.write("enabled=true\nquietLog=true\n"));
+        LogPatches.initQuiet();
+        assert LogPatches.quietGuard.on;
+        assert LogPatches.quietDrop("AngelCodeFont failed to load page 12");
+        assert LogPatches.quietDrop("Sanitizing container name 'wooden crate'");
+        assert LogPatches.quietDrop("Sanitizing AttributeType name 'strength'");
+        assert LogPatches.quietDrop("SkeletonBone not resolved for bone: arm, defaulting to SkeletonBone.None");
+        assert LogPatches.quietDrop("ERROR: part \"bumper_front\" not found");
+        assert LogPatches.quietDrop("Error: Dupe item ID for [item]");
+        assert !LogPatches.quietDrop("Sanitizing nothing") && !LogPatches.quietDrop("Bone not found: arm");
+        assert !LogPatches.quietDrop(null) && !LogPatches.quietDrop(new Object());
+        Settings.load(SelfTest.write("enabled=true\n"));
+        LogPatches.initQuiet();
+        assert !LogPatches.quietGuard.on;                                              // off again after the stock template
+    }
+
     static void otherStreamOrSeverityPrinted() {
         LogDedupe.resetForTest(); LogDedupe.guard.on = true;
         assert !LogDedupe.drop(S1, 1, "x", NO_ARGS, 0) && !LogDedupe.drop(S2, 1, "x", NO_ARGS, 1) && !LogDedupe.drop(S1, 2, "x", NO_ARGS, 2);
@@ -1336,7 +1359,8 @@ final class LuaGateTest {
         }
         // every PZ Butter Plan 7 holder names its own key
         assert java.util.Arrays.asList(ModCompat.KEYS.get("LuaPatches.FileWriter")).equals(java.util.List.of("luaFileWriteThrottle"));
-        assert java.util.Arrays.asList(ModCompat.KEYS.get("LogPatches.Writeln")).equals(java.util.List.of("logDedupe"));
+        assert java.util.Arrays.asList(ModCompat.KEYS.get("LogPatches.Writeln")).equals(java.util.List.of("logDedupe", "quietLog"));
+        assert java.util.Arrays.asList(ModCompat.KEYS.get("LogPatches.PrefixLine")).equals(java.util.List.of("logDedupe", "quietLog"));
         assert java.util.Arrays.asList(ModCompat.KEYS.get("LuaPatches.TriggerHook")).equals(java.util.List.of("luaWorkerGate"));
     }
 

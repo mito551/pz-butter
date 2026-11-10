@@ -70,6 +70,7 @@ local KEYS = {
 	"persistentVboFrameSync",
 	"playerLosFast",
 	"puddleEarlyZ",
+	"quietLog",
 	"rainSplashesFast",
 	"reflexBoost",
 	"reflexSleep",

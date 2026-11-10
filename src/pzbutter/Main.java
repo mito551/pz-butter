@@ -44,6 +44,7 @@ public class Main {
         FrameBatch.init();
         LuaFiles.init();
         LogDedupe.init();
+        LogPatches.initQuiet();
         ZombiePatches.init();
         DevMarks.init();
         SceneDriver.init();

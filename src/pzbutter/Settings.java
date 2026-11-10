@@ -84,6 +84,8 @@ public final class Settings {
       + "luaWorkerGate=false\n"
       + "# luaFileWriteThrottle: changes when mod files reach the disk. A heartbeat, pulse, ping or temp-log file opened again within 2 s, or any file rewritten within 0.5 s, is kept in memory and written once the time is up. The last content always reaches the disk, and a mod that reads the file back gets it first.\n"
       + "luaFileWriteThrottle=false\n"
+      + "# quietLog: changes the log. Vanilla lines the game already worked around (font fallback, name sanitising, defaulted helper bone, skipped vehicle script part, a duplicate item id) are not printed; other lines print like before.\n"
+      + "quietLog=false\n"
       + "# logDedupe: changes the log. A line printed again within 3 s is dropped and counted; one summary line per repeated line every 3 s.\n"
       + "logDedupe=false\n"
       + "#\n"
