@@ -125,6 +125,7 @@ local KEYS = {
 	"uiVerify",
 	"vblankLock",
 	"vehicleAnimIdleSkip",
+	"viewpointPartsSum",
 	"vrrCap",
 	"vsyncAdaptive",
 	"wake",

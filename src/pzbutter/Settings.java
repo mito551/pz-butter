@@ -344,6 +344,8 @@ public final class Settings {
       + "spriteDrawReuse=false\n"
       + "# fboChunkMisc: contains checks on the square's object lists scan without a callback per element.\n"
       + "fboChunkMisc=false\n"
+      + "# viewpointPartsSum: diagnostic for the Viewpoint mod; once a minute, its 12 main-thread render parts (average and worst ms per frame per part) go to the console, with the lights part split into its seven calls (lamps, floor plans, torches, headlights, flames, blood, daylight).\n"
+      + "viewpointPartsSum=false\n"
       + "# bakeBudgetGpu: with bakeBudgetAdaptive, the bake budget also counts the GPU's time for the frame (GPU timestamps read three frames later, never waited for).\n"
       + "bakeBudgetGpu=false\n"
       + "# gpuStats: diagnostic; once a minute, what the Plan 9 keys did goes to the console (and gpu.out with frameLog).\n"

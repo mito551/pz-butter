@@ -55,7 +55,8 @@ public final class SelfTest {
         BodyLocTest.run();
         ScriptTest.run();
         EnumTest.run();
-ModScanTest.run();
+        ModScanTest.run();
+        ViewpointTest.run();
         LuaGateTest.run();
         DevTest.run();
         SpikeTest.run();

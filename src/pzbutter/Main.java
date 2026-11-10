@@ -120,6 +120,7 @@ public class Main {
         LuaPatches.uiLuaFast = Settings.flag("uiLuaFast");
         LuaPatches.modOptionsFast = Settings.flag("modOptionsFast");
         DistributionInsert.init();
+        ViewpointPatches.init();
     }
 
     /** True when the system class loader can load the class (not initialised). */
