@@ -1,6 +1,6 @@
 package pzbutter;
 
-import java.util.WeakHashMap;
+import java.util.HashMap;
 import zombie.characters.IsoPlayer;
 import zombie.core.math.PZMath;
 import zombie.iso.IsoCamera;
@@ -54,11 +54,18 @@ final class ChunkTrees {
 
     // ---- treeBakeMaxChunksPerSec (Task 8) ----
 
-    /** Chunks whose trees stay per frame for now (new textures are arriving fast). Weak keys; IsoChunk does not override equals / hashCode. Game thread only. */
-    private static final WeakHashMap<IsoChunk, Boolean> marks = new WeakHashMap<>();
+    /**
+     * Chunks whose trees stay per frame for now (new textures are arriving fast). Keyed by the chunk's world position
+     * ({@link ChunkPatches#chunkKey}): IsoChunk instances are pooled and reused by later chunk lives, so an instance-keyed
+     * entry would bleed into a chunk at another position. The value is the instance last seen there (weak: only the
+     * release walk reads it, and it is dropped at the next release or init). Game thread only.
+     */
+    private static final HashMap<Long, java.lang.ref.WeakReference<IsoChunk>> marks = new HashMap<>();
     private static Rate rate = new Rate();
-    /** When each chunk's last arrival was counted (weak keys; game thread only). */
-    private static final WeakHashMap<IsoChunk, Long> arrivals = new WeakHashMap<>();
+    /** When each position's last arrival was counted (position keyed like {@code marks}; game thread only). */
+    private static final HashMap<Long, Long> arrivals = new HashMap<>();
+    /** Position-keyed maps are not weakly held: caps plus a 5 s age sweep in {@link #release} keep them bounded. */
+    private static final int ARRIVALS_CAP = 4096, FOLLOWS_CAP = 1024;
 
     /** Arrivals of new chunk textures over the last second, in ten 100 ms buckets. */
     static final class Rate {
@@ -99,13 +106,13 @@ final class ChunkTrees {
         return rate <= max && quietSinceNs >= 0 && nowNs - quietSinceNs >= 1_000_000_000L;
     }
 
-    static boolean isMarked(IsoChunk c) { return marks.containsKey(c); }
+    static boolean isMarked(IsoChunk c) { return c != null && marks.containsKey(ChunkPatches.chunkKey(c.wx, c.wy)); }
 
     /** Trees of a marked chunk stay per frame (the chunk of the tree's square). */
     static boolean marked(Object obj) {
         if (marks.isEmpty() || !(obj instanceof IsoObject o)) return false;
         IsoGridSquare sq = o.square;
-        return sq != null && sq.chunk != null && marks.containsKey(sq.chunk);
+        return sq != null && sq.chunk != null && marks.containsKey(ChunkPatches.chunkKey(sq.chunk.wx, sq.chunk.wy));
     }
 
     /**
@@ -122,10 +129,11 @@ final class ChunkTrees {
         if (level != levels.getMinLevel(level) || !levels.isDirty(level, zoom)) return;
         FBORenderChunk fbo = levels.getFBOForLevel(level, zoom);
         if (fbo != null && fbo.isInit) return;
+        long key = ChunkPatches.chunkKey(chunk.wx, chunk.wy);
         // split screen: every player has a texture of its own, but the chunk arrived once (counted once a second per chunk)
-        Long last = arrivals.get(chunk);
-        if (last == null || nowNs - last >= 1_000_000_000L || nowNs < last) { rate.add(nowNs); arrivals.put(chunk, nowNs); }
-        if (BakeHold.slot(level) == BakeHold.slot(0) && markNew(rate.perSecond(nowNs), maxPerSec)) marks.put(chunk, Boolean.TRUE);
+        Long last = arrivals.get(key);
+        if (last == null || nowNs - last >= 1_000_000_000L || nowNs < last) { rate.add(nowNs); arrivals.put(key, nowNs); }
+        if (BakeHold.slot(level) == BakeHold.slot(0) && markNew(rate.perSecond(nowNs), maxPerSec)) marks.put(key, new java.lang.ref.WeakReference<>(chunk));
     }
 
     /**
@@ -135,13 +143,23 @@ final class ChunkTrees {
      */
     static void release(int p, long nowNs) {
         rate.update(nowNs, maxPerSec);
+        if (arrivals.size() > ARRIVALS_CAP || follows.size() > FOLLOWS_CAP) pruneStale(nowNs);
         if (marks.isEmpty() || !releaseNow(rate.perSecond(nowNs), maxPerSec, rate.quietSinceNs, nowNs)) return;
-        ArrayList<IsoChunk> list = new ArrayList<>(marks.keySet());
+        ArrayList<java.util.Map.Entry<Long, java.lang.ref.WeakReference<IsoChunk>>> list = new ArrayList<>(marks.entrySet());
         marks.clear();
         for (int i = 0; i < list.size(); i++) {
-            IsoChunk c = list.get(i);
+            IsoChunk c = list.get(i).getValue().get();
+            if (c == null || ChunkPatches.chunkKey(c.wx, c.wy) != list.get(i).getKey()) continue;   // pooled into another position
             if (onScreenForAny(c)) invalidateTrees(c, IsoTree::getRenderSquare);
         }
+    }
+
+    /** Drops position entries whose stamps are inert (older than the 1 s window) or whose follow-up should have long run. */
+    private static void pruneStale(long nowNs) {
+        for (var it = arrivals.entrySet().iterator(); it.hasNext();)
+            if (nowNs - it.next().getValue() > 5_000_000_000L) it.remove();
+        for (var it = follows.values().iterator(); it.hasNext();)
+            if (nowNs - it.next().stampNs > 5_000_000_000L) it.remove();
     }
 
     private static boolean onScreenForAny(IsoChunk c) {
@@ -149,13 +167,21 @@ final class ChunkTrees {
         return false;
     }
 
-    /** Chunks whose level 0 must be baked again once a marked chunk (the key) has baked its own: held weakly. */
-    private static final class Follow {
-        final java.util.ArrayList<java.lang.ref.WeakReference<IsoChunk>> targets = new java.util.ArrayList<>(2);
-        int players = (1 << BakeHold.PLAYERS) - 1;   // players whose bake of the key chunk is still to come
+    /** A corner tree's render-square chunk: its position plus a weak handle on the instance (identity is not trusted: pooling). */
+    private static final class Target {
+        final int wx, wy;
+        final java.lang.ref.WeakReference<IsoChunk> ref;
+        Target(IsoChunk c) { wx = c.wx; wy = c.wy; ref = new java.lang.ref.WeakReference<>(c); }
     }
 
-    private static final WeakHashMap<IsoChunk, Follow> follows = new WeakHashMap<>();
+    private static final class Follow {
+        final java.util.ArrayList<Target> targets = new java.util.ArrayList<>(2);
+        int players = (1 << BakeHold.PLAYERS) - 1;   // players whose bake of the key chunk is still to come
+        long stampNs;                                // set by invalidateTrees; swept when the cap is hit (see release)
+    }
+
+    /** Chunks whose level 0 must be baked again once a marked chunk (the key's position) has baked its own; position keyed. */
+    private static final HashMap<Long, Follow> follows = new HashMap<>();
 
     /**
      * Level 0 of the chunk gets DIRTY_TREES for all four players (IsoChunk.invalidateRenderChunkLevel). Stock draws a jumbo tree
@@ -177,11 +203,12 @@ final class ChunkTrees {
                 IsoGridSquare rs = renderSquare.apply(t);
                 if (rs == null || rs.chunk == null || rs.chunk == c) continue;
                 if (f == null) f = new Follow();
-                f.targets.add(new java.lang.ref.WeakReference<>(rs.chunk));
+                f.targets.add(new Target(rs.chunk));
             }
         }
-        if (f != null) follows.put(c, f);
-        else follows.remove(c);
+        // a new stamp on the same position: the old entry could be a previous life's waiting list
+        if (f != null) { f.stampNs = System.nanoTime(); follows.put(ChunkPatches.chunkKey(c.wx, c.wy), f); }
+        else follows.remove(ChunkPatches.chunkKey(c.wx, c.wy));
     }
 
     /**
@@ -197,19 +224,21 @@ final class ChunkTrees {
 
     static void baking(IsoChunk chunk, int level, float zoom, int p) {
         if (follows.isEmpty() || p < 0 || p >= BakeHold.PLAYERS) return;
-        Follow f = follows.get(chunk);
+        long key = ChunkPatches.chunkKey(chunk.wx, chunk.wy);
+        Follow f = follows.get(key);
         if (f == null || (f.players & (1 << p)) == 0) return;
         FBORenderLevels levels = chunk.getRenderLevels(p);
         if (level != levels.getMinLevel(level) || BakeHold.slot(level) != BakeHold.slot(0) || !levels.isDirty(level, zoom)) return;
         f.players &= ~(1 << p);
         for (int i = 0; i < f.targets.size(); i++) {
-            IsoChunk t = f.targets.get(i).get();
-            if (t == null) continue;
-            FBORenderLevels tl = t.getRenderLevels(p);
+            Target t = f.targets.get(i);
+            IsoChunk tc = t.ref.get();
+            if (tc == null || t.wx != tc.wx || t.wy != tc.wy) continue;   // the instance was pooled into another position
+            FBORenderLevels tl = tc.getRenderLevels(p);
             tl.invalidateLevel(0, FBORenderChunk.DIRTY_TREES);
-            if (ChunkPatches.holdGuard.on) BakeHold.state(tl, 0).noHold = true;
+            if (ChunkPatches.holdGuard.on) BakeHold.state(tc, p, 0).noHold = true;
         }
-        if (f.players == 0) follows.remove(chunk);
+        if (f.players == 0) follows.remove(key);
     }
 
     /** isTreeRenderedEveryFrame from the tree-bake switch: a tree is per frame only when its chunk is marked. */

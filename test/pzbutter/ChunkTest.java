@@ -675,28 +675,28 @@ final class ChunkTest {
             java.util.ArrayList<IsoChunk> chunks = new java.util.ArrayList<>(java.util.List.of(far, near));
             ln.invalidateLevel(0, 1024); lf.invalidateLevel(0, 1024);                    // both want a redraw, one fits
             BakeHold.planChunks(chunks, 0, 1f, 100, 1000);
-            assert !BakeHold.peek(ln, 0).held && BakeHold.peek(lf, 0).held : "nearest first";
-            assert BakeHold.peek(lf, 0).cls == BakeHold.REDRAW;
+            assert !BakeHold.peek(near, 0, 0).held && BakeHold.peek(far, 0, 0).held : "nearest first";
+            assert BakeHold.peek(far, 0, 0).cls == BakeHold.REDRAW;
             // the gate: the held pair answers for both its levels and shows its old texture
             assert BakeHold.gate(mgr, far, 0, 1f, 0, 100, 1000) && BakeHold.gate(mgr, far, 1, 1f, 0, 100, 1000);
             assert mgr.renderChunk == lf.getFBOForLevel(0, 1f);
             assert !BakeHold.gate(mgr, near, 0, 1f, 0, 100, 1000);
-            assert BakeHold.peek(ln, 0).lastBakeMs == 1000;                             // a grant is recorded at the pair's min level
+            assert BakeHold.peek(near, 0, 0).lastBakeMs == 1000;                             // a grant is recorded at the pair's min level
             assert !BakeHold.gate(mgr, near, 1, 1f, 0, 100, 1000);
             assert BakeHold.prepareHeld(0, far, 0, 100) && !BakeHold.prepareHeld(0, near, 0, 100) && !BakeHold.prepareHeld(0, far, 0, 101);
-            assert !BakeHold.countsLevel(lf, 0, 100) && !BakeHold.countsLevel(lf, 1, 100) && BakeHold.countsLevel(ln, 0, 100);
+            assert !BakeHold.countsLevel(far, 0, 0, 100) && !BakeHold.countsLevel(far, 0, 1, 100) && BakeHold.countsLevel(near, 0, 0, 100);
             // a held pair is bounded: held for rebakeMaxFrames plans, then granted even with the budget spent
             BakeHold.planChunks(chunks, 0, 1f, 101, 1016);
             BakeHold.planChunks(chunks, 0, 1f, 102, 1032);
-            assert BakeHold.peek(lf, 0).held && BakeHold.peek(lf, 0).heldFrames == 3;
+            assert BakeHold.peek(far, 0, 0).held && BakeHold.peek(far, 0, 0).heldFrames == 3;
             BakeHold.planChunks(chunks, 0, 1f, 103, 1048);
-            assert !BakeHold.peek(lf, 0).held : "overdue pair goes";
-            assert !BakeHold.gate(mgr, far, 0, 1f, 0, 103, 1048) && BakeHold.peek(lf, 0).heldFrames == 0;
+            assert !BakeHold.peek(far, 0, 0).held : "overdue pair goes";
+            assert !BakeHold.gate(mgr, far, 0, 1f, 0, 103, 1048) && BakeHold.peek(far, 0, 0).heldFrames == 0;
             assert !BakeHold.prepareHeld(0, far, 0, 103);
             // clean levels reset their hold
             lf.clearDirty(0, 1f);
             BakeHold.planChunks(chunks, 0, 1f, 104, 1064);
-            assert BakeHold.peek(lf, 0).heldFrames == 0 && BakeHold.peek(lf, 0).dirtySinceMs == -1;
+            assert BakeHold.peek(far, 0, 0).heldFrames == 0 && BakeHold.peek(far, 0, 0).dirtySinceMs == -1;
             assert !BakeHold.gate(mgr, far, 0, 1f, 0, 104, 1064);                        // not dirty: stock answers
             // never held: object dirt, a new texture, create
             IsoChunk obj = holdChunk(2, 0, true), fresh = holdChunk(3, 0, false), created = holdChunk(0, 1, true);
@@ -705,14 +705,14 @@ final class ChunkTest {
             created.getRenderLevels(0).invalidateLevel(0, 512);
             chunks = new java.util.ArrayList<>(java.util.List.of(obj, fresh, created, near));
             BakeHold.planChunks(chunks, 0, 1f, 110, 2000);
-            assert !BakeHold.peek(obj.getRenderLevels(0), 0).held && !BakeHold.peek(fresh.getRenderLevels(0), 0).held && !BakeHold.peek(created.getRenderLevels(0), 0).held;
-            assert BakeHold.peek(obj.getRenderLevels(0), 0).cls == BakeHold.OBJECT && BakeHold.peek(fresh.getRenderLevels(0), 0).cls == BakeHold.NEW;
+            assert !BakeHold.peek(obj, 0, 0).held && !BakeHold.peek(fresh, 0, 0).held && !BakeHold.peek(created, 0, 0).held;
+            assert BakeHold.peek(obj, 0, 0).cls == BakeHold.OBJECT && BakeHold.peek(fresh, 0, 0).cls == BakeHold.NEW;
             // dirt that arrives after the plan is decided at the gate with the budget left; the second level follows
             IsoChunk late = holdChunk(0, 2, true);
             zombie.iso.fboRenderChunk.FBORenderLevels ll = late.getRenderLevels(0);
             ll.invalidateLevel(0, 1024);
             assert BakeHold.gate(mgr, late, 0, 1f, 0, 110, 2000) && BakeHold.gate(mgr, late, 1, 1f, 0, 110, 2000);
-            assert BakeHold.peek(ll, 0).planFrame == 110 && BakeHold.peek(ll, 0).held;
+            assert BakeHold.peek(late, 0, 0).planFrame == 110 && BakeHold.peek(late, 0, 0).held;
             // a hold never leaves xoff / yoff or the texture unset
             assert mgr.renderChunk == ll.getFBOForLevel(0, 1f);
         } finally {
@@ -740,28 +740,28 @@ final class ChunkTest {
             java.util.ArrayList<IsoChunk> chunks = new java.util.ArrayList<>(java.util.List.of(a, b));
             la.invalidateLevel(0, 32); lb.invalidateLevel(0, 32);
             BakeHold.planChunks(chunks, 0, 1f, 1, 10_000);
-            assert BakeHold.peek(la, 0).cls == BakeHold.LIGHT : "no snapshot yet: not strong";
+            assert BakeHold.peek(a, 0, 0).cls == BakeHold.LIGHT : "no snapshot yet: not strong";
             assert !BakeHold.gate(mgr, a, 0, 1f, 0, 1, 10_000);                           // granted: the snapshot is taken
-            assert BakeHold.peek(la, 0).light != null && BakeHold.peek(la, 0).light.length == 384;
+            assert BakeHold.peek(a, 0, 0).light != null && BakeHold.peek(a, 0, 0).light.length == 384;
             // the light moves a little: still LIGHT. One square moves a lot: STRONG
             a.squares[0][5].getLightInfo(0).r = 0.5f + 3 / 255f;
             la.invalidateLevel(0, 32);
             BakeHold.planChunks(chunks, 0, 1f, 2, 10_016);
-            assert BakeHold.peek(la, 0).cls == BakeHold.LIGHT;
+            assert BakeHold.peek(a, 0, 0).cls == BakeHold.LIGHT;
             a.squares[1][9].getLightInfo(0).g = 0.5f + 12 / 255f;
             BakeHold.planChunks(chunks, 0, 1f, 3, 10_032);
-            assert BakeHold.peek(la, 0).cls == BakeHold.STRONG : "a torch beam goes first";
+            assert BakeHold.peek(a, 0, 0).cls == BakeHold.STRONG : "a torch beam goes first";
             // both chunks move a lot over every square: a global move, so STRONG is spread like LIGHT
             assert !BakeHold.gate(mgr, b, 0, 1f, 0, 3, 10_032);                           // b gets its snapshot too (it was dirty, granted by budget)
             setLight(a, 0.9f); setLight(b, 0.9f);
             la.invalidateLevel(0, 32); lb.invalidateLevel(0, 32);
             BakeHold.planChunks(chunks, 0, 1f, 4, 10_048);
-            assert BakeHold.peek(la, 0).cls == BakeHold.LIGHT && BakeHold.peek(lb, 0).cls == BakeHold.LIGHT : "global move";
+            assert BakeHold.peek(a, 0, 0).cls == BakeHold.LIGHT && BakeHold.peek(b, 0, 0).cls == BakeHold.LIGHT : "global move";
             // strong delta 0: every light-only pair is strong
             Settings.load(SelfTest.write("enabled=true\nbakeScheduler=true\nlightingStrongDelta=0\n"));
             BakeHold.init();
             BakeHold.planChunks(chunks, 0, 1f, 5, 10_064);
-            assert BakeHold.peek(la, 0).cls == BakeHold.STRONG;
+            assert BakeHold.peek(a, 0, 0).cls == BakeHold.STRONG;
         } finally {
             FrameClock.on = clock;
             zombie.iso.fboRenderChunk.FBORenderChunkManager.instance = mgrWas;
@@ -799,13 +799,13 @@ final class ChunkTest {
             b.squares[0][9].getLightInfo(0).g = 0.5f + 40 / 255f;
             la.invalidateLevel(0, 32); lb.invalidateLevel(0, 32);
             assert !BakeHold.gate(mgr, a, 0, 1f, 0, 2, 10_016) : "a strong move goes at once, though LIGHT would wait for lightingRebakeMs";
-            assert BakeHold.peek(la, 0).cls == BakeHold.STRONG && !BakeHold.peek(la, 0).held;
+            assert BakeHold.peek(a, 0, 0).cls == BakeHold.STRONG && !BakeHold.peek(a, 0, 0).held;
             assert !BakeHold.gate(mgr, a, 1, 1f, 0, 2, 10_016) : "the second level follows";
-            byte[] snap = BakeHold.peek(la, 0).light;
+            byte[] snap = BakeHold.peek(a, 0, 0).light;
             assert snap != null && (snap[5 * 3] & 255) == BakeHold.q(0.5f + 40 / 255f) : "the snapshot taken for the decision is the new one";
             // the strong cap (1) is spent: the second strong move in the frame waits
             assert BakeHold.gate(mgr, b, 0, 1f, 0, 2, 10_016) : "the strong cap is kept";
-            assert BakeHold.peek(lb, 0).cls == BakeHold.LIGHT && BakeHold.peek(lb, 0).held : "no room for STRONG: no snapshot is taken, the pair stays LIGHT and waits";
+            assert BakeHold.peek(b, 0, 0).cls == BakeHold.LIGHT && BakeHold.peek(b, 0, 0).held : "no room for STRONG: no snapshot is taken, the pair stays LIGHT and waits";
             // a small move 16 ms after the last bake stays LIGHT and waits
             IsoChunk c = holdChunk(0, 1, true);
             zombie.iso.fboRenderChunk.FBORenderLevels lc = c.getRenderLevels(0);
@@ -817,15 +817,15 @@ final class ChunkTest {
             BakeHold.planChunks(cc, 0, 1f, 4, 20_016);
             c.squares[0][3].getLightInfo(0).b = 0.5f + 3 / 255f;
             lc.invalidateLevel(0, 32);
-            assert BakeHold.gate(mgr, c, 0, 1f, 0, 4, 20_016) && BakeHold.peek(lc, 0).cls == BakeHold.LIGHT;
+            assert BakeHold.gate(mgr, c, 0, 1f, 0, 4, 20_016) && BakeHold.peek(c, 0, 0).cls == BakeHold.LIGHT;
             // 400 ms later the pair is eligible as LIGHT: no STRONG decision is needed, but the snapshot is refreshed on the grant
             lc.clearDirty(0, 1f);
             BakeHold.planChunks(cc, 0, 1f, 5, 20_400);
             c.squares[0][3].getLightInfo(0).b = 0.5f + 50 / 255f;
             lc.invalidateLevel(0, 32);
             assert !BakeHold.gate(mgr, c, 0, 1f, 0, 5, 20_400);
-            assert BakeHold.peek(lc, 0).cls == BakeHold.LIGHT : "granted anyway: LIGHT";
-            assert (BakeHold.peek(lc, 0).light[3 * 3 + 2] & 255) == BakeHold.q(0.5f + 50 / 255f) : "snapshot refreshed on the grant";
+            assert BakeHold.peek(c, 0, 0).cls == BakeHold.LIGHT : "granted anyway: LIGHT";
+            assert (BakeHold.peek(c, 0, 0).light[3 * 3 + 2] & 255) == BakeHold.q(0.5f + 50 / 255f) : "snapshot refreshed on the grant";
             // a global move found by the plan also keeps late pairs LIGHT
             IsoChunk d = holdChunk(0, 2, true), e = holdChunk(1, 2, true), f = holdChunk(2, 2, true);
             java.util.ArrayList<IsoChunk> def = new java.util.ArrayList<>(java.util.List.of(d, e, f));
@@ -835,10 +835,10 @@ final class ChunkTest {
             setLight(d, 0.9f); setLight(e, 0.9f);
             d.getRenderLevels(0).invalidateLevel(0, 32); e.getRenderLevels(0).invalidateLevel(0, 32);
             BakeHold.planChunks(def, 0, 1f, 7, 30_016);
-            assert BakeHold.peek(d.getRenderLevels(0), 0).cls == BakeHold.LIGHT && BakeHold.peek(e.getRenderLevels(0), 0).cls == BakeHold.LIGHT : "global move";
+            assert BakeHold.peek(d, 0, 0).cls == BakeHold.LIGHT && BakeHold.peek(e, 0, 0).cls == BakeHold.LIGHT : "global move";
             f.squares[0][1].getLightInfo(0).r = 0.5f + 40 / 255f;
             f.getRenderLevels(0).invalidateLevel(0, 32);
-            assert BakeHold.gate(mgr, f, 0, 1f, 0, 7, 30_016) && BakeHold.peek(f.getRenderLevels(0), 0).cls == BakeHold.LIGHT : "global move: late pairs spread too";
+            assert BakeHold.gate(mgr, f, 0, 1f, 0, 7, 30_016) && BakeHold.peek(f, 0, 0).cls == BakeHold.LIGHT : "global move: late pairs spread too";
         } finally {
             FrameClock.on = clock;
             zombie.iso.fboRenderChunk.FBORenderChunkManager.instance = mgrWas;
@@ -978,6 +978,11 @@ final class ChunkTest {
             gone.getRenderLevels(0).setOnScreen(0, false);
             ChunkTrees.release(0, 4_100_000_000L);
             assert ChunkTrees.isMarked(gone) : "not yet a quiet second";
+            // B-D4-1: a mark belongs to the position, not to the pooled instance
+            IsoChunk displaced = holdChunk(40, 40, true);
+            assert !ChunkTrees.isMarked(displaced) : "a fresh chunk at an unmarked position inherits nothing";
+            IsoChunk clone = holdChunk(30, 0, true);
+            assert ChunkTrees.isMarked(clone) : "a new life at the same position is that position's mark";
             ChunkTrees.release(0, 5_200_000_000L);
             assert !ChunkTrees.isMarked(gone) && !gone.getRenderLevels(0).isDirty(0, 4096L, 1f);
         } finally {
@@ -1101,14 +1106,14 @@ final class ChunkTest {
             assert baked.equals(java.util.List.of(a)) : "only A fits the rebake budget in frame 10";
             assert !baked.contains(b) : "B was before A in the order and was not dirty when its turn came";
             assert b.getRenderLevels(0).isDirty(0, 4096L, 1f) : "A baked: B is marked for its trees";
-            assert BakeHold.peek(b.getRenderLevels(0), 0).noHold;
+            assert BakeHold.peek(b, 0, 0).noHold;
             // frame 11: the follow-up goes though the rebake budget is taken by the other cutaway chunks; the control waits
             BakeHold.planChunks(chunks, 0, 1f, 11, 1016);
-            assert BakeHold.peek(b.getRenderLevels(0), 0).cls == BakeHold.OBJECT && !BakeHold.peek(b.getRenderLevels(0), 0).held : "not held";
-            assert BakeHold.peek(ctl.getRenderLevels(0), 0).cls == BakeHold.CUTAWAY && BakeHold.peek(ctl.getRenderLevels(0), 0).held : "a plain cutaway chunk is held";
+            assert BakeHold.peek(b, 0, 0).cls == BakeHold.OBJECT && !BakeHold.peek(b, 0, 0).held : "not held";
+            assert BakeHold.peek(ctl, 0, 0).cls == BakeHold.CUTAWAY && BakeHold.peek(ctl, 0, 0).held : "a plain cutaway chunk is held";
             baked = bakeFrame(mgr, order, 11, 1016);
             assert baked.contains(b) && !baked.contains(a) : "B is baked, one frame after A";
-            assert !BakeHold.peek(b.getRenderLevels(0), 0).noHold : "the exemption ends with the bake";
+            assert !BakeHold.peek(b, 0, 0).noHold : "the exemption ends with the bake";
 
             // A before B in the order: B is marked inside A's turn and baked in the same frame, after A, with no plan decision for it
             Corner k2 = Corner.make(10, 10);
@@ -1118,7 +1123,7 @@ final class ChunkTest {
             BakeHold.planChunks(new java.util.ArrayList<>(order2), 0, 1f, 20, 5000);
             baked = bakeFrame(mgr, order2, 20, 5000);
             assert baked.equals(java.util.List.of(a2, b2)) : "A, then B, in one frame: " + baked.size();
-            assert BakeHold.peek(b2.getRenderLevels(0), 0).cls == BakeHold.OBJECT && !BakeHold.peek(b2.getRenderLevels(0), 0).held;
+            assert BakeHold.peek(b2, 0, 0).cls == BakeHold.OBJECT && !BakeHold.peek(b2, 0, 0).held;
             assert !b2.getRenderLevels(0).isDirty(0, 1f);
 
             // without the bake hold the follow-up still happens (the hook does not need the planner)
@@ -1126,7 +1131,7 @@ final class ChunkTest {
             Corner k3 = Corner.make(20, 20);
             ChunkTrees.invalidateTrees(k3.a(), k3.rs());
             ChunkTrees.baking(k3.a(), 0, 1f, 0);
-            assert k3.south().getRenderLevels(0).isDirty(0, 4096L, 1f) && BakeHold.peek(k3.south().getRenderLevels(0), 0) == null;
+            assert k3.south().getRenderLevels(0).isDirty(0, 4096L, 1f) && BakeHold.peek(k3.south(), 0, 0) == null;
         } finally {
             FrameClock.on = clock;
             zombie.core.PerformanceSettings.fboRenderChunk = fboWas;

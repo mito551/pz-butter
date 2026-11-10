@@ -122,8 +122,9 @@ final class ChunkShimTest {
                     c.getRenderLevels(0).clearDirty(level, 1f);
                 }
                 lv.invalidateLevel(level, 1024);
-                BakeHold.PairState st = BakeHold.state(lv, level);
+                BakeHold.PairState st = BakeHold.state(held, 0, level);
                 st.planFrame = 7; st.held = true; st.cls = BakeHold.REDRAW;       // the plan holds this pair
+                assert BakeHold.peek(twin, 0, level) == null : "a pair state does not leak to the next position";
                 FBORenderChunkManager mine = new FBORenderChunkManager(), stock = new FBORenderChunkManager();
                 assert BakeHold.gate(mine, held, level, 1f, 0, 7, 1000) : "held";
                 boolean stockAnswer = stock.beginRenderChunkLevel(twin, level, 1f, false, false);
@@ -152,7 +153,7 @@ final class ChunkShimTest {
         lightOnly.getRenderLevels(0).invalidateLevel(0, 32);                           // lighting dirt, not held
         FBORenderLevels hl = heldRedraw.getRenderLevels(0);
         hl.invalidateLevel(0, 1024);                                                   // redraw dirt, held this frame
-        BakeHold.PairState st = BakeHold.state(hl, 0);
+        BakeHold.PairState st = BakeHold.state(heldRedraw, 0, 0);
         st.planFrame = 50; st.held = true;
         ArrayList<IsoChunk> a = new ArrayList<>(List.of(lightOnly)), b = new ArrayList<>(List.of(heldRedraw)),
             ab = new ArrayList<>(List.of(lightOnly, heldRedraw)), none = new ArrayList<>();
@@ -198,7 +199,7 @@ final class ChunkShimTest {
             IsoChunk lightOnly = ChunkTest.holdChunk(0, 0, true), heldRedraw = ChunkTest.holdChunk(1, 0, true);
             lightOnly.getRenderLevels(0).invalidateLevel(0, 32);
             heldRedraw.getRenderLevels(0).invalidateLevel(0, 1024);
-            BakeHold.PairState st = BakeHold.state(heldRedraw.getRenderLevels(0), 0);
+            BakeHold.PairState st = BakeHold.state(heldRedraw, 0, 0);
             FrameClock.on = true; FrameClock.frameNo = 50;
             st.planFrame = 50; st.held = true;
             BakeHold.occlusionGranted = true;
@@ -240,7 +241,7 @@ final class ChunkShimTest {
             WorldPatches.fastGuard.on = true;
             ChunkPatches.holdGuard.on = true;
             FrameClock.on = true; FrameClock.frameNo = 60;
-            BakeHold.PairState st = BakeHold.state(c.getRenderLevels(0), 0);
+            BakeHold.PairState st = BakeHold.state(c, 0, 0);
             // held this frame: the advice skips the body (true) and its exit sees the marker, so nothing goes stale
             st.planFrame = 60; st.held = true;
             f.fresh = 1;

@@ -2,7 +2,7 @@ package pzbutter;
 
 import java.lang.invoke.VarHandle;
 import java.util.ArrayList;
-import java.util.WeakHashMap;
+import java.util.HashMap;
 import zombie.core.Core;
 import zombie.core.PerformanceSettings;
 import zombie.core.math.PZMath;
@@ -247,6 +247,7 @@ final class BakeHold {
         occlusionGranted = Settings.flag("occlusionGrantedOnly");
         java.util.Arrays.fill(adaptiveTotal, frameBudget);
         java.util.Arrays.fill(globalFrame, -1);
+        states.clear();   // position-keyed entries must not leak across runs (the pooled instance never gave that for free)
         boolean want = Settings.flag("bakeScheduler");
         if (want && xoffH == null) {
             xoffH = Game.field(FBORenderChunkManager.class, "xoff", float.class);
@@ -256,14 +257,24 @@ final class BakeHold {
         if (want && !ChunkPatches.holdGuard.on) System.out.println("[PZButter] bakeScheduler off: game members not found");
     }
 
-    private static final WeakHashMap<FBORenderLevels, PairState[]> states = new WeakHashMap<>();
+    /**
+     * Pair state by the pair's world position + player ({@link ChunkPatches#chunkKey}, player in the low two bits): IsoChunk
+     * and its FBORenderLevels are pooled, so an identity-keyed entry would be reused by the next chunk life at another
+     * position. Not weakly held: the cap sweep in {@link #state} drops entries whose pairs were not planned for 600 frames.
+     */
+    private static final HashMap<Long, PairState[]> states = new HashMap<>();
+    private static final int STATES_CAP = 8192;
+
+    private static long stateKey(IsoChunk chunk, int p) { return (ChunkPatches.chunkKey(chunk.wx, chunk.wy) << 2) | p; }
 
     /** Index of the pair that holds a level: stock indexForLevel (calculateMinLevel(level) + 32) / 2. */
     static int slot(int level) { return (Math.floorDiv(level, 2) * 2 + 32) / 2; }
 
-    static PairState state(FBORenderLevels levels, int level) {
-        PairState[] a = states.get(levels);
-        if (a == null) states.put(levels, a = new PairState[32]);
+    static PairState state(IsoChunk chunk, int p, int level) {
+        if (states.size() > STATES_CAP) sweepStates(FrameClock.frameNo);
+        long key = stateKey(chunk, p);
+        PairState[] a = states.get(key);
+        if (a == null) states.put(key, a = new PairState[32]);
         int i = slot(level);
         PairState st = a[i];
         if (st == null) a[i] = st = new PairState();
@@ -271,9 +282,22 @@ final class BakeHold {
     }
 
     /** The pair's state when it has one (never creates). */
-    static PairState peek(FBORenderLevels levels, int level) {
-        PairState[] a = states.get(levels);
+    static PairState peek(IsoChunk chunk, int p, int level) {
+        PairState[] a = states.get(stateKey(chunk, p));
         return a == null ? null : a[slot(level)];
+    }
+
+    /** A key's state is dead when none of its pairs was planned recently: the position is off screen or unloaded. */
+    private static void sweepStates(long frame) {
+        for (var it = states.entrySet().iterator(); it.hasNext();) {
+            PairState[] a = it.next().getValue();
+            boolean live = false;
+            for (int i = 0; i < a.length && !live; i++) {
+                PairState s = a[i];
+                live = s != null && frame - s.planFrame <= 600;
+            }
+            if (!live) it.remove();
+        }
     }
 
     // ---- seams (pure, tested) ----
@@ -412,11 +436,11 @@ final class BakeHold {
                 if (lvl != levels.getMinLevel(lvl) || !levels.isOnScreen(lvl)) continue;
                 onScreen++;
                 if (!levels.isDirty(lvl, zoom)) {
-                    PairState idle = peek(levels, lvl);
+                    PairState idle = peek(c, p, lvl);
                     if (idle != null) { idle.heldFrames = 0; idle.dirtySinceMs = -1; }
                     continue;
                 }
-                PairState st = state(levels, lvl);
+                PairState st = state(c, p, lvl);
                 if (st.dirtySinceMs < 0) st.dirtySinceMs = now;
                 int cls = classifyPair(levels, lvl, zoom);
                 if (st.noHold && cls > OBJECT) cls = OBJECT;
@@ -475,7 +499,7 @@ final class BakeHold {
         if (p < 0 || p >= PLAYERS) return false;
         FBORenderLevels levels = chunk.getRenderLevels(p);
         if (!levels.isDirty(level, zoom)) return false;   // stock returns false itself
-        PairState st = state(levels, level);
+        PairState st = state(chunk, p, level);
         Budget b = budgets[p];
         boolean fresh = false;   // `cur` holds the light of this pair as of now
         int cls;
@@ -535,13 +559,13 @@ final class BakeHold {
 
     static boolean prepareHeld(int p, IsoChunk chunk, int level, long frame) {
         if (chunk == null || p < 0 || p >= PLAYERS) return false;
-        PairState st = peek(chunk.getRenderLevels(p), level);
+        PairState st = peek(chunk, p, level);
         return st != null && skipPrepare(st, frame);
     }
 
     /** Whether the occlusion check counts this dirty level: not when its pair waits this frame. */
-    static boolean countsLevel(FBORenderLevels levels, int level, long frame) {
-        PairState st = peek(levels, level);
+    static boolean countsLevel(IsoChunk chunk, int p, int level, long frame) {
+        PairState st = peek(chunk, p, level);
         return st == null || countsForOcclusion(st, frame);
     }
 }

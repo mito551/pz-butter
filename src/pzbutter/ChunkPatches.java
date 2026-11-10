@@ -25,6 +25,16 @@ public final class ChunkPatches {
     static final Guard holdGuard = new Guard("bakeScheduler");
     static final Guard treeRateGuard = new Guard("treeBakeMaxChunksPerSec");
 
+    /**
+     * (wx, wy) as one positive key: IsoChunk and its FBORenderLevels are pooled (an instance is reused by the next chunk
+     * life at another position), so anything per chunk must key by the position, never by the instance.
+     * shortcut: 16 bits per axis, so a map beyond chunk coordinate ±32768 would wrap keys (PZ maps stay inside a few hundred).
+     */
+    static long chunkKey(int wx, int wy) {
+        return (((long) (wx + 0x8000) & 0xFFFFL) << 16) | ((long) (wy + 0x8000) & 0xFFFFL);
+    }
+
+
     /** FBORenderCell.isTreeRenderedEveryFrame entry: the answer when treesInChunkTexture is on; null runs stock. */
     public static Boolean onTreeEveryFrame(Object obj) {
         if (!treeBakeGuard.on) return null;

@@ -90,7 +90,7 @@ final class LightChecks {
             for (int lvl = c.minLevel; lvl <= c.maxLevel; lvl++) {
                 if (!levels.isOnScreen(lvl)) continue;
                 if (!(mask == -1L ? levels.isDirty(lvl, zoom) : levels.isDirty(lvl, mask, zoom))) continue;
-                if (skipHeld && !BakeHold.countsLevel(levels, lvl, frame)) continue;
+                if (skipHeld && !BakeHold.countsLevel(c, p, lvl, frame)) continue;
                 return Boolean.TRUE;
             }
         }
