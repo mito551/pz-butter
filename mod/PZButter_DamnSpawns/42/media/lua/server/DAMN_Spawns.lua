@@ -15,7 +15,7 @@ DAMN.SpawnsPerfConfig = DAMN.SpawnsPerfConfig or {
     eligibilityCache = true,
     modMapCache = true,
     nativeTargets = true,
-    blockedRetry = true, -- original only retried blocked squares when debug logging was on
+    blockedRetry = false, -- original only retried blocked squares when debug logging was on
 };
 
 local cfg = DAMN.SpawnsPerfConfig;
@@ -239,7 +239,7 @@ function DAMN.Spawns:checkSquare(square)
                 DAMN:log(" -> square at [" .. squareConfig["mdKey"] .. "] is blocked. will retry later");
             end
 
-            if cfg.blockedRetry then
+            if cfg.blockedRetry or DAMN["spawnerDebug"] then
                 return false;
             end
         end

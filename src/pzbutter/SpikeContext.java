@@ -50,7 +50,7 @@ public final class SpikeContext {
         if (!guard.on || ms < BURST_MIN_MS) return;
         try {
             readState();
-            if (ms <= BURST_MAX_MS) {
+            if (ms <= thresholdMs) {
                 if ((curMoving || curKmh > 1) && epochMs - lastChunkMs <= windowMs) streamBurst++;
             } else {
                 String context = classify(curMoving, curKmh, epochMs - lastChunkMs, epochMs - lastMenuMs, windowMs);

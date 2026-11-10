@@ -64,13 +64,12 @@ public final class DeliveryPatches {
 
     private static VarHandle kbCache, mouseCache, kbLock, mouseLock, keyDown, mouseButtons, wheel;
     private static MethodHandle kbPolling, mousePolling;
-    private static boolean inputBound;
+    private static volatile boolean inputBound;
     private static long lastKeyboardReadPollNs = -1;   // poll time of the state GameKeyboard.update read
     private static final boolean[] keysBefore = new boolean[256], buttonsBefore = new boolean[16];
 
     private static boolean bindInput() {
         if (!inputBound) {
-            inputBound = true;
             kbCache = Game.staticField(GameKeyboard.class, "s_keyboardStateCache", KeyboardStateCache.class);
             mouseCache = Game.staticField(zombie.input.Mouse.class, "s_mouseStateCache", MouseStateCache.class);
             kbLock = Game.field(KeyboardStateCache.class, "lock", Object.class);
@@ -80,6 +79,7 @@ public final class DeliveryPatches {
             wheel = Game.field(MouseState.class, "wheelDelta", int.class);
             kbPolling = Game.method(KeyboardStateCache.class, "getStatePolling", MethodType.methodType(KeyboardState.class));
             mousePolling = Game.method(MouseStateCache.class, "getStatePolling", MethodType.methodType(MouseState.class));
+            inputBound = true;
         }
         boolean ok = kbCache != null && mouseCache != null && kbLock != null && mouseLock != null && keyDown != null
             && mouseButtons != null && wheel != null && kbPolling != null && mousePolling != null;
@@ -327,15 +327,15 @@ public final class DeliveryPatches {
     // ---- caps (Caps) ----
 
     private static VarHandle lockFpsField, uncappedField, vsyncField;
-    private static boolean capsBound;
+    private static volatile boolean capsBound;
     private static long lastRefreshNs;
 
     private static void bindCaps() {
         if (capsBound) return;
-        capsBound = true;
         lockFpsField = Game.staticField(PerformanceSettings.class, "lockFps", int.class);
         uncappedField = Game.staticField(PerformanceSettings.class, "uncappedFps", boolean.class);
         vsyncField = Game.staticField(Display.class, "vsyncEnabled", boolean.class);
+        capsBound = true;
     }
 
     private static boolean vsyncOn() {

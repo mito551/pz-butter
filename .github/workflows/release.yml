@@ -92,7 +92,7 @@ jobs:
             echo "::error::release v$v already exists; bump modversion in mod/PZButter/42/mod.info"
             exit 1
           fi
-          test -f build/mod/PZButter/42/media/java/client/PZButter.jar.zbs || {
+          test -f build/mod/PZButter/42/media/java/common/PZButter.jar.zbs || {
             echo "::error::unsigned build: set the ZBS_KEY_B64 and ZBS_STEAMID secrets (ZombieBuddy would never preload it)"
             exit 1; }
           (cd build/mod && zip -qr "../PZButter-$v.zip" PZButter)

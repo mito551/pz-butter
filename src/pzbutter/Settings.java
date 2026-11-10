@@ -493,7 +493,7 @@ public final class Settings {
         file = f;
         forcedOff.clear();
         try {
-            if (!f.exists()) try (FileWriter w = new FileWriter(f)) { w.write(DEFAULTS); }
+            if (!f.exists()) { f.getParentFile().mkdirs(); try (FileWriter w = new FileWriter(f)) { w.write(DEFAULTS); } }
             byte[] bytes = Files.readAllBytes(f.toPath());
             if (f.equals(loadedFile) && Arrays.equals(bytes, loadedBytes)) {
                 enabled = bool(props, "enabled", true);

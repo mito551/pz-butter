@@ -61,10 +61,21 @@ def check(mod_dir, packaged=False):
             for name in files:
                 if not name.endswith(".lua"):
                     continue
+                if name == "PZBClaim.lua":
+                    continue
                 p = os.path.join(base, name)
                 with open(p, encoding="utf-8", errors="replace") as f:
-                    if not GUARD.search(f.read()):
-                        problems.append("%s: no `if not PZButter ... return end` guard"
+                    content = f.read()
+                    # guard must be the first statement (not buried in a function)
+                    first_code = None
+                    for line in content.splitlines():
+                        s = line.strip()
+                        if not s or s.startswith("--"):
+                            continue
+                        first_code = s
+                        break
+                    if not (first_code and GUARD.match(first_code)):
+                        problems.append("%s: no leading `if not PZButter ... return end` guard"
                                         % os.path.relpath(p, mod_dir))
     if packaged:
         for sub in ("tools", "upstream"):

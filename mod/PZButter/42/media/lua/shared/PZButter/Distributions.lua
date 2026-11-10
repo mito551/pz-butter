@@ -11,8 +11,7 @@ local function normName(name)
 end
 
 local function isSourceItem(itemName, sourceItem)
-    return itemName == sourceItem
-        or itemName == "Base." .. sourceItem
+    return normName(itemName) == normName(sourceItem)
 end
 
 -- Build (once) an index: normalized item name -> list of items tables that mention it.
@@ -103,11 +102,11 @@ end
 
 -- Mirror several source->target pairs into every items list that contains any of them,
 -- raising a shared target to the maximum count among its sources, as LTPE-1 does.
-function D.mirrorAll(pairs)
+function D.mirrorAll(pairList)
     buildIndex()
     local uniqueLists = {}
     local listSeen = {}
-    for _, p in ipairs(pairs or {}) do
+    for _, p in ipairs(pairList or {}) do
         for _, items in ipairs(D.index[normName(p.source)] or {}) do
             if type(items) == "table" and not listSeen[items] then
                 listSeen[items] = true
@@ -117,7 +116,7 @@ function D.mirrorAll(pairs)
     end
     local targets = {}
     local targetSeen = {}
-    for _, p in ipairs(pairs or {}) do
+    for _, p in ipairs(pairList or {}) do
         if not targetSeen[p.target] then
             targetSeen[p.target] = true
             table.insert(targets, p.target)
@@ -140,7 +139,7 @@ function D.mirrorAll(pairs)
         end
         local required = {}
         for _, t in ipairs(targets) do required[t] = {} end
-        for _, p in ipairs(pairs or {}) do
+        for _, p in ipairs(pairList or {}) do
             local srcCounts = {}
             for i = 1, #items, 2 do
                 local itemName = items[i]
@@ -157,7 +156,7 @@ function D.mirrorAll(pairs)
             end
         end
         local handled = {}
-        for _, p in ipairs(pairs or {}) do
+        for _, p in ipairs(pairList or {}) do
             if not handled[p.target] then
                 handled[p.target] = true
                 local t = existing[p.target]

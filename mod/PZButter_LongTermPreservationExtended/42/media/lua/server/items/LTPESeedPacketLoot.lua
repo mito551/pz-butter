@@ -127,7 +127,7 @@ end
 -- Mirror every source->target pair supplied in `pairs` (a list of {source, target}) into one
 -- distribution's items list. A target shared by several sources is raised to the maximum
 -- count among them, exactly as the original's repeated walks left it.
-local function mirrorItemsInDistribution(distribution, pairs, distributionName)
+local function mirrorItemsInDistribution(distribution, pairList, distributionName)
     if type(distribution) ~= "table"
         or type(distribution.items) ~= "table" then
         return
@@ -137,14 +137,14 @@ local function mirrorItemsInDistribution(distribution, pairs, distributionName)
 
     -- existing target counts: target -> weight -> count
     local existing = {}
-    for _, p in ipairs(pairs) do
+    for _, p in ipairs(pairList) do
         existing[p.target] = existing[p.target] or {}
     end
     for i = 1, #items, 2 do
         local itemName = items[i]
         local weight = items[i + 1]
         if weight ~= nil then
-            for _, p in ipairs(pairs) do
+            for _, p in ipairs(pairList) do
                 if itemName == p.target then
                     local t = existing[p.target]
                     t[weight] = (t[weight] or 0) + 1
@@ -155,10 +155,10 @@ local function mirrorItemsInDistribution(distribution, pairs, distributionName)
 
     -- required target counts per weight: target -> weight -> count
     local required = {}
-    for _, p in ipairs(pairs) do
+    for _, p in ipairs(pairList) do
         required[p.target] = required[p.target] or {}
     end
-    for _, p in ipairs(pairs) do
+    for _, p in ipairs(pairList) do
         local srcCounts = {}
         for i = 1, #items, 2 do
             local itemName = items[i]
@@ -175,13 +175,13 @@ local function mirrorItemsInDistribution(distribution, pairs, distributionName)
         end
     end
 
-    for _, p in ipairs(pairs) do
+    for _, p in ipairs(pairList) do
         -- only handle each target once
     end
 
     -- insert missing targets
     local handledTarget = {}
-    for _, p in ipairs(pairs) do
+    for _, p in ipairs(pairList) do
         if not handledTarget[p.target] then
             handledTarget[p.target] = true
             local t = existing[p.target]
@@ -206,7 +206,7 @@ local function mirrorItemsInDistribution(distribution, pairs, distributionName)
 end
 
 -- One walk per root; `pairs` is a list of {source, target}.
-local function mirrorAcrossTables(root, rootName, pairs)
+local function mirrorAcrossTables(root, rootName, pairList)
     if type(root) ~= "table" then
         log("WARNING: Distribution root not found: " .. rootName)
         return
@@ -222,7 +222,7 @@ local function mirrorAcrossTables(root, rootName, pairs)
         visited[current] = true
 
         if type(current.items) == "table" then
-            mirrorItemsInDistribution(current, pairs, path)
+            mirrorItemsInDistribution(current, pairList, path)
         end
 
         for key, value in pairs(current) do

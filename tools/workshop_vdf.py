@@ -41,7 +41,7 @@ def main(argv):
         sys.exit("workshop_vdf: empty title or description")
     fields = [("appid", a.appid), ("publishedfileid", a.id),
               ("contentfolder", os.path.abspath(a.content)), ("previewfile", os.path.abspath(a.preview)),
-              ("visibility", "0"), ("title", title), ("description", desc), ("changenote", a.note)]
+              ("title", title), ("description", desc), ("changenote", a.note)]
     open(a.out, "w", encoding="utf-8").write(vdf(fields))
 
 

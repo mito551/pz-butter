@@ -77,3 +77,4 @@ function Damn.install()
 end
 
 Events.OnGameBoot.Add(Damn.install)
+if Events.OnGameStart then Events.OnGameStart.Add(Damn.install) end

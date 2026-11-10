@@ -14,8 +14,6 @@
     marker syncs, so the spawner is not registered there.
 --]]
 
-if isClient() or isServer() then return end
-
 local initialized = false
 local itemsByCoord = {}
 

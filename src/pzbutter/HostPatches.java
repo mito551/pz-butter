@@ -16,7 +16,7 @@ public final class HostPatches {
         @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
         public static void exit(@Patch.Return(readOnly = false) String ret) {
             String add = HostLaunch.hostArg();
-            if (add != null) ret = add;
+            if (add != null && (ret == null || ret.isBlank())) ret = add;
         }
     }
 }

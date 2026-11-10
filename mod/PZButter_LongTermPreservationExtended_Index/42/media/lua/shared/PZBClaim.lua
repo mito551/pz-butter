@@ -1,6 +1,5 @@
 -- PZ Butter shared claim protocol (modopt index, shared item C1). Every fix mod ships an identical copy.
 -- Shared mutable table; created once across all mods.
-if not PZButter then return end   -- this fix mod requires Butter Frames (fixmods.py rule)
 PZB_CLAIM = PZB_CLAIM or { v = 1, c = {} }
 local C = PZB_CLAIM
 

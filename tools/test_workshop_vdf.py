@@ -25,7 +25,7 @@ class VdfTest(unittest.TestCase):
         s = open(out).read()
         self.assertIn('"publishedfileid"\t\t"123"', s)
         self.assertIn('[b]Hi[/b] \\"q\\"\\nline2', s)
-        self.assertIn('"visibility"\t\t"0"', s)
+        self.assertNotIn('"visibility"', s)
 
     def test_id_zero_refused(self):
         self.assertNotEqual(self.run_cli("0")[0].returncode, 0)

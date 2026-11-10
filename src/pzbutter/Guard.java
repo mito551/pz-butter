@@ -4,13 +4,13 @@ package pzbutter;
 public final class Guard {
     public final String name;
     public volatile boolean on;
-    private int failures;
+    private final java.util.concurrent.atomic.AtomicInteger failures = new java.util.concurrent.atomic.AtomicInteger();
 
     public Guard(String name) { this.name = name; }
 
     public void fail(Throwable t) {
         try {
-            if (++failures >= 5 && on) {
+            if (failures.incrementAndGet() >= 5 && on) {
                 on = false;
                 System.out.println("[PZButter] " + name + " off after repeated failures: " + t);
             }
