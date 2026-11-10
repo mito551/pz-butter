@@ -118,14 +118,14 @@ final class LuaGateTest {
     static void plan7KeysDefaults() {
         // the written template itself, master on: every Plan 7 key at its shipped value
         Settings.load(SelfTest.write(Settings.render(new java.util.Properties()).replace("\nenabled=false\n", "\nenabled=true\n")));
-        for (String k : new String[] {"luaWorkerGate", "luaFileWriteThrottle", "logDedupe", "quietLog", "errorBoxOff", "fboChunkMisc", "lightVisionOnce", "idleBakeBoost", "zombieFovAwareness", "characterTexturePaths", "characterMaskLookup", "modelPathCache", "animTransformPool", "zombieVocalSet", "indexedHotLoops"}) assert !Settings.flag(k) : k;
+        for (String k : new String[] {"luaWorkerGate", "luaFileWriteThrottle", "logDedupe", "quietLog", "errorBoxOff", "fboChunkMisc", "lightVisionOnce", "idleBakeBoost", "zombieFovAwareness", "characterTexturePaths", "characterMaskLookup", "modelPathCache", "animTransformPool", "zombieVocalSet", "indexedHotLoops", "modReadAhead"}) assert !Settings.flag(k) : k;
         assert Settings.text("modProfile", "?").equals("custom") && Settings.text("modCompat", "?").equals("off");
         assert Settings.flag("uiRetainedMods");
     }
 
     static void settingsTemplateHasPlan7Keys() {
         String t = Settings.render(new java.util.Properties());
-        for (String k : new String[] {"luaWorkerGate=false", "luaFileWriteThrottle=false", "logDedupe=false", "quietLog=false", "errorBoxOff=false", "fboChunkMisc=false", "lightVisionOnce=false", "idleBakeBoost=false", "zombieFovAwareness=false", "characterTexturePaths=false", "characterMaskLookup=false", "modelPathCache=false", "animTransformPool=false", "zombieVocalSet=false", "indexedHotLoops=false", "modProfile=custom", "modCompat=off"})
+        for (String k : new String[] {"luaWorkerGate=false", "luaFileWriteThrottle=false", "logDedupe=false", "quietLog=false", "errorBoxOff=false", "fboChunkMisc=false", "lightVisionOnce=false", "idleBakeBoost=false", "zombieFovAwareness=false", "characterTexturePaths=false", "characterMaskLookup=false", "modelPathCache=false", "animTransformPool=false", "zombieVocalSet=false", "indexedHotLoops=false", "modReadAhead=false", "modProfile=custom", "modCompat=off"})
             assert t.contains("\n" + k + "\n") : k;
         assert t.indexOf("\nluaInternConstants=true\n") < t.indexOf("\nluaWorkerGate=false\n");
     }

@@ -266,6 +266,8 @@ public final class Settings {
       + "zombieVocalSet=false\n"
       + "# indexedHotLoops: the named hot loops (a state machine's update tier, meta-chunk zone lookups, stencil square tests) iterate arrays and lists with an index instead of a stream or iterator. The same answers, no throwaway objects.\n"
       + "indexedHotLoops=false\n"
+      + "# modReadAhead: while the join scans the mods, spare daemon threads read (and discard) the four media subtrees the animation checksum and script load will read, so the OS file cache is warm when the game reads them for real. Stops at 1.5 GB read.\n"
+      + "modReadAhead=false\n"
       + "# entityTiming: diagnostic; once a minute, the time per frame of the zombie update phases goes to the console (and entity.out with frameLog).\n"
       + "entityTiming=false\n"
       + "# frameThreads: width of PZ Butter's frame worker pool for the zombie update on workers. Needs luaWorkerGate and one restart after it changes (0 or 1 = no pool, no class changes). Max 32.\n"

@@ -174,6 +174,7 @@ public final class ModScanPatches {
     public static class WalkFolders {
         @Patch.OnEnter(skipOn = true)
         public static boolean enter(@Patch.This Object self, @Patch.Argument(0) File dir) {
+            ModReadAhead.warm(dir);
             if (!ModScanPatches.guard.on) return false;
             try {
                 return ModScanPatches.searchFolders(self, dir);

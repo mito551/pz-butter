@@ -69,6 +69,7 @@ public class Main {
         GpuPatches.initTc2();
         LoadFixes.init();
         ModScanPatches.init();
+        ModReadAhead.init();
         GpuPstate.init();
         ModWatch.init();
         ShaderReuse.init();
