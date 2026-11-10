@@ -107,6 +107,7 @@ public class Main {
         CameraPatches.init();
         DriveTrace.init();
         ClockPatches.init();
+        WindowPump.init();
         LightChecks.init();
         LightingPatches.init();
         FramePhase.init();

@@ -28,6 +28,7 @@ public final class ClockPatches {
 
     /** FPSTracking.frameStep exit (GameWindow.frameStep 32, game thread). dtNs is its return value: the frame's nanoTime delta; it writes fpsMultiplier only when dtNs > 0. */
     public static void onExit(long dtNs) {
+        WindowPump.mark(); // windowPump: every finished frame marks the game thread alive
         if (!FrameGrid.guard.on || dtNs <= 0) return;
         try {
             Thread m = FrameClock.mainThread;

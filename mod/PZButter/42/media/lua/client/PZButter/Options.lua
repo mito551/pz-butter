@@ -139,6 +139,7 @@ local KEYS = {
 	"vsyncAdaptive",
 	"wake",
 	"weatherMaskIdleSkip",
+	"windowPump",
 	"worldSoundCleanupFast",
 	"worldSoundFast",
 	"zeroFacingFix",

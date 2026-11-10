@@ -270,6 +270,8 @@ public final class Settings {
       + "modReadAhead=false\n"
       + "# modFloorPackCompress: with the texture-compression option on, mod floor packs (.floor) keep their compression bit (they upload BC3, not raw RGBA; texCompress does the encoding). Boot time rises while the pages compress.\n"
       + "modFloorPackCompress=false\n"
+      + "# windowPump: Windows only. While the game thread holds a frame for 300 ms during the join, a background thread pumps the window's message queue so the window does not turn 'Not Responding'; it ignores close requests during the hold and stops after 6 minutes. Windows untested. Linux and macOS do nothing.\n"
+      + "windowPump=false\n"
       + "# entityTiming: diagnostic; once a minute, the time per frame of the zombie update phases goes to the console (and entity.out with frameLog).\n"
       + "entityTiming=false\n"
       + "# frameThreads: width of PZ Butter's frame worker pool for the zombie update on workers. Needs luaWorkerGate and one restart after it changes (0 or 1 = no pool, no class changes). Max 32.\n"
