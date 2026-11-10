@@ -30,6 +30,20 @@ final class SoundTest {
         gateOpensAfterClockStepsBack();
         skipTickOffWhenFrameClockOff();
         fliesPendingClearRunsWhenGuardOff();
+        revisionGateCoversSimBodies();
+    }
+
+    /** B-D5-2: the revision gate must name every sim-side body-replacement key exactly — one typo would silently un-gate a body. */
+    static void revisionGateCoversSimBodies() throws Exception {
+        var f = Settings.class.getDeclaredField("REVISION_GATED");
+        f.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        java.util.Set<String> gated = (java.util.Set<String>) f.get(null);
+        assert gated.equals(java.util.Set.of(
+                "loaderCpuFixes", "scriptParserFast", "modWatchAsync", "texCompress", "luaSkipEmpty", "uiLuaFast",
+                "worldSoundCleanupFast", "hearingHoist", "worldSoundFast",
+                "cutawayInvalidateChanged", "cutawayVisitPrefilter", "cutawayRadius", "cutawayFast",
+                "edgeTestFast")) : gated;
     }
 
     static void forceParamsOnlyForStartingSound() {

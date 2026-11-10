@@ -621,7 +621,10 @@ public final class Settings {
 
     /** Body-replacement patches: only verified against the game revision they were built for. */
     private static final java.util.Set<String> REVISION_GATED = java.util.Set.of(
-        "loaderCpuFixes", "scriptParserFast", "modWatchAsync", "texCompress", "luaSkipEmpty", "uiLuaFast");
+        "loaderCpuFixes", "scriptParserFast", "modWatchAsync", "texCompress", "luaSkipEmpty", "uiLuaFast",
+        "worldSoundCleanupFast", "hearingHoist", "worldSoundFast",
+        "cutawayInvalidateChanged", "cutawayVisitPrefilter", "cutawayRadius", "cutawayFast",
+        "edgeTestFast");
 
     private static boolean revisionVerified() {
         try { return "4a0e9546ec".equals(Preload.gameRevision()); }
