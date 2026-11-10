@@ -4,8 +4,8 @@ require "Items/Distributions"
 
 -- PZ Butter fix, LTPE-1: same inserted entries and weights as the original, but the ten per-source
 -- recursive walks are collapsed into three (one per root), each mirroring every source->target
--- pair it handles in a single traversal of that root. Path strings are kept for log lines only;
--- no string is allocated at a node that has no items list. Derived from LTPESeedPacketLoot.lua;
+-- pair it handles in a single traversal of that root. A table's path is joined only when a
+-- line is logged for it. Derived from LTPESeedPacketLoot.lua;
 -- if that file changes, this override must be re-checked against the new version.
 local LOG_PREFIX = "[LTP Extended][Seed Loot] "
 
@@ -119,84 +119,74 @@ local function addProcedural(name, itemType, weight)
 end
 
 -- Match both legacy unqualified Base item names and fully qualified names.
-local function isSourceItem(itemName, sourceItem)
-    return itemName == sourceItem
-        or itemName == "Base." .. sourceItem
-end
-
--- Mirror every source->target pair supplied in `pairs` (a list of {source, target}) into one
+-- Mirror every source->target pair in pairList (a list of {source, target}) into one
 -- distribution's items list. A target shared by several sources is raised to the maximum
 -- count among them, exactly as the original's repeated walks left it.
-local function mirrorItemsInDistribution(distribution, pairList, distributionName)
+-- bySource maps an item name to the pairs it is a source of (see mirrorAcrossTables).
+-- pathOf() gives the distribution's name; it is called only when a line is logged.
+local function mirrorItemsInDistribution(distribution, pairList, bySource, pathOf)
     if type(distribution) ~= "table"
         or type(distribution.items) ~= "table" then
         return
     end
 
     local items = distribution.items
+    local pairCount = #pairList
 
-    -- existing target counts: target -> weight -> count
-    local existing = {}
-    for _, p in ipairs(pairList) do
-        existing[p.target] = existing[p.target] or {}
+    -- existing[target][weight] = entries already present
+    -- required[target][weight] = most entries any of its sources has at that weight
+    local existing, required, sourceCounts = {}, {}, {}
+    for k = 1, pairCount do
+        local target = pairList[k].target
+        existing[target] = existing[target] or {}
+        required[target] = required[target] or {}
+        sourceCounts[k] = {}
     end
+
     for i = 1, #items, 2 do
         local itemName = items[i]
         local weight = items[i + 1]
         if weight ~= nil then
-            for _, p in ipairs(pairList) do
-                if itemName == p.target then
-                    local t = existing[p.target]
-                    t[weight] = (t[weight] or 0) + 1
+            local t = existing[itemName]
+            if t then
+                t[weight] = (t[weight] or 0) + 1
+            else
+                local ks = bySource[itemName]
+                if ks then
+                    for j = 1, #ks do
+                        local c = sourceCounts[ks[j]]
+                        c[weight] = (c[weight] or 0) + 1
+                    end
                 end
             end
         end
     end
 
-    -- required target counts per weight: target -> weight -> count
-    local required = {}
-    for _, p in ipairs(pairList) do
-        required[p.target] = required[p.target] or {}
-    end
-    for _, p in ipairs(pairList) do
-        local srcCounts = {}
-        for i = 1, #items, 2 do
-            local itemName = items[i]
-            local weight = items[i + 1]
-            if weight ~= nil and isSourceItem(itemName, p.source) then
-                srcCounts[weight] = (srcCounts[weight] or 0) + 1
-            end
-        end
-        for weight, sourceCount in pairs(srcCounts) do
-            local t = required[p.target]
-            if sourceCount > (t[weight] or 0) then
-                t[weight] = sourceCount
+    for k = 1, pairCount do
+        local r = required[pairList[k].target]
+        for weight, sourceCount in pairs(sourceCounts[k]) do
+            if sourceCount > (r[weight] or 0) then
+                r[weight] = sourceCount
             end
         end
     end
 
-    for _, p in ipairs(pairList) do
-        -- only handle each target once
-    end
-
-    -- insert missing targets
     local handledTarget = {}
-    for _, p in ipairs(pairList) do
+    for k = 1, pairCount do
+        local p = pairList[k]
         if not handledTarget[p.target] then
             handledTarget[p.target] = true
             local t = existing[p.target]
-            local r = required[p.target]
-            for weight, sourceCount in pairs(r) do
+            for weight, sourceCount in pairs(required[p.target]) do
                 local currentCount = t[weight] or 0
                 while currentCount < sourceCount do
                     table.insert(items, p.target)
                     table.insert(items, weight)
                     currentCount = currentCount + 1
-                    t[weight] = currentCount
                     log(
                         "Mirrored " .. p.source
                         .. " -> " .. p.target
-                        .. " in " .. distributionName
+                        .. " in " .. pathOf()
                         .. " (weight " .. tostring(weight) .. ")"
                     )
                 end
@@ -205,34 +195,60 @@ local function mirrorItemsInDistribution(distribution, pairList, distributionNam
     end
 end
 
--- One walk per root; `pairs` is a list of {source, target}.
+-- One walk per root; pairList is a list of {source, target}.
 local function mirrorAcrossTables(root, rootName, pairList)
     if type(root) ~= "table" then
         log("WARNING: Distribution root not found: " .. rootName)
         return
     end
 
-    local visited = {}
+    -- item name -> indexes of the pairs it is a source of; with and without the Base. module, as the original matches
+    local bySource = {}
+    for k = 1, #pairList do
+        local source = pairList[k].source
+        for _, name in ipairs({ source, "Base." .. source }) do
+            local ks = bySource[name]
+            if not ks then
+                ks = {}
+                bySource[name] = ks
+            end
+            ks[#ks + 1] = k
+        end
+    end
 
-    local function visit(current, path)
-        if type(current) ~= "table" or visited[current] then
+    local visited = {}
+    -- the keys from the root down to the table being visited; joined only for a log line
+    local names, depth = { rootName }, 1
+    local function pathOf()
+        local path = names[1]
+        for i = 2, depth do
+            path = path .. "." .. names[i]
+        end
+        return path
+    end
+
+    local function visit(current)
+        if visited[current] then
             return
         end
 
         visited[current] = true
 
         if type(current.items) == "table" then
-            mirrorItemsInDistribution(current, pairList, path)
+            mirrorItemsInDistribution(current, pairList, bySource, pathOf)
         end
 
         for key, value in pairs(current) do
             if type(value) == "table" and key ~= "items" then
-                visit(value, path .. "." .. tostring(key))
+                depth = depth + 1
+                names[depth] = tostring(key)
+                visit(value)
+                depth = depth - 1
             end
         end
     end
 
-    visit(root, rootName)
+    visit(root)
 end
 
 local function registerOatLoot()
