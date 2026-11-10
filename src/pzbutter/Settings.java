@@ -480,6 +480,12 @@ public final class Settings {
 + "# install button 1.2 s after every required item shows its details, no error showed and the items\n"
 + "# needing download stay under 3 GB; holding Esc keeps the screen open.\n"
 + "workshopAutoInstall=false\n"
++ "# rightDoubleTap: a quick right-click double tap opens the context menu instead of being\n"
++ "# swallowed; a held right press still aims.\n"
++ "rightDoubleTap=true\n"
++ "# invTooltipCache: the inventory tooltip's measure pass is answered from a 250 ms cache; the\n"
++ "# draw pass stays live. Off until the tooltip re-layout is needed.\n"
++ "invTooltipCache=false\n"
 + "# luaListWalk: media/lua folder lists are built with one walk instead of one OS canonical-path\n"
 + "# query per folder entry; junction-tainted trees keep the game's code. Same list and order.\n"
 + "luaListWalk=false\n"
@@ -651,6 +657,7 @@ public final class Settings {
         "findItemOnce",
         "chunkZExtentsFast",
         "animFolderMissing",
+        "rightDoubleTap",
         "luaInternConstants", "luaSkipEmpty", "uiVerify", "uiRetainedMods", "uiTickStagger", "textWidthCache", "uiLuaFast", "mapStreetMemo", "mapStreetCache", "mapVisitedFast",   // these two only act with vsync on
         "audioLimiterStereoFold",
         "persistentVboFrameSync",   // acts only with persistentVbo (Plan 9)
