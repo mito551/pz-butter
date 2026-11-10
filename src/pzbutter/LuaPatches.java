@@ -496,4 +496,60 @@ public final class LuaPatches {
             if (r != null) ret = r;
         }
     }
+
+    // luaListWalk: LuaManager.searchFolders asks the OS each entry's canonical path; walk once.
+
+    public static final Guard walkGuard = new Guard("luaListWalk");
+
+    static void initWalk() {
+        try {
+            walkGuard.on = Settings.flag("luaListWalk");
+        } catch (Throwable t) {
+            walkGuard.fail(t);
+        }
+    }
+
+    /** Same list and order as stock searchFolders; symlink/junction entries walk the game's code. */
+    public static java.util.List<String> walkFolders(java.net.URI uri, java.io.File dir, java.util.List<String> out) throws Exception {
+        if (dir.isDirectory()) {
+            String[] names = dir.list();
+            if (names == null) return out;
+            String base = dir.getAbsolutePath();
+            java.nio.file.Path basePath = dir.toPath();
+            for (String name : names) {
+                java.nio.file.Path childPath = basePath.resolve(name);
+                java.io.File child = new java.io.File(base + java.io.File.separator + name);
+                if (java.nio.file.Files.isSymbolicLink(childPath)) zombie.Lua.LuaManager.searchFolders(uri, child);
+                else walkFolders(uri, child, out);
+            }
+        } else if (dir.getAbsolutePath().toLowerCase().endsWith(".lua")) {
+            String rel = zombie.ZomboidFileSystem.instance.getRelativeFile(uri, dir.getAbsolutePath());
+            out.add(rel.toLowerCase(java.util.Locale.ENGLISH));
+        }
+        return out;
+    }
+
+    /** True when the path or an ancestor resolves elsewhere (junction chain keeps the game's code). */
+    public static boolean walkTainted(java.io.File f) throws Exception {
+        return !f.getCanonicalFile().getAbsolutePath().equals(f.getAbsolutePath());
+    }
+
+    @Patch(className = "zombie.Lua.LuaManager", methodName = "searchFolders")
+    public static class ListWalk {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.Argument(0) java.net.URI uri, @Patch.Argument(1) java.io.File dir) {
+            if (!walkGuard.on) return false;
+            try {
+                if (uri == null || dir == null || zombie.Lua.LuaManager.loadList == null) return false;
+                if (walkTainted(dir)) return false;
+                java.util.List<String> out = new ArrayList<>();
+                walkFolders(uri, dir, out);
+                zombie.Lua.LuaManager.loadList.addAll(out);
+                return true;
+            } catch (Throwable t) {
+                walkGuard.fail(t);
+                return false;
+            }
+        }
+    }
 }

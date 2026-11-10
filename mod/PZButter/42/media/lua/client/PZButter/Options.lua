@@ -62,6 +62,7 @@ local KEYS = {
 	"luaFileWriteThrottle",
 	"luaGcNoop",
 	"luaInternConstants",
+	"luaListWalk",
 	"luaRawgetFast",
 	"luaSkipEmpty",
 	"luaTiming",

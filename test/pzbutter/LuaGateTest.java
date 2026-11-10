@@ -75,6 +75,7 @@ final class LuaGateTest {
         quietLogLinesDropped();
         errorBoxHidden();
         otherStreamOrSeverityPrinted();
+        luaListWalk();
         summaryPassesThrough();
         keyCapPassesThrough();
         concurrentCountsExact();
@@ -1541,5 +1542,52 @@ final class LuaGateTest {
         Settings.load(SelfTest.write("enabled=true\n"));
         LuaPatches.initPoolPut();
         assert LuaPatches.poolGuard.on : "the key must default on";
+    }
+
+    // ---- luaListWalk: LuaManager.searchFolders answers from one walk (differential vs stock) ----
+
+    static void luaListWalk() throws Exception {
+        java.lang.reflect.Field uf = sun.misc.Unsafe.class.getDeclaredField("theUnsafe");
+        uf.setAccessible(true);
+        sun.misc.Unsafe u = (sun.misc.Unsafe) uf.get(null);
+        java.lang.reflect.Field instF = zombie.ZomboidFileSystem.class.getDeclaredField("instance");
+        Object instBase = u.staticFieldBase(instF);
+        u.putObject(instBase, u.staticFieldOffset(instF),
+            u.allocateInstance(zombie.ZomboidFileSystem.class));
+        java.nio.file.Path root = java.nio.file.Files.createTempDirectory("pzlistwalk");
+        java.nio.file.Files.createDirectories(root.resolve("a/b"));
+        java.nio.file.Files.createFile(root.resolve("a/x.lua"));
+        java.nio.file.Files.createFile(root.resolve("a/b/y.LUA"));
+        java.nio.file.Files.createFile(root.resolve("plain.txt"));
+        java.nio.file.Files.createSymbolicLink(root.resolve("sym"), root.resolve("a"));
+        java.nio.file.Files.createFile(root.resolve("sym/symfile.lua"));
+        java.io.File dir = root.toFile();
+
+        zombie.Lua.LuaManager.loadList = new java.util.ArrayList<>();
+        zombie.Lua.LuaManager.searchFolders(dir.toURI(), dir);
+        java.util.List<String> stock = new java.util.ArrayList<>(zombie.Lua.LuaManager.loadList);
+
+        zombie.Lua.LuaManager.loadList = new java.util.ArrayList<>();
+        java.util.List<String> out = LuaPatches.walkFolders(dir.toURI(), dir, zombie.Lua.LuaManager.loadList);
+        assert out == zombie.Lua.LuaManager.loadList : "walkFolders appends to the list it is given";
+        assert out.equals(stock) : "walkFolders must produce the stock list in stock order: " + out + " vs " + stock;
+
+        zombie.Lua.LuaManager.loadList = new java.util.ArrayList<>();
+        LuaPatches.walkFolders(dir.toURI(), dir, zombie.Lua.LuaManager.loadList);
+        assert zombie.Lua.LuaManager.loadList.equals(stock) : "no duplicate adds";
+
+        assert !LuaPatches.walkTainted(dir) : "a plain directory is not junction-tainted";
+        assert LuaPatches.walkTainted(new java.io.File(root.resolve("sym").toString())) :
+            "a symlinked directory is junction-tainted and takes the game's code";
+
+        zombie.Lua.LuaManager.loadList = null;
+        Settings.load(SelfTest.write("enabled=true\n"));
+        LuaPatches.initWalk();
+        assert !LuaPatches.walkGuard.on : "luaListWalk defaults off";
+        Settings.load(SelfTest.write("enabled=true\nluaListWalk=true\n"));
+        LuaPatches.initWalk();
+        assert LuaPatches.walkGuard.on : "the key enables the walk";
+        Settings.load(SelfTest.write("enabled=true\n"));
+        LuaPatches.initWalk();
     }
 }
