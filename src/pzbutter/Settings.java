@@ -268,6 +268,8 @@ public final class Settings {
       + "indexedHotLoops=false\n"
       + "# modReadAhead: while the join scans the mods, spare daemon threads read (and discard) the four media subtrees the animation checksum and script load will read, so the OS file cache is warm when the game reads them for real. Stops at 1.5 GB read.\n"
       + "modReadAhead=false\n"
+      + "# modFloorPackCompress: with the texture-compression option on, mod floor packs (.floor) keep their compression bit (they upload BC3, not raw RGBA; texCompress does the encoding). Boot time rises while the pages compress.\n"
+      + "modFloorPackCompress=false\n"
       + "# entityTiming: diagnostic; once a minute, the time per frame of the zombie update phases goes to the console (and entity.out with frameLog).\n"
       + "entityTiming=false\n"
       + "# frameThreads: width of PZ Butter's frame worker pool for the zombie update on workers. Needs luaWorkerGate and one restart after it changes (0 or 1 = no pool, no class changes). Max 32.\n"

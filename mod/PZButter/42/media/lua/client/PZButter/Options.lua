@@ -87,6 +87,7 @@ local KEYS = {
 	"mapStreetCache",
 	"mapStreetMemo",
 	"mapVisitedFast",
+	"modFloorPackCompress",
 	"modReadAhead",
 	"modelPathCache",
 	"modScanWalk",

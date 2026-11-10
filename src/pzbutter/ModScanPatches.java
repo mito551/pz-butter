@@ -30,7 +30,12 @@ public final class ModScanPatches {
     public static final Guard guard = new Guard("modScanWalk");
 
     static void init() {
-        try { guard.on = Settings.flag("modScanWalk"); } catch (Throwable t) { guard.fail(t); }
+        try {
+            guard.on = Settings.flag("modScanWalk");
+            floorGuard.on = Settings.flag("modFloorPackCompress");
+        } catch (Throwable t) {
+            guard.fail(t);
+        }
     }
 
     // ---- loadMod window ----
@@ -202,6 +207,42 @@ public final class ModScanPatches {
         @Patch.OnExit
         public static void exit(@Patch.Return(readOnly = false) String ret, @Patch.Local("r") String r) {
             if (r != null) ret = r;
+        }
+    }
+
+    // ---- modFloorPackCompress: mod ".floor" packs keep the texture-compression bit ----
+
+    /**
+     * modFloorPackCompress (SPEC 1036, extends texCompress). The mod parse (@code ChooseGameInfo.readModInfoAux)
+     * clears flags bit 4 (texture compression) for every pack named {@code *.floor}, so HD mod floor packs upload
+     * uncompressed. With the player's option on, set the bit again for mod floor packs only; {@code texCompress}'s
+     * {@code wouldCompressPack} then BC3-encodes them (never BC1: soft-alpha texels). Vanilla floors never pass
+     * {@code addPack} (verified: the {@code .floor} string and {@code addPack} exist only in the mod parse).
+     */
+    public static final Guard floorGuard = new Guard("modFloorPackCompress");
+
+    /** The decision: this pack line is a mod floor pack and needs its compression bit set. */
+    public static boolean floorSet(String name, int flags) {
+        if (!floorGuard.on) return false;
+        try {
+            return zombie.core.textures.TextureID.useCompressionOption
+                    && name != null && name.endsWith(".floor")
+                    && (flags & 4) == 0;
+        } catch (Throwable t) {
+            floorGuard.fail(t);
+            return false;
+        }
+    }
+
+    @Patch(className = "zombie.gameStates.ChooseGameInfo$Mod", methodName = "addPack")
+    public static class FloorPack {
+        @Patch.OnEnter
+        public static void enter(@Patch.Argument(0) String name, @Patch.Argument(1) int flags) {
+            try {
+                if (ModScanPatches.floorSet(name, flags)) flags |= 4;
+            } catch (Throwable t) {
+                ModScanPatches.floorGuard.fail(t);
+            }
         }
     }
 }

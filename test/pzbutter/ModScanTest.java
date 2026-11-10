@@ -25,7 +25,37 @@ final class ModScanTest {
         linksFallback();
         relMatchesStock();
         windowAppendAndLookup();
+        modFloorPackCompress();
         System.out.println("[ModScanTest] ok");
+    }
+
+    // ---- modFloorPackCompress: mod .floor packs keep the texture-compression bit ----
+
+    static void modFloorPackCompress() throws Exception {
+        Settings.load(SelfTest.write("enabled=true\n"));
+        ModScanPatches.init();
+        assert !ModScanPatches.floorGuard.on : "modFloorPackCompress defaults off";
+
+        boolean option = zombie.core.textures.TextureID.useCompressionOption;
+        try {
+            Settings.load(SelfTest.write("enabled=true\nmodFloorPackCompress=true\n"));
+            ModScanPatches.init();
+            assert ModScanPatches.floorGuard.on : "template enables modFloorPackCompress";
+
+            zombie.core.textures.TextureID.useCompressionOption = true;
+            assert ModScanPatches.floorSet("media/texture/HD.floor", 64) : "floor pack with the bit unset gets it set";
+            assert !ModScanPatches.floorSet("media/texture/HD.floor", 68) : "floor pack already compressed is untouched";
+            assert !ModScanPatches.floorSet("media/texture/Tiles1x.pack", 64) : "non-floor pack untouched";
+            assert !ModScanPatches.floorSet(null, 64) : "null name safe";
+
+            zombie.core.textures.TextureID.useCompressionOption = false;
+            assert !ModScanPatches.floorSet("media/texture/HD.floor", 64) : "option off means bit 4 is zero anyway";
+        } finally {
+            zombie.core.textures.TextureID.useCompressionOption = option;
+            Settings.load(SelfTest.write("enabled=true\n"));
+            ModScanPatches.init();
+            assert !ModScanPatches.floorGuard.on : "default restored";
+        }
     }
 
     static void defaultsOff() throws Exception {
