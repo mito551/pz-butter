@@ -49,6 +49,7 @@ public class Main {
         LuaPatches.initInv();
         UiPatches.initPlain();
         UiPatches.initSkip();
+        ModelPatches.initSkinnedUniform();
         ScriptPatches.initOnce();
         ScriptPatches.initKept();
         ScriptPatches.initMiss();

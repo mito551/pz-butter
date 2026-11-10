@@ -20,6 +20,7 @@ public class ModelTest {
     public static void run() throws Exception {
         animFolderMissing();
         animFolderScope();
+        skinnedUniformSkip();
         zombie.core.skinnedmodel.model.Model m = anyModel();
         zombie.core.skinnedmodel.model.ModelInstance full = new zombie.core.skinnedmodel.model.ModelInstance();
         full.model = m;
@@ -131,5 +132,33 @@ public class ModelTest {
         ModelPatches.animScopeLoadEnter();
         assert ModelPatches.animScopeVisit(gameRoot, "media/AnimSets/ZombieWalk", false, v) == v : "guard off: no wrap";
         ModelPatches.animScopeLoadExit();
+    }
+
+    // ---- skinnedUniformSkip: an unchanged uniform upload is skipped, per shader and per slot ----
+
+    static void skinnedUniformSkip() throws Exception {
+        Settings.load(SelfTest.write("enabled=true\n"));
+        ModelPatches.initSkinnedUniform();
+        assert !ModelPatches.suGuard.on : "skinnedUniformSkip defaults off";
+
+        Settings.load(SelfTest.write("enabled=true\nskinnedUniformSkip=true\n"));
+        ModelPatches.initSkinnedUniform();
+        assert ModelPatches.suGuard.on : "template turns the guard on";
+
+        Object sh = new Object(), other = new Object();
+        assert !ModelPatches.suSkip1(sh, 0, 0.0f) : "the first value uploads (no false NaN skip)";
+        assert ModelPatches.suSkip1(sh, 0, 0.0f) : "the same value skips";
+        assert !ModelPatches.suSkip1(sh, 0, 0.5f) : "a change uploads";
+        assert ModelPatches.suSkip1(sh, 0, 0.5f) : "and then skips";
+        assert !ModelPatches.suSkip1(other, 0, 0.5f) : "another shader instance uploads its own";
+        assert !ModelPatches.suSkip3(sh, 7, 1, 2, 3) : "a vector uploads";
+        assert ModelPatches.suSkip3(sh, 7, 1, 2, 3) : "a same vector skips";
+        assert !ModelPatches.suSkip3(sh, 7, 1, 2, 4) : "a changed vector uploads";
+        assert ModelPatches.suSkip1(sh, 0, 0.5f) : "vector slots do not disturb scalar slots";
+
+        Settings.load(SelfTest.write("enabled=true\n"));
+        ModelPatches.initSkinnedUniform();
+        assert !ModelPatches.suGuard.on : "defaults restored";
+        assert !ModelPatches.suSkip1(sh, 0, 0.5f) : "off: stock (no skip)";
     }
 }

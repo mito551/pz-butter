@@ -186,4 +186,136 @@ public final class ModelPatches {
             }
         }
     }
+
+    // ---- skinnedUniformSkip: the skinned Shader setters skip an upload whose value has not changed
+    // (a per-shader last-value table; the values are compared exactly). The direct uniforms (alpha,
+    // tint, hue, lighting, rust) and the ShaderProgram-string setters (targetDepth, depth bias, scale,
+    // ambient) all ride the same slots. ----
+
+    public static final Guard suGuard = new Guard("skinnedUniformSkip");
+
+    static void initSkinnedUniform() {
+        try {
+            suGuard.on = Settings.flag("skinnedUniformSkip");
+            if (!suGuard.on) suLast.clear();
+        } catch (Throwable t) {
+            suGuard.fail(t);
+        }
+    }
+
+    static final java.util.IdentityHashMap<Object, float[]> suLast = new java.util.IdentityHashMap<>();
+
+    static final int SU_SLOTS = 7;      // alpha, scale, depthBias, targetDepth, hue, lightingAmount, rust (1f)
+    static final int SU_AMBIENT = 7;    // 3f slots: base index
+    static final int SU_TINT = 10;
+
+    static float[] suLastOf(Object s) {
+        float[] l = suLast.get(s);
+        if (l == null) {
+            l = new float[13];
+            java.util.Arrays.fill(l, Float.NaN);
+            suLast.put(s, l);
+        }
+        return l;
+    }
+
+    public static boolean suSkip1(Object s, int slot, float v) {
+        if (!suGuard.on) return false;
+        try {
+            float[] l = suLastOf(s);
+            if (l[slot] == v) return true;
+            l[slot] = v;
+            return false;
+        } catch (Throwable t) {
+            suGuard.fail(t);
+            return false;
+        }
+    }
+
+    public static boolean suSkip3(Object s, int slot, float a, float b, float c) {
+        if (!suGuard.on) return false;
+        try {
+            float[] l = suLastOf(s);
+            if (l[slot] == a && l[slot + 1] == b && l[slot + 2] == c) return true;
+            l[slot] = a;
+            l[slot + 1] = b;
+            l[slot + 2] = c;
+            return false;
+        } catch (Throwable t) {
+            suGuard.fail(t);
+            return false;
+        }
+    }
+
+    @Patch(className = "zombie.core.skinnedmodel.shader.Shader", methodName = "setAlpha")
+    public static class SuAlpha {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This Object s, @Patch.Argument(0) float v) {
+            return suSkip1(s, 0, v);
+        }
+    }
+
+    @Patch(className = "zombie.core.skinnedmodel.shader.Shader", methodName = "setScale")
+    public static class SuScale {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This Object s, @Patch.Argument(0) float v) {
+            return suSkip1(s, 1, v);
+        }
+    }
+
+    @Patch(className = "zombie.core.skinnedmodel.shader.Shader", methodName = "setDepthBias")
+    public static class SuDepthBias {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This Object s, @Patch.Argument(0) float v) {
+            return suSkip1(s, 2, v);
+        }
+    }
+
+    @Patch(className = "zombie.core.skinnedmodel.shader.Shader", methodName = "setTargetDepth")
+    public static class SuTargetDepth {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This Object s, @Patch.Argument(0) float v) {
+            return suSkip1(s, 3, v);
+        }
+    }
+
+    @Patch(className = "zombie.core.skinnedmodel.shader.Shader", methodName = "setHueShift")
+    public static class SuHue {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This Object s, @Patch.Argument(0) float v) {
+            return suSkip1(s, 4, v);
+        }
+    }
+
+    @Patch(className = "zombie.core.skinnedmodel.shader.Shader", methodName = "setLightingAmount")
+    public static class SuLightAmt {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This Object s, @Patch.Argument(0) float v) {
+            return suSkip1(s, 5, v);
+        }
+    }
+
+    @Patch(className = "zombie.core.skinnedmodel.shader.Shader", methodName = "setTextureRustA")
+    public static class SuRust {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This Object s, @Patch.Argument(0) float v) {
+            return suSkip1(s, 6, v);
+        }
+    }
+
+    @Patch(className = "zombie.core.skinnedmodel.shader.Shader", methodName = "setAmbient", strictMatch = true)
+    public static class SuAmbient {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This Object s, @Patch.Argument(0) float a, @Patch.Argument(1) float b, @Patch.Argument(2) float c) {
+            return suSkip3(s, SU_AMBIENT, a, b, c);
+        }
+    }
+
+    @Patch(className = "zombie.core.skinnedmodel.shader.Shader", methodName = "setTint", strictMatch = true)
+    public static class SuTint {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This Object s, @Patch.Argument(0) float a, @Patch.Argument(1) float b, @Patch.Argument(2) float c) {
+            return suSkip3(s, SU_TINT, a, b, c);
+        }
+    }
 }

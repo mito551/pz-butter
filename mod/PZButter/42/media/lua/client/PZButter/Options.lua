@@ -98,6 +98,7 @@ local KEYS = {
 	"renderIdleWait",
 	"scriptParserFast",
 	"shaderCache",
+	"skinnedUniformSkip",
 	"skipIdChecks",
 	"smartTextureRelease",
 	"soundZoneCache",
