@@ -286,4 +286,48 @@ public final class UiPatches {
         @Patch.OnExit(onThrowable = Throwable.class, suppress = Throwable.class)
         public static void exit() { onEpochEvent(); }
     }
+
+    // ---- translatorPlainText: a %-free translation with no arguments skips the formatter ----
+
+    public static final Guard plainGuard = new Guard("translatorPlainText");
+
+    static void initPlain() {
+        try {
+            plainGuard.on = Settings.flag("translatorPlainText");
+        } catch (Throwable t) {
+            plainGuard.fail(t);
+        }
+    }
+
+    /** True when String.formatted would return s unchanged (no percent, no arguments). */
+    public static boolean plain(String text, Object[] args) {
+        try {
+            if (!plainGuard.on) return false;
+            return text != null && args != null && args.length == 0 && text.indexOf('%') < 0;
+        } catch (Throwable t) {
+            plainGuard.fail(t);
+            return false;
+        }
+    }
+
+    @Patch(className = "zombie.core.Translator", methodName = "reportMissingArgumentsFromPastAbuse")
+    public static class PlainText {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.Argument(1) String text, @Patch.Argument(2) Object[] args, @Patch.Local("r") Object r) {
+            if (!plainGuard.on) return false;
+            try {
+                if (!plain(text, args)) return false;
+                r = text;
+                return true;
+            } catch (Throwable t) {
+                plainGuard.fail(t);
+                return false;
+            }
+        }
+
+        @Patch.OnExit
+        public static void exit(@Patch.Return(readOnly = false) String ret, @Patch.Local("r") Object r) {
+            if (r != null) ret = (String) r;
+        }
+    }
 }

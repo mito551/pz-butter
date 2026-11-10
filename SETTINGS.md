@@ -204,6 +204,7 @@ These keys act only on a multiplayer client; on a server they stay off.
 | `luaBreakpointSkip` | The Lua debug-breakpoint checks answer at once while no breakpoint is set anywhere; the debugger keeps working once one is. Off by default. |
 | `kahluaTableAlloc` | Lua table constructors build tables whose backing store is pre-sized, so the usual first growth step is gone; iteration order is unchanged. Off by default. |
 | `luaRequireIndex` | The Lua require list answers `contains` from a name hash rebuilt when a change of the list shows up in its size. Off by default. |
+| `translatorPlainText` | Translations with no percent sign and no arguments are returned as is; the formatter (and its allocation) only runs for texts that use it. Off by default. |
 | `chunkZExtentsFast` | The chunk-map z-extents loop only visits the cells whose chunk lookup can answer, instead of all cells of the swap array, with the same result. On by default. |
 | `enumParseCache` | `tryParseEnum` and the NetworkVariables `fromString` methods (ThumpType, WalkType, ZombieState) answer from a hash map of the enum names instead of a throw-caught valueOf or a linear scan; same answer for a name that exists and for one that does not. Off by default. |
 | `animFolderMissing` | The per-mod animation folder walk only runs when the folder exists; a missing AnimSets or actiongroups folder no longer logs a NoSuchFileException with a stack. On by default. |

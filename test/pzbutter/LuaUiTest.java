@@ -6,7 +6,7 @@ import se.krka.kahlua.vm.Prototype;
 final class LuaUiTest {
     private LuaUiTest() {}
 
-    static void run() {
+    static void run() throws Exception {
         luaUiDefaultsOn();
         emptyClosureOnlyBareReturn();
         timingTopTen();
@@ -23,6 +23,7 @@ final class LuaUiTest {
         streetCacheReusedWhileViewSame();
         visitedRowsSameBytes();
         uiLuaFastKeepsBackpacksCurrent();
+        translatorPlainText();
         uiTimingSelfExcludesChildren();
         uiTimingBalancedAfterThrow();
         uiTimingDeepNesting();
@@ -362,5 +363,30 @@ final class LuaUiTest {
         Settings.load(SelfTest.write("enabled=true\n"));
         UiTiming.init();
         assert !UiTiming.guard.on;
+    }
+
+    // ---- translatorPlainText: a %-free translation with no arguments skips the formatter ----
+
+    static void translatorPlainText() throws Exception {
+        Settings.load(SelfTest.write("enabled=true\n"));
+        UiPatches.initPlain();
+        assert !UiPatches.plainGuard.on : "translatorPlainText defaults off";
+
+        Settings.load(SelfTest.write("enabled=true\ntranslatorPlainText=true\n"));
+        UiPatches.initPlain();
+        assert UiPatches.plainGuard.on : "template turns the guard on";
+
+        assert UiPatches.plain("no percent here", new Object[0]) : "no percent and no args: as it is";
+        assert !UiPatches.plain("hi %s", new Object[0]) : "a percent goes through the formatter";
+        assert !UiPatches.plain(null, new Object[0]) : "no text, no fast path";
+        assert !UiPatches.plain("plain", null) : "no args array, no fast path";
+        assert !UiPatches.plain("plain", new Object[] {"a"}) : "an argument goes through the formatter";
+
+        // "the same characters out": for a %-free string the formatter itself changes nothing
+        assert "no percent here".formatted(new Object[0]).equals("no percent here") : "formatter is the identity here";
+
+        Settings.load(SelfTest.write("enabled=true\n"));
+        UiPatches.initPlain();
+        assert !UiPatches.plainGuard.on : "defaults restored";
     }
 }

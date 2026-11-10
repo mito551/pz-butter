@@ -70,6 +70,7 @@ local KEYS = {
 	"luaGcNoop",
 	"luaInternConstants",
 	"luaListWalk",
+	"luaRequireIndex",
 	"luaRawgetFast",
 	"luaSkipEmpty",
 	"luaTiming",
