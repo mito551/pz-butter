@@ -619,9 +619,19 @@ public final class Settings {
 
     private static void clearMemo() { flagMemo.clear(); numMemo.clear(); textMemo.clear(); modeMemo.clear(); }
 
+    /** Body-replacement patches: only verified against the game revision they were built for. */
+    private static final java.util.Set<String> REVISION_GATED = java.util.Set.of(
+        "loaderCpuFixes", "scriptParserFast", "modWatchAsync", "texCompress", "luaSkipEmpty", "uiLuaFast");
+
+    private static boolean revisionVerified() {
+        try { return "4a0e9546ec".equals(Preload.gameRevision()); }
+        catch (Throwable t) { return false; }
+    }
+
     public static boolean flag(String key) {
         if (!enabled) return false;
         if (!Side.allowed(key)) return false;   // side tags live in Side.SERVER / Side.BOTH
+        if (REVISION_GATED.contains(key) && !revisionVerified()) return false;
         if (forcedOff.contains(key)) return STOCK_ON.contains(key);
         Object c = flagMemo.get(key);
         if (c == null) flagMemo.put(key, c = bool(raw(key), ON_BY_DEFAULT.contains(key)));
@@ -649,6 +659,7 @@ public final class Settings {
     /** A number key, clamped to [min, max]; the default when missing or unreadable. */
     public static int num(String key, int dflt, int min, int max) {
         if (!Side.allowed(key)) return dflt;
+        if (REVISION_GATED.contains(key) && !revisionVerified()) return dflt;
         int n = dflt;
         if (!forcedOff.contains(key)) {
             Object c = numMemo.get(key);
@@ -666,6 +677,7 @@ public final class Settings {
     /** A text key; the default when missing. */
     public static String text(String key, String dflt) {
         if (!Side.allowed(key) || forcedOff.contains(key)) return dflt;
+        if (REVISION_GATED.contains(key) && !revisionVerified()) return dflt;
         Object c = textMemo.get(key);
         if (c == null) textMemo.put(key, c = parseText(raw(key)));
         return c == ABSENT ? dflt : (String) c;
@@ -676,6 +688,7 @@ public final class Settings {
     /** "off", "on" or "auto"; "off" when the master switch is off or the value is unreadable. */
     public static String mode(String key) {
         if (!enabled || forcedOff.contains(key) || !Side.allowed(key)) return "off";
+        if (REVISION_GATED.contains(key) && !revisionVerified()) return "off";
         Object c = modeMemo.get(key);
         if (c == null) modeMemo.put(key, c = parseMode(raw(key)));
         return (String) c;
