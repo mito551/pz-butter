@@ -70,7 +70,7 @@ function H.getLiters(gen)
 end
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- Internal: read sandbox fuel multiplier (legacy %/h path)
+-- Internal: sandbox fuel multiplier (the engine burns totalPowerUsing x this per hour)
 -- ─────────────────────────────────────────────────────────────────────────────
 local function getFuelMultiplier()
     local opt = getSandboxOptions() and getSandboxOptions():getOptionByName("GeneratorFuelConsumption")
@@ -78,31 +78,23 @@ local function getFuelMultiplier()
 end
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- Public: consumption as (value, unit)
---  - If we can parse "L/h" from Total string, return (lph, "lph")  [preferred in 42.12]
---  - Else use legacy %/h × sandbox multiplier → (pctph, "pctph")
+-- Public: consumption as (value, unit); the unit is always "lph" (liters per hour).
+-- PZ Butter: IsoGenerator.update() burns getTotalPowerUsing() x GeneratorFuelConsumption
+-- liters per hour, and the vanilla window's "Total" line shows that same product. The
+-- target's 42.20 file returns getTotalPowerUsing() alone, which is off by the sandbox
+-- factor; this computes the product directly instead of parsing the formatted string.
 -- ─────────────────────────────────────────────────────────────────────────────
 function H.getLphOrPctPerHour(gen)
-    if gen and gen.getTotalPowerUsingString then
-        local s = gen:getTotalPowerUsingString() or ""
-        -- Match "0.031 L/h" (accepts comma decimals)
-        local num = type(s) == "string" and s:match("([%d%.,]+)%s*[Ll]/%s*[Hh]") or nil
-        if num then
-            num = num:gsub(",", ".")
-            local lph = tonumber(num)
-            if lph and lph > 0 then
-                return lph, "lph"
-            end
-        end
+    if not gen then
+        return 0, "lph"
     end
 
-    -- Fallback: % per hour path
-    local pctPerHour = 0
-    if gen and gen.getTotalPowerUsing then
-        local ok, v = pcall(gen.getTotalPowerUsing, gen)
-        pctPerHour = (ok and type(v) == "number") and luautils.round(v, 2) or 0
+    local ok, raw = pcall(gen.getTotalPowerUsing, gen)
+    if not ok or type(raw) ~= "number" or raw <= 0 then
+        return 0, "lph"
     end
-    return pctPerHour * getFuelMultiplier(), "pctph"
+
+    return raw * getFuelMultiplier(), "lph"
 end
 
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -122,11 +114,7 @@ end
 local function calcHours(cons, unit, amt, fuelPct)
     local hoursDec = 0
 
-    if unit == "lph" then
-        if cons > 0 then hoursDec = amt / cons end
-    elseif cons and cons > 0 then
-        hoursDec = (fuelPct / 100.0) * (100.0 / cons)
-    end
+    if cons > 0 then hoursDec = amt / cons end
 
     if O.ConvertToRT then
         hoursDec = H.convertToRT(hoursDec)

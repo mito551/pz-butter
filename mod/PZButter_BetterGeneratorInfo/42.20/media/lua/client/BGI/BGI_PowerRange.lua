@@ -530,6 +530,16 @@ function BGI_PowerRange:_rebuildUnionEdges(onlyZ)
     --- Rebuilds union edges for a Z slice (or a span). If UnionProjectToCurrentZ is true and we are
     --- asked to build the player's current Z but no active generators exist on that Z, we project
     --- all active generators' coverage onto the player's Z (same x,y) for visual guidance.
+    -- No focused generator on the map: nothing to draw, as in the target.
+    local genSq = _BGI_getGenSquareAndCell(self.TargetGen)
+    if not genSq then
+        self.UnionEdgesByZ = {}
+        self.UnionPoweredByZ = {}
+        self._needsUnionRebuild = false
+        return
+    end
+    local seedGX, seedGY, seedGZ = genSq:getX(), genSq:getY(), genSq:getZ()
+
     local R   = self:_getEffectiveTileRange()
     local pad = (self.ProbePad or 0)
     local reachBox = R + pad
@@ -553,14 +563,6 @@ function BGI_PowerRange:_rebuildUnionEdges(onlyZ)
         return
     end
 
-    -- Seed = the focused generator; with none (window closed) any active generator.
-    local genSq = _BGI_getGenSquareAndCell(self.TargetGen)
-    local seedGX, seedGY, seedGZ
-    if genSq then
-        seedGX, seedGY, seedGZ = genSq:getX(), genSq:getY(), genSq:getZ()
-    else
-        seedGX, seedGY, seedGZ = active[1].x, active[1].y, active[1].z
-    end
 
     -- Figure out build range (by default: limited span around the selected gen)
     local vr   = self:_getEffectiveVerticalRange()

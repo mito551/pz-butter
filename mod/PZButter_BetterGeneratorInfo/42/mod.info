@@ -1,6 +1,6 @@
 name=PZ Butter fix: Better Generator Info (from BGI_Perf)
 id=PZButter_BetterGeneratorInfo
-versionMin=42.12
+versionMin=42.20
 require=\BetterGeneratorInfo,\ZombieBuddy
 ZBVersionMin=2.3.0
 javaJarFile=media/java/client/BGI_Perf.jar
