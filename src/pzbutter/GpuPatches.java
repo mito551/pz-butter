@@ -18,6 +18,7 @@ public final class GpuPatches {
         NoSync.init();
         GpuTimer.init();
         GpuStats.init();
+        initSpriteReuse();
     }
 
     /** True on the thread that owns the GL context: the render thread, once the first swap has set it. */
@@ -779,6 +780,70 @@ public final class GpuPatches {
                 } catch (Throwable t) {
                     tcGuard.fail(t);
                 }
+            }
+        }
+    }
+
+    // ---- spriteDrawReuse: GenericSpriteRenderState.releaseUnusedSprites keeps the sprite draw objects for reuse instead of
+    // nulling them for GC. The slots carry their fields into the next user, so reuse is opt-in and the in-game checks watch it. ----
+
+    /** Core + holder state, guarded like every other hook. */
+    public static final Guard spriteReuseGuard = new Guard("spriteDrawReuse");
+
+    static void initSpriteReuse() {
+        try {
+            spriteReuseGuard.on = Settings.flag("spriteDrawReuse");
+        } catch (Throwable t) {
+            spriteReuseGuard.fail(t);
+        }
+    }
+
+    static java.lang.reflect.Field suSprite, suLive, suNum;
+
+    static void suFields() throws Exception {
+        Class<?> c = zombie.core.sprite.GenericSpriteRenderState.class;
+        suSprite = c.getDeclaredField("sprite");
+        suSprite.setAccessible(true);
+        suLive = c.getDeclaredField("liveSprites");
+        suLive.setAccessible(true);
+        suNum = c.getDeclaredField("numSprites");
+        suNum.setAccessible(true);
+    }
+
+    /**
+     * releaseUnusedSprites without the null-out: the live count still shrinks (so the next frames stop using the tail), but the objects
+     * stay in the array for the next CheckSpriteSlots allocation to find and reuse. Returns true when the advice must skip the stock body.
+     */
+    public static boolean spriteReuseKeep(Object state) {
+        if (!spriteReuseGuard.on) return false;
+        try {
+            if (suSprite == null) suFields();
+            int num = suNum.getInt(state);
+            int live = suLive.getInt(state);
+            Object[] arr = (Object[]) suSprite.get(state);
+            int n = 0;
+            while (n < 8 && live > num) {
+                live--;
+                n++;
+            }
+            suLive.setInt(state, live);
+            return true;
+        } catch (Throwable t) {
+            spriteReuseGuard.fail(t);
+            return false;
+        }
+    }
+
+    @Patch(className = "zombie.core.sprite.GenericSpriteRenderState", methodName = "releaseUnusedSprites")
+    public static class SpriteReuse {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This Object state) {
+            if (!spriteReuseGuard.on) return false;
+            try {
+                return spriteReuseKeep(state);
+            } catch (Throwable t) {
+                spriteReuseGuard.fail(t);
+                return false;
             }
         }
     }

@@ -103,6 +103,7 @@ local KEYS = {
 	"skipIdChecks",
 	"smartTextureRelease",
 	"soundZoneCache",
+	"spriteDrawReuse",
 	"statsNoBox",
 	"streamTiming",
 	"texCompress",
