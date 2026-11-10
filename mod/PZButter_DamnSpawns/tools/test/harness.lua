@@ -51,11 +51,18 @@ assert(#spawned == 1, "disallowed spawned")
 assert(transmits == t0, "disallowed spawn was remembered / broadcast")
 assert(md["9000_9000"] == nil and md["7000_7000"] == nil, "disallowed spawn marked done")
 
--- blocked square retries, then spawns once cleared
+-- default, as the original without debug logging: a blocked square is remembered, not retried
 local blocked = true
 local s2 = sq(8145, 11644)
 md["8145_11644"] = nil; spawned = {}
 s2.isVehicleIntersecting = function() return blocked end
+handlers[1](s2); assert(#spawned == 0 and md["8145_11644"], "default: blocked square is remembered")
+blocked = false; handlers[1](s2); assert(#spawned == 0, "default: no retry after a blocked square")
+
+-- blockedRetry: retries, then spawns once cleared
+DAMN.SpawnsPerfConfig.blockedRetry = true
+blocked = true
+md["8145_11644"] = nil; spawned = {}
 handlers[1](s2); assert(#spawned == 0 and md["8145_11644"] == nil, "blocked should not remember")
 blocked = false; handlers[1](s2); assert(#spawned == 1 and md["8145_11644"], "retry should spawn")
 print("lua ok (" .. mode .. ")")
