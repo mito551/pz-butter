@@ -57,6 +57,7 @@ public final class SelfTest {
         EnumTest.run();
         ModScanTest.run();
         ViewpointTest.run();
+        LightTest.run();
         LuaGateTest.run();
         DevTest.run();
         SpikeTest.run();

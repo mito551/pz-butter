@@ -62,6 +62,7 @@ local KEYS = {
 	"keyboardFresh",
 	"lightInfoOncePerFrame",
 	"lightingSyncPark",
+	"lightVisionOnce",
 	"limiterSleep",
 	"loaderCpuFixes",
 	"logDedupe",

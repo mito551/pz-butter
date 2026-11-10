@@ -102,6 +102,7 @@ public class Main {
         DriveTrace.init();
         ClockPatches.init();
         LightChecks.init();
+        LightingPatches.init();
         FramePhase.init();
         GetterMemo.init();
         PZButterSquares.init();
