@@ -48,6 +48,7 @@ local KEYS = {
 	"bodyLocationOnce",
 	"chatIconsRace",
 	"glassTilesPerFrame",
+	"glBufferBindCache",
 	"gloveBoxFix",
 	"gpuPstate",
 	"gpuStats",

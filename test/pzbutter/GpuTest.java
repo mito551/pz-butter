@@ -8,6 +8,7 @@ final class GpuTest {
         try { runAll(); }
         catch (Exception | Error e) { throw e; }
         catch (Throwable t) { throw new Exception(t); }
+        bindCache();
     }
 
     static void runAll() throws Throwable {
@@ -992,5 +993,34 @@ final class GpuTest {
             GpuStats.init();
             assert !GpuStats.guard.on;
         } finally { Settings.load(SelfTest.write("enabled=true\n")); GpuStats.init(); GpuStats.resetForTest(); }
+    }
+
+    // ---- glBufferBindCache: the bound buffer per target is remembered; the same rebind is skipped ----
+
+    static void bindCache() throws Exception {
+        Settings.load(SelfTest.write("enabled=true\n"));
+        GpuPatches.initBindCache();
+        assert !GpuPatches.bcGuard.on : "glBufferBindCache defaults off";
+
+        Settings.load(SelfTest.write("enabled=true\nglBufferBindCache=true\n"));
+        GpuPatches.initBindCache();
+        assert GpuPatches.bcGuard.on : "template turns the guard on";
+
+        GpuPatches.bound.clear();
+        assert !GpuPatches.sameBind(34962, 5) : "nothing bound yet";
+        GpuPatches.bindThrough(34962, 5);
+        assert GpuPatches.sameBind(34962, 5) : "the bind is remembered";
+        assert !GpuPatches.sameBind(34962, 6) : "a different buffer binds through";
+        assert !GpuPatches.sameBind(34963, 5) : "targets are separate";
+        GpuPatches.bindThrough(34963, 5);
+        GpuPatches.deleted(5);
+        assert !GpuPatches.sameBind(34962, 5) && !GpuPatches.sameBind(34963, 5) : "a delete clears the name everywhere";
+        GpuPatches.bindThrough(34962, 6);
+        GpuPatches.deleted(7);
+        assert GpuPatches.sameBind(34962, 6) : "deleting another name leaves this one";
+
+        Settings.load(SelfTest.write("enabled=true\n"));
+        GpuPatches.initBindCache();
+        assert !GpuPatches.bcGuard.on : "defaults restored";
     }
 }

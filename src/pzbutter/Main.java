@@ -63,6 +63,7 @@ public class Main {
         RuntimePatches.init();
         Cores.init();
         GpuPatches.init();
+        GpuPatches.initBindCache();
         LoadFixes.init();
         ModScanPatches.init();
         GpuPstate.init();

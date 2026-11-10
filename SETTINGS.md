@@ -207,6 +207,7 @@ These keys act only on a multiplayer client; on a server they stay off.
 | `luaCallInvoker` | Java methods Lua has called 64 times run through a MethodHandle instead of reflection; the arguments, return values and the logged-throw behaviour stay the same. Off by default. |
 | `translatorPlainText` | Translations with no percent sign and no arguments are returned as is; the formatter (and its allocation) only runs for texts that use it. Off by default. |
 | `uiElementUpdateSkip` | An invisible UI element with no children runs no update tick of its own or of Lua (its children still update). Off by default. |
+| `glBufferBindCache` | Binding a buffer that is already bound to that target is skipped; a deleted buffer is dropped from the memory. Off by default. |
 | `chunkZExtentsFast` | The chunk-map z-extents loop only visits the cells whose chunk lookup can answer, instead of all cells of the swap array, with the same result. On by default. |
 | `enumParseCache` | `tryParseEnum` and the NetworkVariables `fromString` methods (ThumpType, WalkType, ZombieState) answer from a hash map of the enum names instead of a throw-caught valueOf or a linear scan; same answer for a name that exists and for one that does not. Off by default. |
 | `animFolderMissing` | The per-mod animation folder walk only runs when the folder exists; a missing AnimSets or actiongroups folder no longer logs a NoSuchFileException with a stack. On by default. |

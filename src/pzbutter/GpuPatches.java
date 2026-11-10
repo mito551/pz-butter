@@ -452,4 +452,116 @@ public final class GpuPatches {
         @Patch.OnExit
         public static void exit(@Patch.Argument(0) int pname, @Patch.Return(readOnly = false) int ret) { ret = GpuPatches.onGetIntegerExit(pname, ret); }
     }
+
+    // ---- glBufferBindCache: the bound buffer per target is remembered and a rebind of the same buffer is
+    // skipped. Every bind path the game uses is hooked: the VBO wrappers and the GL15 bind (which the GL20,
+    // GL30 and GL43 names resolve to); a delete clears the deleted name on every target. ----
+
+    public static final Guard bcGuard = new Guard("glBufferBindCache");
+
+    static final java.util.HashMap<Integer, Integer> bound = new java.util.HashMap<>();
+
+    static void initBindCache() {
+        try {
+            bcGuard.on = Settings.flag("glBufferBindCache");
+            if (!bcGuard.on) bound.clear();
+        } catch (Throwable t) {
+            bcGuard.fail(t);
+        }
+    }
+
+    public static boolean sameBind(int target, int buffer) {
+        if (!bcGuard.on) return false;
+        Integer cur = bound.get(target);
+        return cur != null && cur.intValue() == buffer;
+    }
+
+    public static void bindThrough(int target, int buffer) {
+        if (!bcGuard.on) return;
+        bound.put(target, buffer);
+    }
+
+    public static void deleted(int buffer) {
+        if (!bcGuard.on) return;
+        bound.values().removeIf(v -> v.intValue() == buffer);
+    }
+
+    /** The bind advice face: true skips the stock bind (same buffer already bound). */
+    public static boolean onBind(int target, int buffer) {
+        if (!bcGuard.on) return false;
+        try {
+            if (sameBind(target, buffer)) return true;
+            bindThrough(target, buffer);
+            return false;
+        } catch (Throwable t) {
+            bcGuard.fail(t);
+            return false;
+        }
+    }
+
+    @Patch(className = "org.lwjgl.opengl.GL15", methodName = "glBindBuffer")
+    public static class Gl15Bind {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.Argument(0) int target, @Patch.Argument(1) int buffer) {
+            return onBind(target, buffer);
+        }
+    }
+
+    @Patch(className = "org.lwjgl.opengl.GL15", methodName = "glDeleteBuffers", strictMatch = true)
+    public static class Gl15Delete {
+        @Patch.OnEnter
+        public static void enter(@Patch.Argument(0) int buffer) {
+            if (bcGuard.on) {
+                try {
+                    deleted(buffer);
+                } catch (Throwable t) {
+                    bcGuard.fail(t);
+                }
+            }
+        }
+    }
+
+    @Patch(className = "zombie.core.VBO.GLBufferObject15", methodName = "glBindBuffer")
+    public static class Vbo15Bind {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This Object self, @Patch.Argument(0) int target, @Patch.Argument(1) int buffer) {
+            return onBind(target, buffer);
+        }
+    }
+
+    @Patch(className = "zombie.core.VBO.GLBufferObject15", methodName = "glDeleteBuffers", strictMatch = true)
+    public static class Vbo15Delete {
+        @Patch.OnEnter
+        public static void enter(@Patch.This Object self, @Patch.Argument(0) int buffer) {
+            if (bcGuard.on) {
+                try {
+                    deleted(buffer);
+                } catch (Throwable t) {
+                    bcGuard.fail(t);
+                }
+            }
+        }
+    }
+
+    @Patch(className = "zombie.core.VBO.GLBufferObjectARB", methodName = "glBindBuffer")
+    public static class VboArbBind {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This Object self, @Patch.Argument(0) int target, @Patch.Argument(1) int buffer) {
+            return onBind(target, buffer);
+        }
+    }
+
+    @Patch(className = "zombie.core.VBO.GLBufferObjectARB", methodName = "glDeleteBuffers", strictMatch = true)
+    public static class VboArbDelete {
+        @Patch.OnEnter
+        public static void enter(@Patch.This Object self, @Patch.Argument(0) int buffer) {
+            if (bcGuard.on) {
+                try {
+                    deleted(buffer);
+                } catch (Throwable t) {
+                    bcGuard.fail(t);
+                }
+            }
+        }
+    }
 }
