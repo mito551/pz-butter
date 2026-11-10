@@ -105,11 +105,7 @@ local function collectNearbyDoors(psq)
     local fast = cpdDoorsNear                    -- V1, from CPDPerf.jar
     if type(fast) == "function" then
         local ok, list = pcall(fast, psq:getX(), psq:getY(), psq:getZ(), 2)
-        if ok and type(list) == "table" then
-            local doors = {}
-            for i = 1, #list do doors[i] = list[i] end
-            return doors
-        end
+        if ok and type(list) == "table" then return list end
     end
     local ok, doors = pcall(collectDoorsLua, psq)
     if ok then return doors end
