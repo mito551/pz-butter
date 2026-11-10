@@ -42,12 +42,14 @@ public final class SelfTest {
         frameLogRotates();
         frameFailureDisables();   // last: it switches the clock off
         DeliveryTest.run();
+        GuardTest.run();
         LuaBudgetTest.run();
         LuaUiTest.run();
         UiRetainTest.run();
         SoundTest.run();
         WorldTest.run();
         ChunkTest.run();
+        ModelTest.run();
         LuaGateTest.run();
         DevTest.run();
         SpikeTest.run();

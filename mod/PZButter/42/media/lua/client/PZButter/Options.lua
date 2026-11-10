@@ -61,6 +61,7 @@ local KEYS = {
 	"mapVisitedFast",
 	"modWatchAsync",
 	"noLoadFade",
+	"nullModelGuard",
 	"occlusionGrantedOnly",
 	"occlusionSkipLightingOnly",
 	"persistentVbo",

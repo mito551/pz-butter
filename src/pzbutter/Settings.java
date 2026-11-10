@@ -360,6 +360,8 @@ public final class Settings {
       + "noLoadFade=false\n"
       + "# shaderCache: a model whose shader is already built takes it without a render-thread round trip.\n"
       + "shaderCache=false\n"
+      + "# nullModelGuard: a model slot whose model is not loaded yet (a freshly spawned NPC) is skipped for one pass instead of stopping the render loop and killing the character's 3D view for the session.\n"
+      + "nullModelGuard=true\n"
       + "# loaderCpuFixes: vehicle zones are de-duplicated in one pass (debug string built only when vehicle debug is on).\n"
       + "loaderCpuFixes=true\n"
       + "# scriptParserFast: script comments are stripped in one pass, with the same result.\n"
@@ -595,7 +597,7 @@ public final class Settings {
     /** A feature switch: never on without the master switch; a missing key takes its default. */
     /** Features that passed their in-game check and default to on (still only with the master switch). */
     static final java.util.Set<String> ON_BY_DEFAULT = java.util.Set.of("limiterSleep", "inputLatch", "keyboardFresh", "frameStartGate",
-        "reflexSleep", "vsyncAdaptive", "luaBudget",
+        "reflexSleep", "vsyncAdaptive", "luaBudget", "nullModelGuard",
         "luaInternConstants", "luaSkipEmpty", "uiVerify", "uiRetainedMods", "uiTickStagger", "textWidthCache", "uiLuaFast", "mapStreetMemo", "mapStreetCache", "mapVisitedFast",   // these two only act with vsync on
         "audioLimiterStereoFold",
         "persistentVboFrameSync",   // acts only with persistentVbo (Plan 9)
