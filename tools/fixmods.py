@@ -9,7 +9,7 @@ check(mod_dir, packaged=False) -> list of problems (empty: the mod passes).
   - require=\\PZButter needs the `if not PZButter ... then return end` guard in every Lua file
   - a packaged copy has no tools/ or upstream/
 
-CLI: fixmods.py [--packaged] MOD_DIR...  (prints problems, exit 1 if any)
+CLI: fixmods.py [--install ROOT] [--packaged] MOD_DIR...  (prints problems, exit 1 if any)
      fixmods.py --shipped MOD_ROOT        (prints the PZButter_* folders not in MOD_ROOT/UNSHIPPED)
 """
 import os
@@ -19,6 +19,12 @@ import sys
 MULTI_TARGET = {"PZButter_VehicleRadio"}
 NOT_TARGETS = {"ZombieBuddy", "PZButter"}
 GUARD = re.compile(r"^\s*if\s+not\s+\(?\s*PZButter\b.*\breturn\b", re.M)
+
+# Full-file overrides: fix mod id -> {override path under 42/media/lua/: target mod folder name}.
+# A copy drifts when the target mod updates its file (Plan 18 B-D8-9): the copy then silently
+# reverts those changes. With --install, check() reports any installed-target line absent from
+# the copy; a target that is not installed under --install is simply unchecked today.
+OVERRIDES = {"PZButter_XensEnhancedGUI": {"client/XEG/XEG_QuickAccess.lua": "XensEnhancedGUI"}}
 
 
 def _ids(value):
@@ -35,7 +41,48 @@ def read_info(path):
     return info
 
 
-def check(mod_dir, packaged=False):
+def installed_target_lines(install_root, target, rel):
+    """Lines of the installed target's copy of the override file; None when not installed."""
+    suffix = os.path.join(target, "42", "media", "lua", *rel.split("/"))
+    found = []
+    for dirpath, dirs, files in os.walk(install_root):
+        if "PZButter" in dirpath or not dirpath.endswith(os.path.dirname(suffix)):
+            continue
+        if os.path.basename(suffix) in files:
+            found.append(os.path.join(dirpath, os.path.basename(suffix)))
+    if not found:
+        return None
+    lines = set()
+    for p in found:
+        with open(p, encoding="utf-8", errors="replace") as f:
+            lines |= {l.strip() for l in f if l.strip()}
+    return found, lines
+
+
+def override_problems(mod_dir, mod_id, install_root):
+    if not install_root or mod_id not in OVERRIDES:
+        return []
+    problems = []
+    for rel, target in OVERRIDES[mod_id].items():
+        override = os.path.join(mod_dir, "42", "media", "lua", *rel.split("/"))
+        if not os.path.isfile(override):
+            problems.append("override %s is missing (declared in OVERRIDES)" % rel)
+            continue
+        got = installed_target_lines(install_root, target, rel)
+        if got is None:
+            continue
+        installed, lines = got
+        with open(override, encoding="utf-8", errors="replace") as f:
+            ours = {l.strip() for l in f if l.strip()}
+        stale = lines - ours
+        if stale:
+            head = " | ".join(sorted(stale)[:3])
+            problems.append("override %s is stale: installed %s has %d line(s) absent from the copy "
+                            "(rebase the copy): %s" % (rel, target, len(stale), head))
+    return problems
+
+
+def check(mod_dir, packaged=False, install_root=None):
     problems = []
     info_path = os.path.join(mod_dir, "42", "mod.info")
     if not os.path.isfile(info_path):
@@ -81,6 +128,7 @@ def check(mod_dir, packaged=False):
         for sub in ("tools", "upstream"):
             if os.path.isdir(os.path.join(mod_dir, sub)) or os.path.isdir(os.path.join(mod_dir, "42", sub)):
                 problems.append("packaged copy has %s/" % sub)
+    problems += override_problems(mod_dir, os.path.basename(os.path.normpath(mod_dir)), install_root)
     return problems
 
 
@@ -112,11 +160,17 @@ def main(argv):
         for d in shipped(argv[1]):
             print(d)
         return 0
-    packaged = "--packaged" in argv
-    dirs = [a for a in argv if a != "--packaged"]
+    install_root = None
+    dirs = []
+    it = iter(argv)
+    for a in it:
+        if a == "--install":
+            install_root = next(it, None)
+        elif a != "--packaged":
+            dirs.append(a)
     bad = 0
     for d in dirs:
-        for p in check(d, packaged):
+        for p in check(d, "--packaged" in argv, install_root):
             print("fixmods: %s: %s" % (os.path.basename(os.path.normpath(d)), p))
             bad += 1
     return 1 if bad else 0

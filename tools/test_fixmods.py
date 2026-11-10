@@ -77,6 +77,44 @@ class PackageRulesTest(unittest.TestCase):
         self.assertEqual([os.path.basename(d) for d in fixmods.shipped(self.root)], ["PZButter_KI5"])
 
 
+class OverrideFreshnessTest(unittest.TestCase):
+    """Plan 18 B-D8-9: full-file overrides drift when the target mod updates its file."""
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp()
+        self.install = tempfile.mkdtemp()
+
+    def target(self, text):
+        d = os.path.join(self.install, "123/mods/XensEnhancedGUI", "42", "media", "lua", "client", "XEG")
+        os.makedirs(d)
+        with open(os.path.join(d, "XEG_QuickAccess.lua"), "w") as f:
+            f.write(text)
+        return d
+
+    def test_staleOverrideFlagged(self):
+        self.target("lineA\nlineB\nnew upstream line\n")
+        d = make_mod(self.root, "PZButter_XensEnhancedGUI",
+                     "require=\\ZombieBuddy,\\XensEnhancedGUI\nloadModAfter=XensEnhancedGUI\n",
+                     {"client/XEG/XEG_QuickAccess.lua": "lineA\nlineB\n-- PZ Butter: edit\n"})
+        problems = [p for p in fixmods.check(d, install_root=self.install) if "stale" in p]
+        self.assertEqual(len(problems), 1)
+        self.assertIn("1 line(s) absent", problems[0])
+
+    def test_freshOverridePasses(self):
+        self.target("lineA\nlineB\n")
+        d = make_mod(self.root, "PZButter_XensEnhancedGUI",
+                     "require=\\ZombieBuddy,\\XensEnhancedGUI\nloadModAfter=XensEnhancedGUI\n",
+                     {"client/XEG/XEG_QuickAccess.lua": "lineA\nlineB\n-- PZ Butter: edit\n"})
+        self.assertEqual(fixmods.check(d, install_root=self.install), [])
+
+    def test_targetNotInstalledSkipped(self):
+        d = make_mod(self.root, "PZButter_XensEnhancedGUI",
+                     "require=\\ZombieBuddy,\\XensEnhancedGUI\nloadModAfter=XensEnhancedGUI\n",
+                     {"client/XEG/XEG_QuickAccess.lua": "lineA\n"})
+        self.assertEqual(fixmods.check(d, install_root=self.install), [])
+        self.assertEqual(fixmods.check(d, install_root=None), [])  # no --install: unchecked
+
+
 class AddModTest(unittest.TestCase):
     """runlib.sh add_mod: run.sh --add-mod edits default.txt and the bench save's mods.txt with it."""
 

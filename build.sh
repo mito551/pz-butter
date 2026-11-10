@@ -23,7 +23,10 @@ TEST_HOME="$(mktemp -d -t pzbutter-home.XXXXXX)"
 python3 "$HERE/tools/check_readme.py"
 # fix mods (Plan 17): every mod/PZButter_<Target>, shipped or not, must pass the package rules
 mapfile -t FIXMODS < <(find "$HERE/mod" -mindepth 1 -maxdepth 1 -type d -name 'PZButter_*' | sort)
-(( ${#FIXMODS[@]} == 0 )) || python3 "$HERE/tools/fixmods.py" "${FIXMODS[@]}"
+INSTALL_ARGS=()
+WORKSHOP="${PZ_GAME%/common/*}/workshop/content/108600"   # full-file overrides are checked against the installed targets (Plan 18 B-D8-9)
+[[ -d "$WORKSHOP" ]] && INSTALL_ARGS=(--install "$WORKSHOP")
+(( ${#FIXMODS[@]} == 0 )) || python3 "$HERE/tools/fixmods.py" "${INSTALL_ARGS[@]}" "${FIXMODS[@]}"
 "$HERE"/tools/test_workshop.sh
 
 printf 'ZB-Preload: true\n' > "$B/MANIFEST.MF"
