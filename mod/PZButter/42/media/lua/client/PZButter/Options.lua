@@ -56,6 +56,7 @@ local KEYS = {
 	"inputLatch",
 	"invTooltipCache",
 	"kahluaPoolDoublePut",
+	"kahluaTableAlloc",
 	"keyboardFresh",
 	"lightInfoOncePerFrame",
 	"lightingSyncPark",

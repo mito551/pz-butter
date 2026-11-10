@@ -110,6 +110,7 @@ final class LuaGateTest {
         gpuQueueForcedOff();
         kahluaPoolDoublePut();
         luaBreakpointSkip();
+        kahluaTableAlloc();
     }
 
     static void plan7KeysDefaults() {
@@ -1640,5 +1641,57 @@ final class LuaGateTest {
         Settings.load(SelfTest.write("enabled=true\n"));
         LuaPatches.initBp();
         assert !LuaPatches.bpGuard.on : "defaults restored";
+    }
+
+    // ---- kahluaTableAlloc: newTable gives Lua tables a pre-sized backing store ----
+
+    static int backingSize(Object table) throws Exception {
+        java.util.Map<?, ?> d = (java.util.Map<?, ?>) table.getClass().getField("delegate").get(table);
+        java.lang.reflect.Field f = java.util.HashMap.class.getDeclaredField("table");
+        java.lang.reflect.Field uf = sun.misc.Unsafe.class.getDeclaredField("theUnsafe");
+        uf.setAccessible(true);
+        sun.misc.Unsafe u = (sun.misc.Unsafe) uf.get(null);
+        Object[] a = (Object[]) u.getObject(d, u.objectFieldOffset(f));
+        return a == null ? 0 : a.length;
+    }
+
+    static void kahluaTableAlloc() throws Exception {
+        se.krka.kahlua.j2se.J2SEPlatform p = se.krka.kahlua.j2se.J2SEPlatform.getInstance();
+
+        Settings.load(SelfTest.write("enabled=true\n"));
+        LuaPatches.initTa();
+        assert !LuaPatches.taGuard.on : "kahluaTableAlloc defaults off";
+
+        // off: stock table (default-sized backing)
+        Object stock = p.newTable();
+        assert backingSize(stock) <= 16 : "stock is untouched while off: " + backingSize(stock);
+
+        Settings.load(SelfTest.write("enabled=true\nkahluaTableAlloc=true\n"));
+        LuaPatches.initTa();
+        assert LuaPatches.taGuard.on : "template turns the guard on";
+
+        Object pre = LuaPatches.newTablePresized();
+        assert pre instanceof se.krka.kahlua.vm.KahluaTable : "the presized core answers a KahluaTable";
+
+        // insertion order parity: both keep the rawset order (LinkedHashMap both sides); the backing is
+        // read after the first puts (HashMap allocates its table lazily)
+        Object ref = p.newTable();
+        String[] keys = new String[] {"a", "z", "m", "0", "1"};
+        for (int i = 0; i < keys.length; i++) {
+            ((se.krka.kahlua.vm.KahluaTable) pre).rawset(keys[i], i + 1);
+            ((se.krka.kahlua.vm.KahluaTable) ref).rawset(keys[i], i + 1);
+        }
+        java.util.List<String> ord1 = new java.util.ArrayList<>(), ord2 = new java.util.ArrayList<>();
+        se.krka.kahlua.vm.KahluaTableIterator i1 = ((se.krka.kahlua.vm.KahluaTable) pre).iterator();
+        se.krka.kahlua.vm.KahluaTableIterator i2 = ((se.krka.kahlua.vm.KahluaTable) ref).iterator();
+        while (i1.advance()) ord1.add(String.valueOf(i1.getKey()) + "=" + String.valueOf(i1.getValue()));
+        while (i2.advance()) ord2.add(String.valueOf(i2.getKey()) + "=" + String.valueOf(i2.getValue()));
+        assert ord1.equals(ord2) : "iteration order parity: " + ord1 + " vs " + ord2;
+        assert backingSize(pre) >= 32 : "backing is pre-sized: " + backingSize(pre);
+        assert backingSize(ref) <= 16 : "the stock table keeps the default backing: " + backingSize(ref);
+
+        Settings.load(SelfTest.write("enabled=true\n"));
+        LuaPatches.initTa();
+        assert !LuaPatches.taGuard.on : "defaults restored";
     }
 }

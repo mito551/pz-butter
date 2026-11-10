@@ -673,4 +673,41 @@ public final class LuaPatches {
             }
         }
     }
+
+    // ---- kahluaTableAlloc: Platform.newTable answers a table with a pre-sized backing store ----
+
+    public static final Guard taGuard = new Guard("kahluaTableAlloc");
+
+    static void initTa() {
+        try {
+            taGuard.on = Settings.flag("kahluaTableAlloc");
+        } catch (Throwable t) {
+            taGuard.fail(t);
+        }
+    }
+
+    /** The pre-sized answer for the table constructor; iteration order stays the stock LinkedHashMap's. */
+    public static se.krka.kahlua.vm.KahluaTable newTablePresized() {
+        return new se.krka.kahlua.j2se.KahluaTableImpl(new java.util.LinkedHashMap<>(32));
+    }
+
+    @Patch(className = "se.krka.kahlua.j2se.J2SEPlatform", methodName = "newTable")
+    public static class TableAlloc {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.Local("r") Object r) {
+            if (!taGuard.on) return false;
+            try {
+                r = newTablePresized();
+                return true;
+            } catch (Throwable t) {
+                taGuard.fail(t);
+                return false;
+            }
+        }
+
+        @Patch.OnExit
+        public static void exit(@Patch.Return(readOnly = false) se.krka.kahlua.vm.KahluaTable ret, @Patch.Local("r") Object r) {
+            if (r != null) ret = (se.krka.kahlua.vm.KahluaTable) r;
+        }
+    }
 }

@@ -44,6 +44,7 @@ public class Main {
         LuaPatches.initBodyLoc();
         LuaPatches.initWalk();
         LuaPatches.initBp();
+        LuaPatches.initTa();
         ScriptPatches.initOnce();
         ScriptPatches.initKept();
         ScriptPatches.initMiss();
