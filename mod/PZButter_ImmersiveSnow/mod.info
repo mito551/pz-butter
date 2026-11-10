@@ -2,5 +2,5 @@ name=PZ Butter fix: ImmersiveSnow (from IS_Perf)
 id=PZButter_ImmersiveSnow
 versionMin=42.18
 require=\ImmersiveSnow
-description=Load-after performance patch for ImmersiveSnow. Hot Lua tick handlers are consolidated without changing installed mod files.
+description=Load-after performance patch for ImmersiveSnow. Changes nothing at present: merging its tick handlers measured slower than the engine's own dispatch and was removed.
 loadModAfter=ImmersiveSnow

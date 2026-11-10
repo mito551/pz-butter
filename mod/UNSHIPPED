@@ -8,6 +8,7 @@ PZButter_SunflowersUltimateCharacterOverhaul
 PZButter_CompanionDogs
 PZButter_CyesPushDoors
 PZButter_EvolvingTraitsWorld
+# ImmersiveSnow: its only change (merged tick listeners) measured slower offline and was removed (2026-11-10); the mod is a stub until ISnow.bench shows a target.
 PZButter_ImmersiveSnow
 PZButter_WhoseKeyIsThis
 PZButter_TsarsLib
