@@ -13,3 +13,6 @@ PZButter_ImmersiveSnow
 PZButter_WhoseKeyIsThis
 PZButter_TsarsLib
 PZButter_DamnSpawns
+# Placeholder only (2026-11-10 review): no patch code, just the shared PZBClaim.lua that nothing in the mod calls.
+# Candidates once profiled in game: ProjectViewpointQOL.lua onTick and updateLootHint (OnRenderTick), ViewpointController.lua tickHandler (OnRenderTick), ViewpointController_Options.lua syncTick.
+PZButter_ProjectViewpointQOLLegacy

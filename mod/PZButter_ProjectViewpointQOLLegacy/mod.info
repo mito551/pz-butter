@@ -2,5 +2,5 @@ name=PZ Butter fix: Project Viewpoint QOL Legacy
 id=PZButter_ProjectViewpointQOLLegacy
 versionMin=42.21
 require=\ZombieBuddy,\ProjectViewpointQOLLegacy0.1.6
-description=Load-after patch for Project Viewpoint QOL Legacy. Claims cursor/frame slots (VQOL-6) and registers the claim protocol.
+description=Placeholder for a Project Viewpoint QOL Legacy patch: ships only PZ Butter's shared claim protocol and changes nothing yet.
 loadModAfter=ProjectViewpointQOLLegacy0.1.6
