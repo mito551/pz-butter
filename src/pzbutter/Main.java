@@ -40,6 +40,7 @@ public class Main {
         HitchSampler.init(); ServerTick.init(); CellSpread.init(); NetStats.init();
         StallProbe.init();
         LuaGate.init();
+        LuaPatches.initPoolPut();
         FrameBatch.init();
         LuaFiles.init();
         LogDedupe.init();

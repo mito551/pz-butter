@@ -140,6 +140,7 @@ Map.entry("LoadPatches.WaitFileTask", k("textureBufferMb")),
         Map.entry("LuaPatches.FileReader", k("luaFileWriteThrottle")),
         Map.entry("LuaPatches.FileInput", k("luaFileWriteThrottle")),
         Map.entry("LuaPatches.FileOutput", k("luaFileWriteThrottle")),
+        Map.entry("LuaPatches.PoolPut", k("kahluaPoolDoublePut")),
         // zombies and entities (Plan 8)
         Map.entry("ZombiePatches.ForwardDirection", k("zeroFacingFix")),
         Map.entry("ZombiePatches.SceneCull", k("numberZombiesBlended", "zombieLodFixed3d", "zombieModelAddBudgetUs", "entityTiming")),

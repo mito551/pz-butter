@@ -43,6 +43,7 @@ local KEYS = {
 	"handoffRecalcFast",
 	"hearingHoist",
 	"inputLatch",
+	"kahluaPoolDoublePut",
 	"keyboardFresh",
 	"lightInfoOncePerFrame",
 	"lightingSyncPark",

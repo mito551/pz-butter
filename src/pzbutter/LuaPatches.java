@@ -1,8 +1,10 @@
 package pzbutter;
 
 import java.lang.invoke.VarHandle;
+import java.util.ArrayList;
 
 import me.zed_0xff.zombie_buddy.Patch;
+import se.krka.kahlua.integration.expose.MethodArguments;
 import se.krka.kahlua.j2se.KahluaTableImpl;
 import se.krka.kahlua.vm.JavaFunction;
 import se.krka.kahlua.vm.KahluaTable;
@@ -392,5 +394,51 @@ public final class LuaPatches {
     public static class FileOutput {
         @Patch.OnEnter
         public static void enter(@Patch.Argument(0) String name) { onFileRead(name); }
+    }
+
+    // kahluaPoolDoublePut: a failed overload search returns the last MethodArguments to the pool twice;
+    // two nested calls then share one object and the outer call dies in ReturnValues.put. Skip a put of
+    // an object the pool already holds (the game's own debug check, minus the throw).
+
+    public static final Guard poolGuard = new Guard("kahluaPoolDoublePut");
+
+    static void initPoolPut() {
+        try {
+            poolGuard.on = Settings.flag("kahluaPoolDoublePut");
+        } catch (Throwable t) {
+            poolGuard.fail(t);
+        }
+    }
+
+    static ArrayList<?>[] pools;
+
+    /** True when m is already sitting in the game's own MethodArguments pool. */
+    public static boolean isPooled(MethodArguments m) throws Exception {
+        if (m == null) return false;
+        if (pools == null) {
+            java.lang.reflect.Field f = MethodArguments.class.getDeclaredField("Pools");
+            f.setAccessible(true);
+            @SuppressWarnings("unchecked")
+            ArrayList<?>[] cast = (ArrayList<?>[]) f.get(null);
+            pools = cast;
+        }
+        Object[] params = m.getParams();
+        int idx = params == null ? -1 : params.length;
+        if (idx < 0 || idx >= pools.length) return false;
+        return pools[idx].contains(m);
+    }
+
+    @Patch(className = "se.krka.kahlua.integration.expose.MethodArguments", methodName = "put")
+    public static class PoolPut {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.Argument(0) MethodArguments args) {
+            if (!poolGuard.on) return false;
+            try {
+                return isPooled(args);
+            } catch (Throwable t) {
+                poolGuard.fail(t);
+                return false;
+            }
+        }
     }
 }

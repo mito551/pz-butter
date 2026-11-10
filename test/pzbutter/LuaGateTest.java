@@ -105,6 +105,7 @@ final class LuaGateTest {
         autoFeedsSettings();
         modCompatInitOffDoesNothing();
         gpuQueueForcedOff();
+        kahluaPoolDoublePut();
     }
 
     static void plan7KeysDefaults() {
@@ -1490,5 +1491,18 @@ final class LuaGateTest {
         assert GpuQueue.guard.on;
         Settings.load(SelfTest.write("enabled=false\n"));
         GpuQueue.init();
+    }
+
+    /** kahluaPoolDoublePut: put must not stage an object that is already back in the pool. */
+    static void kahluaPoolDoublePut() throws Exception {
+        se.krka.kahlua.integration.expose.MethodArguments m = new se.krka.kahlua.integration.expose.MethodArguments(2);
+        assert !LuaPatches.isPooled(m) : "fresh object must not look pooled";
+        se.krka.kahlua.integration.expose.MethodArguments.put(m);
+        assert LuaPatches.isPooled(m) : "a pooled object must be seen by the guard";
+        assert se.krka.kahlua.integration.expose.MethodArguments.get(2) == m : "the pool must hand the object back";
+        assert !LuaPatches.isPooled(m) : "an object taken out must not look pooled";
+        Settings.load(SelfTest.write("enabled=true\n"));
+        LuaPatches.initPoolPut();
+        assert LuaPatches.poolGuard.on : "the key must default on";
     }
 }

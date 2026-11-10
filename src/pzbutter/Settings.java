@@ -443,6 +443,9 @@ public final class Settings {
 + "chunkRefill=false\n"
 + "# zombieDropItemsGuard: a zombie's dropHeavyItems no longer sends PlayerDropHeldItems, whose setData throws on a zombie and logs the send.\n"
 + "zombieDropItemsGuard=true\n"
++ "# kahluaPoolDoublePut: a failed Lua-to-Java call no longer returns its arguments to the game's\n"
++ "# method-argument pool twice, which made two nested calls share one object and fail far from the real error.\n"
++ "kahluaPoolDoublePut=true\n"
 + "# serverCellSpread (server): spread a cell's second-stage load over ticks inside a per-tick budget (at least one chunk per tick); keeps a 120 ms floor near a player.\n"
 + "serverCellSpread=false\n"
 + "#\n"
@@ -602,6 +605,7 @@ public final class Settings {
     /** Features that passed their in-game check and default to on (still only with the master switch). */
     static final java.util.Set<String> ON_BY_DEFAULT = java.util.Set.of("limiterSleep", "inputLatch", "keyboardFresh", "frameStartGate",
         "reflexSleep", "vsyncAdaptive", "luaBudget", "nullModelGuard", "doorToggleNpeGuard", "zombieDropItemsGuard",
+        "kahluaPoolDoublePut",
         "luaInternConstants", "luaSkipEmpty", "uiVerify", "uiRetainedMods", "uiTickStagger", "textWidthCache", "uiLuaFast", "mapStreetMemo", "mapStreetCache", "mapVisitedFast",   // these two only act with vsync on
         "audioLimiterStereoFold",
         "persistentVboFrameSync",   // acts only with persistentVbo (Plan 9)
