@@ -17,7 +17,7 @@ ProjectALife = { DrivingSeats = S, Handlers = H, CorpseSkin = { onTick = skinTic
 print = function() end
 dofile("mod/PZButter_ProjectALifeNPCs/42/media/lua/shared/PZButter_ALife.lua")
 Events.OnGameStart.fns[1]()
-assert(PZB_ALIFE.applied.seatGuardSkip and PZB_ALIFE.applied.gateEvery and PZB_ALIFE.applied.corpseSkinEvery)
+assert(PZB_ALIFE.applied.seatGuardSkip and not PZB_ALIFE.applied.gateEvery and not PZB_ALIFE.applied.corpseSkinEvery)
 assert(#Events.OnZombieUpdate.fns == 1 and Events.OnZombieUpdate.fns[1] == S.guardCollision)
 local bare = { hasModData = function() return false end }
 local owned = { hasModData = function() return true end }
@@ -26,5 +26,5 @@ S.records[rec] = true
 S.guardCollision(bare); assert(calls == 0, "vanilla zombie must not reach collisionSeat")
 S.guardCollision(owned); assert(calls == 1)
 S.guardCollision(rec); assert(calls == 2, "seated record must still run")
-assert(H.adds.ALifeCombatKnee == 4 and #Events.OnTick.fns == 0 and H.adds.PZButterCorpseSkin == 15)
+assert(H.adds.ALifeCombatKnee == nil and #Events.OnTick.fns == 1 and Events.OnTick.fns[1] == skinTick)
 print = io.write; print("ok\n")
