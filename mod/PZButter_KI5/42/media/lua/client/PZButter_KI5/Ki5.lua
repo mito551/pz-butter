@@ -48,80 +48,89 @@ end
 
 local handlers = {}
 local by_name = {}
+local anyEvery = false   -- set at install: is any taken-over handler of kind "every"
 
-local paused = {}
-local fails = {}
 -- split screen: each local player has its own vehicle snapshot and throttle state
 local pstates = {}
+local NEVER = -math.huge
 
-local function error_key(row, vtype)
-    return row.id .. "|" .. tostring(vtype or "")
+-- The handlers that can run for one vehicle type, worked out once per type instead of on every
+-- dispatch. Key: false on foot, true in a vehicle without a script name, else the script name.
+-- A slot also carries the error pause of its handler for that type.
+local lists = {}
+
+local function slots_for(vehicle, vtype)
+    local key = vtype or (vehicle ~= nil)
+    local list = lists[key]
+    if list then return list end
+    list = {}
+    for _, h in ipairs(handlers) do
+        local row = h.row
+        local typed = row.types and #row.types > 0
+        local fits
+        if not vehicle then
+            fits = row.onFoot ~= "none" and not typed
+        elseif not typed then
+            fits = true
+        else
+            fits = false
+            if vtype then
+                for _, t in ipairs(row.types) do
+                    if string.find(vtype, t, 1, true) then fits = true; break end
+                end
+            end
+        end
+        if fits then list[#list + 1] = {h = h, sync = row.kind == "sync"} end
+    end
+    lists[key] = list
+    return list
 end
 
-local function should_run(h, now, vehicle, vtype, seat, ps)
-    local row = h.row
-    if not vehicle and row.onFoot == "none" then return false end
-    if row.types and #row.types > 0 then
-        if not vtype then return false end
-        local hit = false
-        for _, t in ipairs(row.types) do
-            if string.find(vtype, t, 1, true) then hit = true; break end
-        end
-        if not hit then return false end
-    end
-    local p = paused[error_key(row, vtype)]
-    if p and now < p then return false end
-    if row.kind == "sync" then
-        if now - ps.last < syncMs then return false end
-    end
-    return true
-end
-
-local function run(h, player, now, vtype, ps)
-    local row = h.row
-    local ok, err = pcall(h.fn, player)
-    ps.last = now
-    local k = error_key(row, vtype)
-    if ok then
-        paused[k] = nil
-        fails[k] = nil
-    else
-        local n = (fails[k] or 0) + 1
-        fails[k] = n
-        local wait = n == 1 and 1000 or (n == 2 and 5000 or 30000)
-        paused[k] = now + wait
-        if n == 1 then
-            print("[PZButter_KI5] " .. tostring(row.name) .. " error: " .. tostring(err))
-        end
+local function failed(slot, now, err)
+    local n = (slot.fails or 0) + 1
+    slot.fails = n
+    slot.paused = now + (n == 1 and 1000 or (n == 2 and 5000 or 30000))
+    if n == 1 then
+        print("[PZButter_KI5] " .. tostring(slot.h.row.name) .. " error: " .. tostring(err))
     end
 end
 
 function Ki5.dispatch(player)
     local now = Ki5.now()
     local vehicle = player and player:getVehicle() or nil
-    local vtype = vehicle and vehicle:getScriptName() or nil
-    local seat = vehicle and vehicle:getSeat(player) or nil
+    local vtype, seat
+    if vehicle then vtype, seat = vehicle:getScriptName(), vehicle:getSeat(player) end
     -- stub players in the tests (and some mods) carry no getPlayerNum; slot 0 covers them
     local idx = player and player.getPlayerNum and player:getPlayerNum() or 0
     local ps = pstates[idx]
-    if not ps then ps = {vehicle = vehicle, vtype = vtype, seat = seat}; pstates[idx] = ps end
-    if vehicle ~= ps.vehicle or vtype ~= ps.vtype or seat ~= ps.seat then
+    if not ps then
+        ps = {vehicle = vehicle, vtype = vtype, seat = seat, last = {}, list = slots_for(vehicle, vtype)}
+        pstates[idx] = ps
+    elseif vehicle ~= ps.vehicle or vtype ~= ps.vtype or seat ~= ps.seat then
+        -- a new vehicle, type or seat: every sync handler may run at once again
         ps.vehicle, ps.vtype, ps.seat = vehicle, vtype, seat
-        for _, h in ipairs(handlers) do h.per[idx] = nil end
+        ps.last, ps.list = {}, slots_for(vehicle, vtype)
     end
-    local every = false
-    for _, h in ipairs(handlers) do
-        if h.row.kind == "every" then every = true; break end
-    end
-    if every and PZButter.ki5EveryStart then PZButter.ki5EveryStart() end
-    for _, h in ipairs(handlers) do
-        local s = h.per[idx]
-        if not s then s = {last = -math.huge}; h.per[idx] = s end
-        if should_run(h, now, vehicle, vtype, seat, s) then
-            run(h, player, now, vtype, s)
+    if anyEvery and PZButter.ki5EveryStart then PZButter.ki5EveryStart() end
+    local list, last = ps.list, ps.last
+    for i = 1, #list do
+        local slot = list[i]
+        local paused = slot.paused
+        if not (paused and now < paused) then
+            local h = slot.h
+            -- a sync-only handler: at most every syncMs while vehicle, type and seat stay the same
+            if not slot.sync or now - (last[h] or NEVER) >= syncMs then
+                local ok, err = pcall(h.fn, player)
+                last[h] = now
+                if ok then
+                    if paused then slot.paused, slot.fails = nil, nil end
+                else
+                    failed(slot, now, err)
+                end
+            end
         end
     end
-    if every then
+    if anyEvery then
         if PZButter.ki5EveryStop then PZButter.ki5EveryStop() end
         if PZButter.ki5Flush then PZButter.ki5Flush() end
     end
@@ -138,9 +147,10 @@ function Ki5.install()
         if row.kind ~= "unchecked" then
             local fn = resolve(row)
             if fn then
-                local h = {row = row, fn = fn, per = {}}
+                local h = {row = row, fn = fn}
                 handlers[#handlers + 1] = h
                 by_name[row.name] = h
+                if row.kind == "every" then anyEvery = true end
             end
         end
     end
