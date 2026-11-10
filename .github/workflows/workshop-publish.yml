@@ -122,6 +122,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/pz"
           curl -fsSL -o "$RUNNER_TEMP/pz/ZombieBuddy.jar" \
             "https://github.com/zed-0xff/ZombieBuddy/releases/download/$ZB_VERSION/ZombieBuddy.jar"
+          echo "eb79b9876332010733a8e0d7ce4fe0377846059a9e28859029e2a0fb449f6cf2  $RUNNER_TEMP/pz/ZombieBuddy.jar" | sha256sum -c -
           J="$HOME/pzserver/java"
           if [ -f "$J/projectzomboid.jar" ]; then cp "$J/projectzomboid.jar" "$RUNNER_TEMP/pz/"
           else jar --create --file "$RUNNER_TEMP/pz/projectzomboid.jar" -C "$J" .; fi   # loose classes

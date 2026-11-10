@@ -8,10 +8,9 @@
     If new items is added to the GroundItemSpawnerItems list they will spawn next time the game is running.
     You cannot spawn multiple instance of the same item on the same square.
 
-    AZ_Perf: Build 42, single-player only. Spawn data is indexed by a numeric
-    coordinate key so the LoadGridsquare hot path allocates no strings.
-    In MP every client would load the square and spawn its own copy before the
-    marker syncs, so the spawner is not registered there.
+    AZ_Perf: Build 42. Spawn data is indexed by a numeric coordinate key so
+    the LoadGridsquare hot path allocates no strings. MP clients transmit new
+    world items and the persistent marker to the server.
 --]]
 
 local initialized = false
@@ -107,6 +106,10 @@ local function spawnItem(square, worldObjects, itemData, groundObject, groundMod
     end
     if itemData.onCreateWorldItem and type(_G[itemData.onCreateWorldItem]) == "function" and worldItem then
         _G[itemData.onCreateWorldItem](worldItem, square)
+    end
+
+    if worldItem then
+        worldItem:transmitCompleteItemToServer()
     end
 
     return groundObject, groundModData
