@@ -906,7 +906,7 @@ final class LuaGateTest {
     }
 
     static void fileHoldersTargetStock() {
-        java.util.Set<String> want = java.util.Set.of("getFileWriter", "getFileReader", "getFileInput", "getFileOutput"), seen = new java.util.HashSet<>();
+        java.util.Set<String> want = java.util.Set.of("getFileWriter", "getFileReader", "getFileInput", "getFileOutput", "getAllItemsForBodyLocation"), seen = new java.util.HashSet<>();
         for (Class<?> c : LuaPatches.class.getDeclaredClasses()) {
             me.zed_0xff.zombie_buddy.Patch p = c.getAnnotation(me.zed_0xff.zombie_buddy.Patch.class);
             if (p != null && p.className().equals("zombie.Lua.LuaManager$GlobalObject")) seen.add(p.methodName());
@@ -915,13 +915,15 @@ final class LuaGateTest {
     }
 
     static void fileHoldersShape() {
-        // the writer holder skips the stock body on a held writer; the three readers only note the name
+        // the writer holder skips the stock body on a held writer; the readers only note the name;
+        // bodyLocation skips when the once-per-call collection answered
         for (Class<?> c : LuaPatches.class.getDeclaredClasses()) {
             me.zed_0xff.zombie_buddy.Patch p = c.getAnnotation(me.zed_0xff.zombie_buddy.Patch.class);
             if (p == null || !p.className().equals("zombie.Lua.LuaManager$GlobalObject")) continue;
             for (java.lang.reflect.Method m : c.getDeclaredMethods()) {
                 me.zed_0xff.zombie_buddy.Patch.OnEnter e = m.getAnnotation(me.zed_0xff.zombie_buddy.Patch.OnEnter.class);
-                if (e != null) assert e.skipOn() == p.methodName().equals("getFileWriter") : p.methodName();
+                boolean skips = p.methodName().equals("getFileWriter") || p.methodName().equals("getAllItemsForBodyLocation");
+                if (e != null) assert e.skipOn() == skips : p.methodName();
             }
         }
     }

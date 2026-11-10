@@ -441,4 +441,59 @@ public final class LuaPatches {
             }
         }
     }
+
+    // bodyLocationOnce: getAllItemsForBodyLocation resolved the location string again for every clothing
+    // item; resolve it once per call, lazily at the first eligible item.
+
+    public static final Guard bodyLocGuard = new Guard("bodyLocationOnce");
+
+    static void initBodyLoc() {
+        try {
+            bodyLocGuard.on = Settings.flag("bodyLocationOnce");
+        } catch (Throwable t) {
+            bodyLocGuard.fail(t);
+        }
+    }
+
+    /** All item full names equippable by a body location, in the given order; null/blank gives an empty fresh table. */
+    public static se.krka.kahlua.vm.KahluaTable getAllItemsForBodyLocationOnce(String location, java.util.List<?> allItems) {
+        se.krka.kahlua.vm.KahluaTable result = zombie.Lua.LuaManager.platform.newTable();
+        if (zombie.util.StringUtils.isNullOrWhitespace(location)) return result;
+        int idx = 1;
+        zombie.scripting.objects.ItemBodyLocation resolved = null;
+        boolean haveResolved = false;
+        for (int i = 0; i < allItems.size(); i++) {
+            zombie.scripting.objects.Item item = (zombie.scripting.objects.Item) allItems.get(i);
+            if (zombie.util.StringUtils.isNullOrWhitespace(item.getClothingItem())) continue;
+            if (!haveResolved) {
+                resolved = zombie.scripting.objects.ItemBodyLocation.get(
+                    zombie.scripting.objects.ResourceLocation.of(location));
+                haveResolved = true;
+            }
+            if (resolved != item.getBodyLocation() && resolved != item.canBeEquipped) continue;
+            result.rawset(idx++, item.getFullName());
+        }
+        return result;
+    }
+
+    @Patch(className = "zombie.Lua.LuaManager$GlobalObject", methodName = "getAllItemsForBodyLocation")
+    public static class BodyLocation {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.Argument(0) String location, @Patch.Local("r") se.krka.kahlua.vm.KahluaTable r) {
+            if (!bodyLocGuard.on) return false;
+            try {
+                r = getAllItemsForBodyLocationOnce(location, zombie.scripting.ScriptManager.instance.getAllItems());
+                return r != null;
+            } catch (Throwable t) {
+                bodyLocGuard.fail(t);
+                return false;
+            }
+        }
+
+        @Patch.OnExit
+        public static void exit(@Patch.Return(readOnly = false) se.krka.kahlua.vm.KahluaTable ret,
+                                @Patch.Local("r") se.krka.kahlua.vm.KahluaTable r) {
+            if (r != null) ret = r;
+        }
+    }
 }

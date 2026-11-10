@@ -41,6 +41,7 @@ public class Main {
         StallProbe.init();
         LuaGate.init();
         LuaPatches.initPoolPut();
+        LuaPatches.initBodyLoc();
         FrameBatch.init();
         LuaFiles.init();
         LogDedupe.init();
