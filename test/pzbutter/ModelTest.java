@@ -18,6 +18,7 @@ public class ModelTest {
     }
 
     public static void run() throws Exception {
+        characterMaskLookup();
         animFolderMissing();
         animFolderScope();
         skinnedUniformSkip();
@@ -132,6 +133,29 @@ public class ModelTest {
         ModelPatches.animScopeLoadEnter();
         assert ModelPatches.animScopeVisit(gameRoot, "media/AnimSets/ZombieWalk", false, v) == v : "guard off: no wrap";
         ModelPatches.animScopeLoadExit();
+    }
+
+    // ---- characterMaskLookup: count/fromInt answer from a seeded table ----
+
+    static void characterMaskLookup() throws Exception {
+        Settings.load(SelfTest.write("enabled=true\n"));
+        ModelPatches.initMask();
+        assert !ModelPatches.maskGuard.on : "characterMaskLookup defaults off";
+
+        Settings.load(SelfTest.write("enabled=true\ncharacterMaskLookup=true\n"));
+        ModelPatches.initMask();
+        assert ModelPatches.maskGuard.on : "template turns the guard on";
+
+        assert ModelPatches.count() == zombie.core.skinnedmodel.model.CharacterMask.Part.values().length : "count agrees with the enum";
+        for (int i = -2; i <= ModelPatches.count() + 1; i++) {
+            assert ModelPatches.fromInt(i) == zombie.core.skinnedmodel.model.CharacterMask.Part.fromInt(i)
+                : "fromInt(" + i + ") agrees with stock";
+        }
+        assert ModelPatches.PARTS == ModelPatches.partTable() : "the table seeds once";
+
+        Settings.load(SelfTest.write("enabled=true\n"));
+        ModelPatches.initMask();
+        assert !ModelPatches.maskGuard.on : "defaults restored";
     }
 
     // ---- skinnedUniformSkip: an unchanged uniform upload is skipped, per shader and per slot ----

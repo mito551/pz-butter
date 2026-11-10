@@ -75,6 +75,7 @@ public class Main {
         ModelPatches.init();
         ModelPatches.initAnimFolder();
         ModelPatches.initAnimScope();
+        ModelPatches.initMask();
         WorldPatches.initDoorNpe();
         ChunkPatches.initChunkZExtents();
         ChunkPatches.initFboChunkMisc();

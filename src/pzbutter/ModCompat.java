@@ -84,6 +84,8 @@ final class ModCompat {
         Map.entry("DistributionInsertPatches.AfterParse", k("ltpeVirtualInsertion")),
         Map.entry("ModelPatches.NullModel", k("nullModelGuard")),
         Map.entry("ModelPatches.AnimFolder", k("animFolderMissing")),
+        Map.entry("ModelPatches.MaskCount", k("characterMaskLookup")),
+        Map.entry("ModelPatches.MaskFromInt", k("characterMaskLookup")),
         Map.entry("ModelPatches.AnimScope", k("animFolderScope")),
 Map.entry("LoadPatches.WaitFileTask", k("textureBufferMb")),
         Map.entry("LoadPatches.DFWRegisterDir", k("modWatchAsync")),

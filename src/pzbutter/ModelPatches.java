@@ -318,4 +318,74 @@ public final class ModelPatches {
             return suSkip3(s, SU_TINT, a, b, c);
         }
     }
+
+    // ---- characterMaskLookup: count/fromInt answer from a seeded table ----
+
+    public static final Guard maskGuard = new Guard("characterMaskLookup");
+
+    static void initMask() {
+        try {
+            maskGuard.on = Settings.flag("characterMaskLookup");
+        } catch (Throwable t) {
+            maskGuard.fail(t);
+        }
+    }
+
+    /** The enum's constants, read once. Stock values() clones the backing array on every call. */
+    public static volatile zombie.core.skinnedmodel.model.CharacterMask.Part[] PARTS;
+
+    public static zombie.core.skinnedmodel.model.CharacterMask.Part[] partTable() {
+        zombie.core.skinnedmodel.model.CharacterMask.Part[] t = PARTS;
+        if (t == null) {
+            t = zombie.core.skinnedmodel.model.CharacterMask.Part.values();
+            PARTS = t;
+        }
+        return t;
+    }
+
+    public static int count() {
+        return partTable().length;
+    }
+
+    public static zombie.core.skinnedmodel.model.CharacterMask.Part fromInt(int i) {
+        zombie.core.skinnedmodel.model.CharacterMask.Part[] t = partTable();
+        return i >= 0 && i < t.length ? t[i] : null;
+    }
+
+    @Patch(className = "zombie.core.skinnedmodel.model.CharacterMask$Part", methodName = "count")
+    public static class MaskCount {
+        @Patch.OnEnter(skipOn = true)
+        public static void enter(@Patch.Local("r") Object r) {
+            if (!maskGuard.on) return;
+            try {
+                r = Integer.valueOf(count());
+            } catch (Throwable t) {
+                maskGuard.fail(t);
+            }
+        }
+
+        @Patch.OnExit
+        public static void exit(@Patch.Return(readOnly = false) int ret, @Patch.Local("r") Object r) {
+            if (r != null) ret = (Integer) r;
+        }
+    }
+
+    @Patch(className = "zombie.core.skinnedmodel.model.CharacterMask$Part", methodName = "fromInt")
+    public static class MaskFromInt {
+        @Patch.OnEnter(skipOn = true)
+        public static void enter(@Patch.Argument(0) int i, @Patch.Local("r") Object r) {
+            if (!maskGuard.on) return;
+            try {
+                zombie.core.skinnedmodel.model.CharacterMask.Part p = fromInt(i);
+                if (p != null) r = p;
+            } catch (Throwable t) {
+                maskGuard.fail(t);
+            }
+        }
+
+        @Patch.OnExit
+        public static void exit(@Patch.Return(readOnly = false) zombie.core.skinnedmodel.model.CharacterMask.Part ret, @Patch.Local("r") Object r) {
+            if (r != null) ret = (zombie.core.skinnedmodel.model.CharacterMask.Part) r;
+        }
+    }
 }
