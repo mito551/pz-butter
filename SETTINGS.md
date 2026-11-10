@@ -103,6 +103,7 @@ The mod creates `~/Zomboid/PZButter.properties` on first start and reads it once
 | `statsNoBox` | Character stat reads skip a throwaway object per read. The same values. Off by default. |
 | `zombieFovAwareness` | A zombie's sight test rejects targets outside a 90 degree cone around its facing. Changes which zombies notice the player, so it is off by default. |
 | `zombieVocalSet` | The vocal manager tracks its emitters in a working set and updates only those, not the whole list. Off by default. |
+| `indexedHotLoops` | The named hot loops (a state machine's update tier, meta-chunk zone lookups, stencil square tests) iterate arrays and lists with an index instead of a stream or iterator. The same answers, no throwaway objects. Off by default. |
 | `luaGcNoop` | A mod's `collectgarbage()` no longer forces a full collection. Off by default. |
 | `entityTiming` | Diagnostic. Once a minute the console gets the time per frame of the zombie update phases (sorting into update tiers, update, movement and animation, 3D model picking, the player's sight pass) and the zombie count (the phases overlap: the sight pass runs inside the update and movement phases, so do not add the columns up); with `frameLog`, one line per frame in `Zomboid/pzbutter/entity.out`. Off by default. |
 | `skipIdChecks` | The building and room ID consistency walks the game runs on every continued save run only in debug; outside debug their findings only went to the debug log. Off by default. |

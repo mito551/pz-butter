@@ -356,4 +356,139 @@ public final class ChunkPatches {
             if (v != null) ret = (Boolean) v;
         }
     }
+
+    // ---- indexedHotLoops: iterator-free re-implementations of the named hot loops ----
+
+    public static final Guard hotLoopsGuard = new Guard("indexedHotLoops");
+
+    static void initHotLoops() {
+        try {
+            hotLoopsGuard.on = Settings.flag("indexedHotLoops");
+        } catch (Throwable t) {
+            hotLoopsGuard.fail(t);
+        }
+    }
+
+    private static volatile java.lang.reflect.Field fStencilAreas, fZones;
+
+    private static void hotFields() throws Exception {
+        if (fStencilAreas != null) return;
+        java.lang.reflect.Field a = zombie.iso.IsoCell.class.getDeclaredField("stencilAreas");
+        a.setAccessible(true);
+        java.lang.reflect.Field z = zombie.iso.IsoMetaChunk.class.getDeclaredField("zones");
+        z.setAccessible(true);
+        fStencilAreas = a;
+        fZones = z;
+    }
+
+    /**
+     * indexedHotLoops: IsoCell.isInStencil without the per-call iterator (stencilAreas is a plain ArrayList, so a
+     * plain index loop reaches the same records). Answers false when the list is empty, true on the first in-area
+     * record — stock's predicate kept verbatim, tileScale factors included.
+     */
+    public static Boolean isInStencilFast(Object cell, float x, float y) throws Exception {
+        if (!hotLoopsGuard.on) return null;
+        hotFields();
+        java.util.List<?> list = (java.util.List<?>) fStencilAreas.get(cell);
+        int tileScale = zombie.core.Core.tileScale;
+        for (int i = 0, n = list.size(); i < n; i++) {
+            zombie.iso.IsoCell.StencilArea sa = (zombie.iso.IsoCell.StencilArea) list.get(i);
+            if (x + 32.0f * tileScale > sa.stencilX1()
+                && x - 32.0f * tileScale < sa.stencilX2()
+                && y + 32.0f * tileScale > sa.stencilY1()
+                && y - 96.0f * tileScale < sa.stencilY2()) {
+                return Boolean.TRUE;
+            }
+        }
+        return Boolean.FALSE;
+    }
+
+    /** indexedHotLoops: IsoMetaChunk.doesHaveZone without the stream (zones is a plain Zone[]). */
+    public static Boolean metaHasZone(Object meta, String name) throws Exception {
+        if (!hotLoopsGuard.on) return null;
+        hotFields();
+        zombie.iso.zones.Zone[] zones = (zombie.iso.zones.Zone[]) fZones.get(meta);
+        if (zones == null) return Boolean.FALSE;
+        for (int i = 0; i < zones.length; i++) {
+            zombie.iso.zones.Zone z = zones[i];
+            if (z != null && z.type.equalsIgnoreCase(name)) return Boolean.TRUE;
+        }
+        return Boolean.FALSE;
+    }
+
+    /** indexedHotLoops: IsoMetaChunk.doesHaveForaging without the stream. */
+    public static Boolean metaHasForaging(Object meta) throws Exception {
+        if (!hotLoopsGuard.on) return null;
+        hotFields();
+        zombie.iso.zones.Zone[] zones = (zombie.iso.zones.Zone[]) fZones.get(meta);
+        if (zones == null) return Boolean.FALSE;
+        java.util.List<?> foraging = zombie.iso.IsoWorld.instance.getBiomeMap().getForagingZones();
+        for (int i = 0; i < zones.length; i++) {
+            zombie.iso.zones.Zone z = zones[i];
+            if (z != null && foraging.contains(z.type)) return Boolean.TRUE;
+        }
+        return Boolean.FALSE;
+    }
+
+    @Patch(className = "zombie.iso.IsoCell", methodName = "isInStencil")
+    public static class IsInStencil {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This Object self, @Patch.Argument(0) float x, @Patch.Argument(1) float y,
+            @Patch.Local("r") Object r) {
+            if (!hotLoopsGuard.on) return false;
+            try {
+                r = isInStencilFast(self, x, y);
+                return r != null;
+            } catch (Throwable t) {
+                hotLoopsGuard.fail(t);
+                return false;
+            }
+        }
+
+        @Patch.OnExit
+        public static void exit(@Patch.Return(readOnly = false) boolean ret, @Patch.Local("r") Object r) {
+            if (r != null) ret = (Boolean) r;
+        }
+    }
+
+    @Patch(className = "zombie.iso.IsoMetaChunk", methodName = "doesHaveForaging")
+    public static class MetaForaging {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This Object self, @Patch.Local("r") Object r) {
+            if (!hotLoopsGuard.on) return false;
+            try {
+                r = metaHasForaging(self);
+                return r != null;
+            } catch (Throwable t) {
+                hotLoopsGuard.fail(t);
+                return false;
+            }
+        }
+
+        @Patch.OnExit
+        public static void exit(@Patch.Return(readOnly = false) boolean ret, @Patch.Local("r") Object r) {
+            if (r != null) ret = (Boolean) r;
+        }
+    }
+
+    @Patch(className = "zombie.iso.IsoMetaChunk", methodName = "doesHaveZone")
+    public static class MetaZone {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This Object self, @Patch.Argument(0) String name,
+            @Patch.Local("r") Object r) {
+            if (!hotLoopsGuard.on) return false;
+            try {
+                r = metaHasZone(self, name);
+                return r != null;
+            } catch (Throwable t) {
+                hotLoopsGuard.fail(t);
+                return false;
+            }
+        }
+
+        @Patch.OnExit
+        public static void exit(@Patch.Return(readOnly = false) boolean ret, @Patch.Local("r") Object r) {
+            if (r != null) ret = (Boolean) r;
+        }
+    }
 }

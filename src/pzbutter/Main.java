@@ -81,6 +81,7 @@ public class Main {
         WorldPatches.initDoorNpe();
         ChunkPatches.initChunkZExtents();
         ChunkPatches.initFboChunkMisc();
+        ChunkPatches.initHotLoops();
         VehicleZones.init();
         ScriptComments.init();
         FileKnobs.init();

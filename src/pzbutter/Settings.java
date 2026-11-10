@@ -264,6 +264,8 @@ public final class Settings {
       + "zombieFovAwareness=false\n"
       + "# zombieVocalSet: the vocal manager tracks its emitters in a working set and updates only those, not the whole list.\n"
       + "zombieVocalSet=false\n"
+      + "# indexedHotLoops: the named hot loops (a state machine's update tier, meta-chunk zone lookups, stencil square tests) iterate arrays and lists with an index instead of a stream or iterator. The same answers, no throwaway objects.\n"
+      + "indexedHotLoops=false\n"
       + "# entityTiming: diagnostic; once a minute, the time per frame of the zombie update phases goes to the console (and entity.out with frameLog).\n"
       + "entityTiming=false\n"
       + "# frameThreads: width of PZ Butter's frame worker pool for the zombie update on workers. Needs luaWorkerGate and one restart after it changes (0 or 1 = no pool, no class changes). Max 32.\n"

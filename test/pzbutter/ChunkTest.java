@@ -49,6 +49,11 @@ final class ChunkTest {
         } catch (Exception e) {
             throw new AssertionError(e);
         }
+        try {
+            indexedHotLoops();
+        } catch (Exception e) {
+            throw new AssertionError(e);
+        }
         classOrderBeatsDistance();
         overdueAlwaysGranted();
         lightRateLimitedButOverdueWins();
@@ -1315,5 +1320,99 @@ final class ChunkTest {
         }
         check("bound: null answer stops at numElements", !ChunkPatches.containsFast(list, null) && !list.contains(null));
         check("hit inside the bound still answers", ChunkPatches.containsFast(list, "z") == Boolean.TRUE);
+    }
+
+    /** Task 54 indexedHotLoops: IsoCell.isInStencil, IsoMetaChunk.doesHaveForaging/doesHaveZone and
+     * StateMachine.getMinimumSimulationLevel re-implemented as indexed loops, differential vs stock. */
+    static void indexedHotLoops() throws Exception {
+        Settings.load(SelfTest.write("enabled=true\n"));
+        ChunkPatches.initHotLoops();
+        check("indexedHotLoops defaults off", !ChunkPatches.hotLoopsGuard.on);
+        IsoCell cell = (IsoCell) bare(IsoCell.class);
+        write(cell, "stencilAreas", new java.util.ArrayList<>());
+        check("guard off: stencil core declines", ChunkPatches.isInStencilFast(cell, 25f, 25f) == null);
+        check("guard off: stock answers empty list", !cell.isInStencil(25f, 25f));
+
+        Settings.load(SelfTest.write("enabled=true\nindexedHotLoops=true\n"));
+        ChunkPatches.initHotLoops();
+        check("template enables the chunk guard", ChunkPatches.hotLoopsGuard.on);
+        ZombiePatches.init();
+        check("template enables the zombie guard", ZombiePatches.hotLoopsGuard.on);
+
+        // isInStencilFast: differential vs stock over record areas.
+        @SuppressWarnings("unchecked")
+        java.util.List<Object> areas = (java.util.List<Object>) read(cell, "stencilAreas");
+        check("empty stencil list: stock false", !cell.isInStencil(25f, 25f));
+        check("empty stencil list: core false", ChunkPatches.isInStencilFast(cell, 25f, 25f) == Boolean.FALSE);
+        areas.add(new zombie.iso.IsoCell.StencilArea(10, 20, 40, 60, 0, 0, 0, 0, 0, 0));
+        areas.add(new zombie.iso.IsoCell.StencilArea(100, 200, 140, 260, 0, 0, 0, 0, 0, 0));
+        float[] xs = {25f, 5f, 41f, 10f, 39.9f, 101f};
+        float[] ys = {25f, 15f, 65f, 59f, 259f, 201f};
+        for (float x : xs) {
+            for (float y : ys) {
+                check("stencil matches stock at " + x + "," + y,
+                    cell.isInStencil(x, y) == ChunkPatches.isInStencilFast(cell, x, y));
+            }
+        }
+
+        // metaHasZone: differential with no IsoWorld dependency.
+        zombie.iso.IsoMetaChunk meta = (zombie.iso.IsoMetaChunk) bare(zombie.iso.IsoMetaChunk.class);
+        check("zones null: stock false", !meta.doesHaveZone("VehicleZone"));
+        check("zones null: core false", ChunkPatches.metaHasZone(meta, "VehicleZone") == Boolean.FALSE);
+        zombie.iso.zones.Zone zv = (zombie.iso.zones.Zone) bare(zombie.iso.zones.Zone.class);
+        zombie.iso.zones.Zone zf = (zombie.iso.zones.Zone) bare(zombie.iso.zones.Zone.class);
+        zv.type = "VehicleZone";
+        zf.type = "ForageR";
+        write(meta, "zones", new zombie.iso.zones.Zone[]{null, zv, zf});
+        for (String q : new String[]{"VehicleZone", "vehiclezone", "NOPE", null}) {
+            check("zone matches stock for " + q, meta.doesHaveZone(q) == ChunkPatches.metaHasZone(meta, q));
+        }
+        check("zone hit is case-insensitive", meta.doesHaveZone("vehiclezone"));
+
+        // metaHasForaging: differential with a seeded IsoWorld + BiomeMap.
+        zombie.iso.IsoMetaChunk bareMeta = (zombie.iso.IsoMetaChunk) bare(zombie.iso.IsoMetaChunk.class);
+        check("foraging zones null: stock false", !bareMeta.doesHaveForaging());
+        check("foraging zones null: core false", ChunkPatches.metaHasForaging(bareMeta) == Boolean.FALSE);
+        zombie.iso.IsoWorld savedWorld = zombie.iso.IsoWorld.instance;
+        Object bw = bare(zombie.iso.IsoWorld.class);
+        Object bmap = bare(zombie.iso.worldgen.maps.BiomeMap.class);
+        write(bw, "biomeMap", bmap);
+        write(bmap, "foragingZones", java.util.List.of("ForageR"));
+        zombie.iso.IsoWorld.instance = (zombie.iso.IsoWorld) bw;
+        try {
+            check("foraging matches stock (hit)", ChunkPatches.metaHasForaging(meta) == meta.doesHaveForaging());
+            check("foraging hit", meta.doesHaveForaging());
+            write(bmap, "foragingZones", java.util.List.of("Other"));
+            check("foraging matches stock (miss)", ChunkPatches.metaHasForaging(meta) == meta.doesHaveForaging());
+            check("foraging miss", !meta.doesHaveForaging());
+        } finally {
+            zombie.iso.IsoWorld.instance = savedWorld;
+        }
+
+        // StateMachine.getMinimumSimulationLevel differential.
+        zombie.ai.StateMachine sm = (zombie.ai.StateMachine) bare(zombie.ai.StateMachine.class);
+        write(sm, "subStates", new java.util.ArrayList<>());
+        check("simLevel no state matches stock",
+            ZombiePatches.simLevel(sm) == sm.getMinimumSimulationLevel());
+        zombie.ai.State st = zombie.ai.states.ZombieIdleState.instance();
+        write(sm, "currentState", st);
+        check("simLevel state matches stock",
+            ZombiePatches.simLevel(sm) == sm.getMinimumSimulationLevel());
+        @SuppressWarnings("unchecked")
+        java.util.List<Object> subs = (java.util.List<Object>) read(sm, "subStates");
+        Object emptySlot = bare(zombie.ai.StateMachine.SubstateSlot.class);
+        subs.add(emptySlot);
+        check("simLevel empty slot matches stock",
+            ZombiePatches.simLevel(sm) == sm.getMinimumSimulationLevel());
+        Object liveSlot = bare(zombie.ai.StateMachine.SubstateSlot.class);
+        write(liveSlot, "state", st);
+        subs.add(liveSlot);
+        check("simLevel active sub-state matches stock",
+            ZombiePatches.simLevel(sm) == sm.getMinimumSimulationLevel());
+
+        Settings.load(SelfTest.write("enabled=true\n"));
+        ChunkPatches.initHotLoops();
+        ZombiePatches.init();
+        check("guards back off by default", !ChunkPatches.hotLoopsGuard.on && !ZombiePatches.hotLoopsGuard.on);
     }
 }

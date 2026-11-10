@@ -18,6 +18,7 @@ public final class ZombiePatches {
         losGuard.on = Settings.flag("playerLosFast");
         fovGuard.on = Settings.flag("zombieFovAwareness");
         vocalsGuard.on = Settings.flag("zombieVocalSet");
+        hotLoopsGuard.on = Settings.flag("indexedHotLoops");
         CullSort.init();
         ZombieMisc.init();
         EntityTiming.init();
@@ -648,6 +649,61 @@ public final class ZombiePatches {
             if (!vocalsGuard.on) return;
             try { vocalsTick(self); }
             catch (Throwable t) { vocalsGuard.fail(t); }
+        }
+    }
+
+    // ---- indexedHotLoops: StateMachine.getMinimumSimulationLevel without the iterator ----
+
+    public static final Guard hotLoopsGuard = new Guard("indexedHotLoops");
+
+    private static volatile java.lang.reflect.Field fCurrentState, fSubStates;
+
+    private static void simFields() throws Exception {
+        if (fCurrentState != null) return;
+        java.lang.reflect.Field c = zombie.ai.StateMachine.class.getDeclaredField("currentState");
+        c.setAccessible(true);
+        java.lang.reflect.Field s = zombie.ai.StateMachine.class.getDeclaredField("subStates");
+        s.setAccessible(true);
+        fCurrentState = c;
+        fSubStates = s;
+    }
+
+    /** indexedHotLoops: StateMachine.getMinimumSimulationLevel as an indexed loop (subStates is a plain ArrayList). */
+    public static zombie.UpdateSchedulerSimulationLevel simLevel(Object self) throws Exception {
+        if (!hotLoopsGuard.on) return null;
+        simFields();
+        zombie.ai.State cur = (zombie.ai.State) fCurrentState.get(self);
+        zombie.UpdateSchedulerSimulationLevel level = cur == null
+            ? zombie.UpdateSchedulerSimulationLevel.minimum()
+            : cur.getMinimumSimulationLevel();
+        java.util.List<?> subs = (java.util.List<?>) fSubStates.get(self);
+        for (int i = 0, n = subs.size(); i < n; i++) {
+            zombie.ai.StateMachine.SubstateSlot slot = (zombie.ai.StateMachine.SubstateSlot) subs.get(i);
+            if (!slot.isEmpty()) {
+                level = level.max(slot.getState().getMinimumSimulationLevel());
+            }
+        }
+        return level;
+    }
+
+    @Patch(className = "zombie.ai.StateMachine", methodName = "getMinimumSimulationLevel")
+    public static class HotSimLevel {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This Object self, @Patch.Local("r") Object r) {
+            if (!hotLoopsGuard.on) return false;
+            try {
+                r = simLevel(self);
+                return r != null;
+            } catch (Throwable t) {
+                hotLoopsGuard.fail(t);
+                return false;
+            }
+        }
+
+        @Patch.OnExit
+        public static void exit(@Patch.Return(readOnly = false) zombie.UpdateSchedulerSimulationLevel ret,
+            @Patch.Local("r") Object r) {
+            if (r != null) ret = (zombie.UpdateSchedulerSimulationLevel) r;
         }
     }
 }

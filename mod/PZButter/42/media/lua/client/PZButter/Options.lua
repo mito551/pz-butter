@@ -59,6 +59,7 @@ local KEYS = {
 	"gpuStats",
 	"handoffRecalcFast",
 	"hearingHoist",
+	"indexedHotLoops",
 	"inputLatch",
 	"invTooltipCache",
 	"kahluaPoolDoublePut",
