@@ -60,6 +60,7 @@ public class Main {
         ModWatch.init();
         ShaderReuse.init();
         ModelPatches.init();
+        ModelPatches.initAnimFolder();
         WorldPatches.initDoorNpe();
         ChunkPatches.initChunkZExtents();
         VehicleZones.init();

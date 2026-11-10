@@ -469,6 +469,9 @@ public final class Settings {
 + "# (ThumpType, WalkType, ZombieState) answer from a hash map of the enum names instead of a\n"
 + "# throw-caught valueOf or a linear scan; same answer for a name that exists and for one that does not.\n"
 + "enumParseCache=false\n"
++ "# animFolderMissing: the per-mod animation folder walk only runs when the folder exists; a missing\n"
++ "# AnimSets or actiongroups folder no longer logs a NoSuchFileException with a stack.\n"
++ "animFolderMissing=true\n"
 + "# serverCellSpread (server): spread a cell's second-stage load over ticks inside a per-tick budget (at least one chunk per tick); keeps a 120 ms floor near a player.\n"
 + "serverCellSpread=false\n"
 + "#\n"
@@ -632,6 +635,7 @@ public final class Settings {
         "chatIconsRace",
         "findItemOnce",
         "chunkZExtentsFast",
+        "animFolderMissing",
         "luaInternConstants", "luaSkipEmpty", "uiVerify", "uiRetainedMods", "uiTickStagger", "textWidthCache", "uiLuaFast", "mapStreetMemo", "mapStreetCache", "mapVisitedFast",   // these two only act with vsync on
         "audioLimiterStereoFold",
         "persistentVboFrameSync",   // acts only with persistentVbo (Plan 9)

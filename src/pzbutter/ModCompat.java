@@ -82,6 +82,7 @@ final class ModCompat {
         Map.entry("LoadPatches.StripComments", k("scriptParserFast")),
         Map.entry("DistributionInsertPatches.AfterParse", k("ltpeVirtualInsertion")),
         Map.entry("ModelPatches.NullModel", k("nullModelGuard")),
+        Map.entry("ModelPatches.AnimFolder", k("animFolderMissing")),
 Map.entry("LoadPatches.WaitFileTask", k("textureBufferMb")),
         Map.entry("LoadPatches.DFWRegisterDir", k("modWatchAsync")),
         Map.entry("LoadPatches.DFWUpdate", k("modWatchAsync")),

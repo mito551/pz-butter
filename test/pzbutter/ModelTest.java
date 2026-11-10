@@ -14,6 +14,7 @@ public class ModelTest {
     }
 
     public static void run() throws Exception {
+        animFolderMissing();
         zombie.core.skinnedmodel.model.Model m = anyModel();
         zombie.core.skinnedmodel.model.ModelInstance full = new zombie.core.skinnedmodel.model.ModelInstance();
         full.model = m;
@@ -37,5 +38,28 @@ public class ModelTest {
         allNull.add(empty); allNull.add(empty);
         ArrayList outNull = ModelPatches.filterNullModels(allNull);
         if (outNull == null || !outNull.isEmpty()) throw new AssertionError("all-null list must become an empty copy");
+    }
+
+    /** animFolderMissing: a missing AnimSets/actiongroups folder skips the walk instead of logging a NoSuchFileException. */
+    static void animFolderMissing() throws Exception {
+        java.nio.file.Path exist = java.nio.file.Files.createTempDirectory("butter-anim");
+        java.nio.file.Path missing = exist.resolve("nope");
+        if (ModelPatches.skipFolder(null)) throw new AssertionError("null folder must stay stock");
+        if (!ModelPatches.skipFolder(missing)) throw new AssertionError("missing folder must skip the walk");
+        if (ModelPatches.skipFolder(exist)) throw new AssertionError("existing folder must stay stock");
+        java.nio.file.Path file = exist.resolve("file");
+        java.nio.file.Files.writeString(file, "x");
+        if (ModelPatches.skipFolder(file)) throw new AssertionError("a file path is not a missing folder — stock walk");
+        java.util.List<String> empty = ModelPatches.emptyList();
+        if (empty == null || !empty.isEmpty()) throw new AssertionError("skip must yield an empty list");
+        if (ModelPatches.emptyList() != empty) throw new AssertionError("empty list should be the shared one");
+
+        // guard wiring: default template leaves it on, forced-off template switches it off
+        Settings.load(SelfTest.write("enabled=true\nanimFolderMissing=false\n"));
+        ModelPatches.initAnimFolder();
+        if (ModelPatches.animFolderGuard.on) throw new AssertionError("forced-off must disable the guard");
+        Settings.load(SelfTest.write("enabled=true\n"));
+        ModelPatches.initAnimFolder();
+        if (!ModelPatches.animFolderGuard.on) throw new AssertionError("default must be on");
     }
 }

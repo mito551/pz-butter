@@ -56,4 +56,48 @@ public final class ModelPatches {
             }
         }
     }
+
+    // animFolderMissing (SPEC 6.x): AdvancedAnimator.searchFolders walkFileTree's each mod's AnimSets and
+    // actiongroups folders; a missing folder throws NoSuchFileException that the callers catch and log with a
+    // stack. A folder that does not exist has no .xml files, so hand back an empty list instead of the walk.
+
+    public static final Guard animFolderGuard = new Guard("animFolderMissing");
+
+    static void initAnimFolder() {
+        try {
+            animFolderGuard.on = Settings.flag("animFolderMissing");
+        } catch (Throwable t) {
+            animFolderGuard.fail(t);
+        }
+    }
+
+    /** True when the walk target does not exist (null or a broken path stays stock). */
+    public static boolean skipFolder(java.nio.file.Path dir) {
+        return dir != null && !java.nio.file.Files.exists(dir);
+    }
+
+    /** What the walk would find in a folder that is not there: nothing. */
+    public static java.util.List<String> emptyList() {
+        return java.util.Collections.emptyList();
+    }
+
+    @Patch(className = "zombie.core.skinnedmodel.advancedanimation.AdvancedAnimator", methodName = "searchFolders")
+    public static class AnimFolder {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.Argument(1) java.nio.file.Path dir, @Patch.Local("r") Object r) {
+            if (!animFolderGuard.on) return false;
+            try {
+                if (skipFolder(dir)) { r = emptyList(); return true; }
+                return false;
+            } catch (Throwable t) {
+                animFolderGuard.fail(t);
+                return false;
+            }
+        }
+
+        @Patch.OnExit
+        public static void exit(@Patch.Return(readOnly = false) java.util.List<String> ret, @Patch.Local("r") Object r) {
+            if (r != null) ret = (java.util.List<String>) r;
+        }
+    }
 }

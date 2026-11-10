@@ -7,6 +7,7 @@ local api = PZAPI and PZAPI.ModOptions
 if not api or not PZButter or not PZButter.setting or not PZButter.setFromUi then return end
 
 local KEYS = {
+	"animFolderMissing",
 	"audioLimiter",
 	"audioLimiterStereoFold",
 	"bakeBudgetAdaptive",
