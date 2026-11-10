@@ -53,35 +53,76 @@ function ETWCombinedTraitChecks.immunocompromisedKnoxInfectionRoll(player)
 	return infected
 end
 
+---The target's own traversal: used when the ETW_Perf jar is not loaded (e.g. a dedicated server).
+---@param player IsoPlayer
+---@param radius number
+---@param visitor fun(zombie: IsoZombie, distanceSquared: number)|nil
+---@return integer nearbyCount
+local function forEachNearbyLivingZombieLua(player, radius, visitor)
+	radius = math.max(0, radius)
+	local cell = player:getCell()
+	if not cell then
+		return 0
+	end
+
+	local playerX = player:getX()
+	local playerY = player:getY()
+	local playerZ = math.floor(player:getZ())
+	local tileX = math.floor(playerX)
+	local tileY = math.floor(playerY)
+	local tileRadius = math.ceil(radius)
+	local radiusSquared = radius * radius
+	local nearbyCount = 0
+
+	for x = tileX - tileRadius, tileX + tileRadius do
+		for y = tileY - tileRadius, tileY + tileRadius do
+			local square = cell:getGridSquare(x, y, playerZ)
+			if square then
+				local movingObjects = square:getMovingObjects()
+				for i = 0, movingObjects:size() - 1 do
+					local object = movingObjects:get(i)
+					if instanceof(object, "IsoZombie") then
+						---@cast object IsoZombie
+						if not object:isDead() then
+							local deltaX = object:getX() - playerX
+							local deltaY = object:getY() - playerY
+							local distanceSquared = deltaX * deltaX + deltaY * deltaY
+							if distanceSquared <= radiusSquared then
+								nearbyCount = nearbyCount + 1
+								if visitor then
+									visitor(object, distanceSquared)
+								end
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+	return nearbyCount
+end
+
 ---Visits every living zombie within a bounded two-dimensional radius of the player.
----ETW_Perf replaces the Lua cell traversal with a Java helper.
+---Only loaded moving objects on the player's current Z-level are considered.
+---ETW_Perf: the cell traversal runs in Java (etwPerfNearbyLivingZombies), which returns
+---a flat array { zombie1, distanceSquared1, zombie2, ... } in the same visiting order.
 ---@param player IsoPlayer
 ---@param radius number
 ---@param visitor fun(zombie: IsoZombie, distanceSquared: number)|nil
 ---@return integer nearbyCount
 function ETWCombinedTraitChecks.forEachNearbyLivingZombie(player, radius, visitor)
-	radius = math.max(0, radius)
-	if not player or not player.getCell then
-		return 0
+	local native = etwPerfNearbyLivingZombies
+	if not native then
+		return forEachNearbyLivingZombieLua(player, radius, visitor)
 	end
-	local ok, rows = pcall(etwPerfNearbyLivingZombies, player, radius)
-	if not ok or type(rows) ~= "table" then
-		rows = {}
-	end
-	local nearbyCount = 0
-	for i = 1, 1000000 do
-		local row = rows[i]
-		if type(row) ~= "table" then break end
-		local zombie = row.zombie
-		local distanceSquared = row.distanceSquared
-		if zombie and (not zombie.isDead or not zombie:isDead()) then
-			nearbyCount = nearbyCount + 1
-			if visitor then
-				visitor(zombie, distanceSquared)
-			end
+	local flat = native(player, math.max(0, radius))
+	local n = #flat
+	if visitor then
+		for i = 1, n, 2 do
+			visitor(flat[i], flat[i + 1])
 		end
 	end
-	return nearbyCount
+	return n / 2
 end
 
 local nearbyZombieCachePlayer

@@ -7,12 +7,11 @@ import zombie.characters.IsoGameCharacter;
 import zombie.iso.IsoCell;
 import zombie.iso.IsoGridSquare;
 import zombie.characters.IsoZombie;
-import zombie.iso.areas.IsoRoom;
 
 /**
- * Fast nearby-living-zombie traversal for ETW_Perf. Returns one Lua table per
- * matching zombie so the Lua side can run the (small) per-zombie callbacks
- * without repeating the cell/square iteration in Lua.
+ * Fast nearby-living-zombie traversal for ETW_Perf. Returns one flat Lua array
+ * { zombie1, distanceSquared1, zombie2, distanceSquared2, ... } so the Lua side can run
+ * the (small) per-zombie callbacks without repeating the cell/square iteration in Lua.
  */
 public final class Nearby {
     private Nearby() {}
@@ -39,9 +38,10 @@ public final class Nearby {
             for (int y = tileY - tr; y <= tileY + tr; y++) {
                 IsoGridSquare square = cell.getGridSquare(x, y, pz);
                 if (square == null) continue;
-                int count = square.getMovingObjects() == null ? 0 : square.getMovingObjects().size();
+                java.util.List<zombie.iso.IsoMovingObject> moving = square.getMovingObjects();
+                int count = moving == null ? 0 : moving.size();
                 for (int i = 0; i < count; i++) {
-                    Object o = square.getMovingObjects().get(i);
+                    Object o = moving.get(i);
                     if (!(o instanceof IsoZombie)) continue;
                     IsoZombie z = (IsoZombie) o;
                     if (z.isDead()) continue;
@@ -49,10 +49,8 @@ public final class Nearby {
                     float dy = z.getY() - py;
                     double d2 = dx * dx + dy * dy;
                     if (d2 <= r2) {
-                        KahluaTable row = LuaManager.platform.newTable();
-                        row.rawset("zombie", z);
-                        row.rawset("distanceSquared", d2);
-                        out.rawset(++n, row);
+                        out.rawset(++n, z);
+                        out.rawset(++n, (Object) Double.valueOf(d2));
                     }
                 }
             }
