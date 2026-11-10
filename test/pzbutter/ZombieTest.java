@@ -65,10 +65,11 @@ final class ZombieTest {
         zombieStatsCadence();
         zombieStatsFrameEnd();
         zombieFovCone();
+        zombieVocalSet();
         zombieShimsOffTouchNothing();
     }
 
-    static final String[] PLAN8_FLAGS = {"zeroFacingFix", "playerLosFast", "zombieCullSortFast", "statsNoBox", "entityTiming", "zombieFovAwareness"};
+    static final String[] PLAN8_FLAGS = {"zeroFacingFix", "playerLosFast", "zombieCullSortFast", "statsNoBox", "entityTiming", "zombieFovAwareness", "zombieVocalSet"};
 
     static void plan8KeysDefaults() {
         Settings.load(SelfTest.write(Settings.render(new java.util.Properties()).replace("\nenabled=false\n", "\nenabled=true\n")));
@@ -82,7 +83,7 @@ final class ZombieTest {
         String t = Settings.render(new java.util.Properties());
         for (String k : new String[] {"zeroFacingFix=false", "numberZombiesBlended=0", "zombieLodFixed3d=0", "zombieModelAddBudgetUs=0",
                 "zombieSimLodTiles=0", "zombieSimLodSteps=1", "playerLosFast=false", "zombieCullSortFast=false", "statsNoBox=false",
-                "entityTiming=false", "zombieFovAwareness=false"})
+                "entityTiming=false", "zombieFovAwareness=false", "zombieVocalSet=false"})
             assert t.contains("\n" + k + "\n") : k;
         assert t.indexOf("\nbloodRebakeCoalesceMs=250\n") < t.indexOf("\nzeroFacingFix=false\n") && t.indexOf("\nentityTiming=false\n") < t.indexOf("\ninputLatch=true\n");
         for (String k : new String[] {"zombieLodFixed3d", "zombieModelAddBudgetUs", "zombieSimLodTiles"})
@@ -1010,5 +1011,84 @@ final class ZombieTest {
             catch (NoSuchFieldException ignored) {}
         }
         throw new NoSuchFieldException(name);
+    }
+
+    /** Unwraps a Field-holder static field (a Field holding a Field) and points it at an accessible slot. */
+    static java.lang.reflect.Field hh(Class<?> c, String name) throws Exception {
+        java.lang.reflect.Field holder = c.getDeclaredField(name);
+        holder.setAccessible(true);
+        java.lang.reflect.Field f = (java.lang.reflect.Field) holder.get(null);
+        f.setAccessible(true);
+        return f;
+    }
+
+    // ---- Task 7: zombieVocalSet ----
+
+    /** The manager keeps a working set: addCharacter only registers membership (no per-frame pool churn), the 500 ms tick prefills its objects from the set and stock runs the tick. */
+    static void zombieVocalSet() throws Throwable {
+        zombie.characters.ZombieVocalsManager m = new zombie.characters.ZombieVocalsManager();
+        ZombiePatches.vocalsFields();
+        zombie.characters.IsoZombie z1 = (zombie.characters.IsoZombie) ChunkTest.bare(zombie.characters.IsoZombie.class);
+        zombie.characters.IsoZombie z2 = (zombie.characters.IsoZombie) ChunkTest.bare(zombie.characters.IsoZombie.class);
+        java.lang.reflect.Field added = hh(ZombiePatches.class, "fAdded");
+        java.lang.reflect.Field objects = hh(ZombiePatches.class, "fObjects");
+        java.lang.reflect.Field updateMs = hh(ZombiePatches.class, "fUpdateMs");
+        java.lang.reflect.Field owCharc = hh(ZombiePatches.class, "fOwCharacter");
+        Settings.load(SelfTest.write("enabled=true\n"));
+        assert !Settings.flag("zombieVocalSet");
+        boolean oldGuard = ZombiePatches.vocalsGuard.on;
+        var oldSeam = ZombiePatches.VOCALS_QUALIFY;
+        try {
+            // guard off: the core declines and stock behaviour is reachable
+            ZombiePatches.vocalsGuard.on = false;
+            assert !ZombiePatches.vocalsAdd(m, z1);
+            m.addCharacter(z1);
+            assert ((java.util.Set<?>) added.get(m)).contains(z1);
+            assert ((java.util.List<?>) objects.get(m)).size() == 1;
+            ((java.util.Set<?>) added.get(m)).clear();
+            ((java.util.List<?>) objects.get(m)).clear();
+
+            // the template key switches it on
+            Settings.load(SelfTest.write("enabled=true\nzombieVocalSet=true\n"));
+            assert Settings.flag("zombieVocalSet");
+            ZombiePatches.vocalsGuard.on = true;
+
+            // membership only: the same zombie re-registers without touching the objects list
+            assert ZombiePatches.vocalsAdd(m, z1);
+            assert ZombiePatches.vocalsAdd(m, z1);
+            assert ((java.util.Set<?>) added.get(m)).size() == 1;
+            assert ((java.util.List<?>) objects.get(m)).isEmpty(); // no per-frame churn
+            assert ZombiePatches.vocalsAdd(m, z2);
+            assert ((java.util.Set<?>) added.get(m)).size() == 2;
+            assert ((java.util.List<?>) objects.get(m)).isEmpty();
+
+            // the 500 ms gate: recent tick = not due, stale tick = due
+            updateMs.setLong(m, System.currentTimeMillis());
+            assert !ZombiePatches.vocalsTick(m);
+            updateMs.setLong(m, 0L);
+            assert ZombiePatches.vocalsTick(m);
+
+            // tick refills the stock objects list from the working set; the seam says who qualifies
+            ZombiePatches.VOCALS_QUALIFY = (mm, zz) -> true;
+            ((java.util.List<?>) objects.get(m)).clear();
+            assert ZombiePatches.vocalsTick(m);
+            assert ((java.util.List<?>) objects.get(m)).size() == 2;
+            assert owCharc.get(((java.util.List<?>) objects.get(m)).get(0)) == z1
+                || owCharc.get(((java.util.List<?>) objects.get(m)).get(1)) == z1;
+            // seam decline: nothing refills
+            ZombiePatches.VOCALS_QUALIFY = (mm, zz) -> false;
+            ((java.util.List<?>) objects.get(m)).clear();
+            assert ZombiePatches.vocalsTick(m);
+            assert ((java.util.List<?>) objects.get(m)).isEmpty();
+            // real checks on a bare zombie: dead/fake/reanimated are all false, the range ask is unavailable headless, so the member is skipped without throwing
+            ZombiePatches.VOCALS_QUALIFY = null;
+            ((java.util.List<?>) objects.get(m)).clear();
+            assert ZombiePatches.vocalsTick(m);
+            assert ((java.util.List<?>) objects.get(m)).isEmpty();
+        } finally {
+            ZombiePatches.vocalsGuard.on = oldGuard;
+            ZombiePatches.VOCALS_QUALIFY = oldSeam;
+            Settings.load(SelfTest.write("enabled=true\n"));
+        }
     }
 }

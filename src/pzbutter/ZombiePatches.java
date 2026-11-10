@@ -1,5 +1,7 @@
 package pzbutter;
 
+import java.lang.reflect.Field;
+
 import me.zed_0xff.zombie_buddy.Patch;
 
 /**
@@ -15,6 +17,7 @@ public final class ZombiePatches {
         ZombieLod.init();
         losGuard.on = Settings.flag("playerLosFast");
         fovGuard.on = Settings.flag("zombieFovAwareness");
+        vocalsGuard.on = Settings.flag("zombieVocalSet");
         CullSort.init();
         ZombieMisc.init();
         EntityTiming.init();
@@ -564,4 +567,87 @@ public final class ZombiePatches {
 
     @Patch(className = "zombie.core.skinnedmodel.animation.AnimationPlayer", methodName = "UpdateSkinTransforms")
     public static class AnimSkinTransforms { @Patch.OnEnter(skipOn = true) public static boolean enter() { return AnimSkip.skipping; } }
+
+    // ---- zombieVocalSet: vocal emitters tracked in a working set ----
+
+    /** The per-frame whole-list churn (pool alloc + objects.add per in-range zombie) is opt-in; membership only while the key is on. */
+    public static final Guard vocalsGuard = new Guard("zombieVocalSet");
+
+    /** Test-only indirection for the qualification checks; production leaves it null. (self, zombie) -> qualifies. */
+    public static volatile java.util.function.BiPredicate<Object, Object> VOCALS_QUALIFY;
+
+    private static volatile Field fAdded, fObjects, fObjectPool, fUpdateMs, fOwCharacter;
+
+    static void vocalsFields() throws Exception {
+        if (fAdded != null) return;        Field a = zombie.characters.ZombieVocalsManager.class.getDeclaredField("added");
+        Field o = zombie.characters.ZombieVocalsManager.class.getDeclaredField("objects");
+        Field p = zombie.characters.ZombieVocalsManager.class.getDeclaredField("objectPool");
+        Field u = zombie.characters.ZombieVocalsManager.class.getDeclaredField("updateMs");
+        Field oc = Class.forName("zombie.characters.ZombieVocalsManager$ObjectWithDistance").getDeclaredField("character");
+        a.setAccessible(true); o.setAccessible(true); p.setAccessible(true); u.setAccessible(true); oc.setAccessible(true);
+        fAdded = a; fObjects = o; fObjectPool = p; fUpdateMs = u; fOwCharacter = oc;
+    }
+
+    /** addCharacter entry: set membership only; the pool alloc and the objects.add move to the 500 ms tick. */
+    public static boolean vocalsAdd(Object self, zombie.characters.IsoZombie c) throws Exception {
+        if (!vocalsGuard.on) return false;
+        vocalsFields();
+        java.util.Set<Object> added = (java.util.Set) fAdded.get(self);
+        if (added.contains(c)) return true;
+        added.add(c);
+        return true;
+    }
+
+    /** update() entry, every frame: true when the 500 ms gate passes so the prefill runs; the stock body follows. */
+    public static boolean vocalsTick(Object self) throws Exception {
+        if (!vocalsGuard.on) return false;
+        if (zombie.network.GameServer.server) return false;
+        long now = System.currentTimeMillis();
+        vocalsFields();
+        if (now - fUpdateMs.getLong(self) < 500L) return false;
+        java.util.List<Object> objects = (java.util.List<Object>) fObjects.get(self);
+        zombie.popman.ObjectPool<Object> pool = (zombie.popman.ObjectPool<Object>) fObjectPool.get(self);
+        for (Object z : (java.util.Set<?>) fAdded.get(self)) {
+            zombie.characters.IsoZombie m = (zombie.characters.IsoZombie) z;
+            if (!vocalsQualifies(self, m)) continue;
+            Object ow = pool.alloc();
+            fOwCharacter.set(ow, m);
+            objects.add(ow);
+        }
+        return true;
+    }
+
+    /** Same qualification as IsoZombie.updateVocalProperties: alive, not fake-dead, and in listener range. */
+    static boolean vocalsQualifies(Object self, zombie.characters.IsoZombie m) {
+        java.util.function.BiPredicate<Object, Object> seam = VOCALS_QUALIFY;
+        if (seam != null) {
+            try { return seam.test(self, m); } catch (Throwable t) { return false; }
+        }
+        try {
+            if (m.isDead() || m.isFakeDead() || m.isReanimatedForGrappleOnly()) return false;
+            return zombie.SoundManager.instance.isListenerInRange(m.getX(), m.getY(), 70f);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    @Patch(className = "zombie.characters.ZombieVocalsManager", methodName = "addCharacter")
+    public static class VocalsAdd {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This Object self, @Patch.Argument(0) zombie.characters.IsoZombie c) {
+            if (!vocalsGuard.on) return false;
+            try { return vocalsAdd(self, c); }
+            catch (Throwable t) { vocalsGuard.fail(t); return false; }
+        }
+    }
+
+    @Patch(className = "zombie.characters.ZombieVocalsManager", methodName = "update")
+    public static class VocalsTick {
+        @Patch.OnEnter
+        public static void enter(@Patch.This Object self) {
+            if (!vocalsGuard.on) return;
+            try { vocalsTick(self); }
+            catch (Throwable t) { vocalsGuard.fail(t); }
+        }
+    }
 }
