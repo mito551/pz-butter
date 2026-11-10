@@ -22,6 +22,7 @@ public final class WorldPatches {
     static final Guard fastGuard = new Guard("cutawayFast");
     static final Guard splashGuard = new Guard("rainSplashesFast");
     static final Guard maskGuard = new Guard("weatherMaskIdleSkip");
+    public static final Guard doorGuard = new Guard("doorToggleNpeGuard");
 
     /**
      * FBORenderCell.hasAnyDirtyChunkTextures entry: the answer when occlusionSkipLightingOnly or (with bakeScheduler)
@@ -114,6 +115,35 @@ public final class WorldPatches {
     public static class LightInfoStamp {
         @Patch.OnExit
         public static void exit(@Patch.This Object self) { onLightInfoExit(self); }
+    }
+
+    /**
+     * doorToggleNpeGuard (SPEC 1126): IsoDoor.ToggleDoorActual ends with a music-intensity call on
+     * player.isLocalPlayer(); when a zombie opens a door player is null and ThumpState logs the NPE after the door
+     * is already toggled and synced. Only that NPE is dropped; a woven local name spells the message differently,
+     * so the text is matched without it.
+     */
+    public static boolean isToggleNpe(Throwable t) {
+        if (!(t instanceof NullPointerException)) return false;
+        String m = String.valueOf(t.getMessage());
+        return m.contains("isLocalPlayer()") && m.contains("because") && m.contains("is null");
+    }
+
+    static void initDoorNpe() {
+        try {
+            doorGuard.on = Settings.flag("doorToggleNpeGuard");
+        } catch (Throwable t) {
+            doorGuard.fail(t);
+        }
+    }
+
+    @Patch(className = "zombie.iso.objects.IsoDoor", methodName = "ToggleDoorActual")
+    public static class DoorNpe {
+        @Patch.OnExit(onThrowable = Throwable.class, suppress = NullPointerException.class)
+        public static void exit(@Patch.Thrown(readOnly = false) Throwable thrown) {
+            if (!doorGuard.on) return;
+            if (isToggleNpe(thrown)) thrown = null;   // writable binding: dropping it suppresses
+        }
     }
 
     @Patch(className = "zombie.iso.objects.IsoLightSwitch", methodName = "hasElectricityAround")

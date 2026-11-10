@@ -362,6 +362,8 @@ public final class Settings {
       + "shaderCache=false\n"
       + "# nullModelGuard: a model slot whose model is not loaded yet (a freshly spawned NPC) is skipped for one pass instead of stopping the render loop and killing the character's 3D view for the session.\n"
       + "nullModelGuard=true\n"
+      + "# doorToggleNpeGuard: a zombie toggling a door no longer throws in the music-intensity call that ends ToggleDoorActual; the toggle and its sync already happened.\n"
+      + "doorToggleNpeGuard=true\n"
       + "# loaderCpuFixes: vehicle zones are de-duplicated in one pass (debug string built only when vehicle debug is on).\n"
       + "loaderCpuFixes=true\n"
       + "# scriptParserFast: script comments are stripped in one pass, with the same result.\n"
@@ -597,7 +599,7 @@ public final class Settings {
     /** A feature switch: never on without the master switch; a missing key takes its default. */
     /** Features that passed their in-game check and default to on (still only with the master switch). */
     static final java.util.Set<String> ON_BY_DEFAULT = java.util.Set.of("limiterSleep", "inputLatch", "keyboardFresh", "frameStartGate",
-        "reflexSleep", "vsyncAdaptive", "luaBudget", "nullModelGuard",
+        "reflexSleep", "vsyncAdaptive", "luaBudget", "nullModelGuard", "doorToggleNpeGuard",
         "luaInternConstants", "luaSkipEmpty", "uiVerify", "uiRetainedMods", "uiTickStagger", "textWidthCache", "uiLuaFast", "mapStreetMemo", "mapStreetCache", "mapVisitedFast",   // these two only act with vsync on
         "audioLimiterStereoFold",
         "persistentVboFrameSync",   // acts only with persistentVbo (Plan 9)

@@ -54,6 +54,7 @@ public class Main {
         ModWatch.init();
         ShaderReuse.init();
         ModelPatches.init();
+        WorldPatches.initDoorNpe();
         VehicleZones.init();
         ScriptComments.init();
         FileKnobs.init();

@@ -28,6 +28,7 @@ final class WorldTest {
         splashEveryIdleWhenNAtMostOne();
         splashTriggerSetsFlagBit();
         splashOverloadsAgree();
+        doorToggleNpe();
         skipCountClamps();
         splashActiveAdvancesAndResets();
         splashResetOnStop();
@@ -334,5 +335,14 @@ final class WorldTest {
         assert !Weather.maskIdle(false, false, 0, true);
         assert !Weather.maskIdle(true, false, 3, false);
         assert !Weather.maskIdle(false, true, 3, false);
+    }
+
+    // doorToggleNpeGuard: only the isLocalPlayer() on null player NPE matches (message carries the woven local name)
+    static void doorToggleNpe() {
+        assert WorldPatches.isToggleNpe(new NullPointerException(
+            "Cannot invoke \"zombie.characters.IsoGameCharacter.isLocalPlayer()\" because \"<localN>\" is null"));
+        assert !WorldPatches.isToggleNpe(new NullPointerException("because something is null"));
+        assert !WorldPatches.isToggleNpe(new IllegalStateException("isLocalPlayer() because x is null"));
+        assert !WorldPatches.isToggleNpe(null);
     }
 }

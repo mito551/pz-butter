@@ -21,6 +21,7 @@ local KEYS = {
 	"cutawayFast",
 	"cutawayInvalidateChanged",
 	"cutawayVisitPrefilter",
+	"doorToggleNpeGuard",
 	"driveLookSmooth",
 	"driveTrace",
 	"driveTreeCutaway",
