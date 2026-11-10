@@ -73,6 +73,12 @@ local CONFLICTING_MODS = { CleanHotBar = true }
 local ConflictChecked = false
 local Conflicting = false
 -- PZ Butter QoLC-4 cache store.
+-- Keys carry the per-instance item id and the observed condition, so a discarded item
+-- or a weapon degrading one step at a time leaves an entry that is never used again.
+-- The cache is capped and wiped when full: bounds the table, and a wipe only costs a
+-- couple of getters on the next draw of each slot.
+local DRAWCACHE_CAP = 1024
+local DrawCacheSize = 0
 local DrawCache = {}
 --// Options
 local OPTIONS_ID = "QoLC"
@@ -186,6 +192,11 @@ function QolcDrawCondition(Panel, X, Y, Width, Height, Item, Round)
 
 	local cached = CacheKey and DrawCache[CacheKey]
 	if cached == nil and CacheKey then
+		if DrawCacheSize >= DRAWCACHE_CAP then
+			DrawCache = {}
+			DrawCacheSize = 0
+		end
+		DrawCacheSize = DrawCacheSize + 1
 		local Fraction0 = QolcConditionFraction(Item)
 		if Fraction0 == nil then
 			DrawCache[CacheKey] = false
