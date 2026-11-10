@@ -44,6 +44,11 @@ final class ChunkTest {
         } catch (Exception e) {
             throw new AssertionError(e);
         }
+        try {
+            fboChunkContains();
+        } catch (Exception e) {
+            throw new AssertionError(e);
+        }
         classOrderBeatsDistance();
         overdueAlwaysGranted();
         lightRateLimitedButOverdueWins();
@@ -1264,5 +1269,51 @@ final class ChunkTest {
         } finally {
             IsoChunkMap.chunkGridWidth = saved;
         }
+    }
+
+    /** fboChunkMisc: equals probe whose value equality is not identity. */
+    private static final class Eq {
+        final int v;
+
+        Eq(int v) {
+            this.v = v;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            return o instanceof Eq && ((Eq) o).v == v;
+        }
+    }
+
+    static void fboChunkContains() throws Exception {
+        Settings.load(SelfTest.write("enabled=true\n"));
+        ChunkPatches.initFboChunkMisc();
+        check("fboChunkMisc defaults off", !ChunkPatches.fboGuard.on);
+        zombie.util.list.PZArrayList<Object> list = new zombie.util.list.PZArrayList<>(Object.class, 8);
+        list.add("x");
+        list.add("z");
+        check("guard off: core declines", ChunkPatches.containsFast(list, "x") == null);
+        check("guard off: stock still answers", list.contains("x"));
+
+        Settings.load(SelfTest.write("enabled=true\nfboChunkMisc=true\n"));
+        ChunkPatches.initFboChunkMisc();
+        check("template enables the guard", ChunkPatches.fboGuard.on);
+        String a1 = new StringBuilder("a").toString();
+        String a2 = new StringBuilder("a").toString();
+        check("distinct refs, equal value", a1 != a2 && a1.equals(a2));
+        zombie.util.list.PZArrayList<Object> mix = new zombie.util.list.PZArrayList<>(Object.class, 4);
+        mix.add(null);
+        mix.add(a1);
+        mix.add(new Eq(7));
+        mix.add("m");
+        zombie.util.list.PZArrayList<Object> empty = new zombie.util.list.PZArrayList<>(Object.class, 4);
+        Object[] probes = {null, a2, new Eq(7), "m", "x", "q", new Object()};
+        for (Object p : probes) {
+            check("empty list matches stock for " + p, ChunkPatches.containsFast(empty, p) == Boolean.FALSE && !empty.contains(p));
+            check("containsFast matches stock for " + p, ChunkPatches.containsFast(mix, p) != null
+                && (Boolean) ChunkPatches.containsFast(mix, p) == mix.contains(p));
+        }
+        check("bound: null answer stops at numElements", !ChunkPatches.containsFast(list, null) && !list.contains(null));
+        check("hit inside the bound still answers", ChunkPatches.containsFast(list, "z") == Boolean.TRUE);
     }
 }

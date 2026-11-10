@@ -36,6 +36,7 @@ local KEYS = {
 	"entityTiming",
 	"enumParseCache",
 	"errorBoxOff",
+	"fboChunkMisc",
 	"findItemKept",
 	"findItemMiss",
 	"findItemOnce",

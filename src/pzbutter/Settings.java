@@ -342,6 +342,8 @@ public final class Settings {
       + "bakeNoSyncCheck=false\n"
       + "# spriteDrawReuse: the render state keeps the sprite draw objects it releases, so the next sprites reuse them instead of allocating. The reused objects carry their fields from the last use; watch the in-game checks before enabling.\n"
       + "spriteDrawReuse=false\n"
+      + "# fboChunkMisc: contains checks on the square's object lists scan without a callback per element.\n"
+      + "fboChunkMisc=false\n"
       + "# bakeBudgetGpu: with bakeBudgetAdaptive, the bake budget also counts the GPU's time for the frame (GPU timestamps read three frames later, never waited for).\n"
       + "bakeBudgetGpu=false\n"
       + "# gpuStats: diagnostic; once a minute, what the Plan 9 keys did goes to the console (and gpu.out with frameLog).\n"

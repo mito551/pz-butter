@@ -77,6 +77,7 @@ public class Main {
         ModelPatches.initAnimScope();
         WorldPatches.initDoorNpe();
         ChunkPatches.initChunkZExtents();
+        ChunkPatches.initFboChunkMisc();
         VehicleZones.init();
         ScriptComments.init();
         FileKnobs.init();

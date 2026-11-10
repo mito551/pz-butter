@@ -297,4 +297,63 @@ public final class ChunkPatches {
             }
         }
     }
+
+    // fboChunkMisc: PZArrayList.contains without the per-element callback dispatch (indexForLevel is
+    // a closed form, DepthStagger's constructor and calculateOccludingSquares are already flat/compact
+    // in 42.21; the free-path one-pass and PerPlayerRender.setSize flat arrays are ruled out in the ledger).
+
+    public static final Guard fboGuard = new Guard("fboChunkMisc");
+
+    static void initFboChunkMisc() {
+        try {
+            fboGuard.on = Settings.flag("fboChunkMisc");
+        } catch (Throwable t) {
+            fboGuard.fail(t);
+        }
+    }
+
+    private static java.lang.reflect.Field pzaElements;
+
+    private static java.lang.reflect.Field pzaNum;
+
+    private static void pzaFields() throws Exception {
+        if (pzaElements != null) return;
+        pzaElements = zombie.util.list.PZArrayList.class.getDeclaredField("elements");
+        pzaElements.setAccessible(true);
+        pzaNum = zombie.util.list.PZArrayList.class.getDeclaredField("numElements");
+        pzaNum.setAccessible(true);
+    }
+
+    /** Null when the guard is off or the shape cannot be trusted (the caller then runs stock contains). */
+    public static Boolean containsFast(Object self, Object key) {
+        if (!fboGuard.on) return null;
+        try {
+            pzaFields();
+            Object[] a = (Object[]) pzaElements.get(self);
+            int n = pzaNum.getInt(self);
+            if (a == null || n < 0 || n > a.length) return null;
+            for (int i = 0; i < n; i++) {
+                Object e = a[i];
+                if (e == key || (key != null && key.equals(e))) return Boolean.TRUE;
+            }
+            return Boolean.FALSE;
+        } catch (Throwable t) {
+            fboGuard.fail(t);
+            return null;
+        }
+    }
+
+    @Patch(className = "zombie.util.list.PZArrayList", methodName = "contains", strictMatch = true)
+    public static class FastContains {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This Object self, @Patch.Argument(0) Object key, @Patch.Local("v") Object v) {
+            v = containsFast(self, key);
+            return v != null;
+        }
+
+        @Patch.OnExit
+        public static void exit(@Patch.Return(readOnly = false) boolean ret, @Patch.Local("v") Object v) {
+            if (v != null) ret = (Boolean) v;
+        }
+    }
 }
