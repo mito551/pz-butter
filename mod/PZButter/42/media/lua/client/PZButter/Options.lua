@@ -70,6 +70,7 @@ local KEYS = {
 	"mapStreetCache",
 	"mapStreetMemo",
 	"mapVisitedFast",
+	"modScanWalk",
 	"modWatchAsync",
 	"noLoadFade",
 	"nullModelGuard",

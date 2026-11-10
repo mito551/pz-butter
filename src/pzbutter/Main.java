@@ -57,6 +57,7 @@ public class Main {
         Cores.init();
         GpuPatches.init();
         LoadFixes.init();
+        ModScanPatches.init();
         GpuPstate.init();
         ModWatch.init();
         ShaderReuse.init();

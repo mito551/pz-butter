@@ -46,7 +46,7 @@ final class ModCompat {
         SoundPatches.class, WorldPatches.class, ChunkPatches.class, LogPatches.class, ZombiePatches.class, GpuPatches.class, CensusPatches.class,
         VehiclePatches.class, StreamPatches.class, LoadPatches.class, RuntimePatches.class, DevPatches.class, CameraPatches.class, ClockPatches.class,
         ServerPatches.class, HostPatches.class, MpClientPatches.class, NetStatsPatches.class, ThirdPartyPatches.class,
-        DistributionInsertPatches.class, ModelPatches.class};
+        DistributionInsertPatches.class, ModelPatches.class, ModScanPatches.class};
 
     private static final String PATCH = "Lme/zed_0xff/zombie_buddy/Patch;";
     private static final String ON_ENTER = "Lme/zed_0xff/zombie_buddy/Patch$OnEnter;";
@@ -152,6 +152,9 @@ Map.entry("LoadPatches.WaitFileTask", k("textureBufferMb")),
         Map.entry("LuaPatches.PoolPut", k("kahluaPoolDoublePut")),
         Map.entry("LuaPatches.BodyLocation", k("bodyLocationOnce")),
         Map.entry("LuaPatches.ListWalk", k("luaListWalk")),
+        Map.entry("ModScanPatches.ModScan", k("modScanWalk")),
+        Map.entry("ModScanPatches.WalkFolders", k("modScanWalk")),
+        Map.entry("ModScanPatches.RelAnswer", k("modScanWalk")),
         Map.entry("ScriptPatches.FindItemOnce", k("findItemOnce", "findItemKept")),
         Map.entry("ScriptPatches.SmReset", k("findItemKept")),
         Map.entry("ScriptPatches.SmParseScript", k("findItemKept")),
