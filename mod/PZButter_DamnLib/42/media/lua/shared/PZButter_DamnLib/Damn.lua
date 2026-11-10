@@ -35,8 +35,9 @@ function Damn.check(self, square)
         dirty = false
     end
     if index then
-        local x, y = square:getX(), square:getY()
-        if not (index[x] and index[x][y]) then return true end
+        -- most squares share no x with any location, so they cost one engine call
+        local row = index[square:getX()]
+        if not (row and row[square:getY()]) then return true end
     end
     return original(self, square)
 end
