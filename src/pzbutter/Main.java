@@ -67,6 +67,7 @@ public class Main {
         FileKnobs.init();
         TexCompress.init();
         TexPatches.init();
+        EnumPatches.init();
         GpuOverTarget.init();
         UiTiming.init();
         UiCensus.init();

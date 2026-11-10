@@ -41,7 +41,7 @@ final class ModCompat {
     record Target(String className, String methodName, boolean replaces, String where) {}
 
     /** The classes whose nested classes are PZ Butter's holders. */
-    static final Class<?>[] OUTERS = {Patches.class, DeliveryPatches.class, LuaPatches.class, ScriptPatches.class, UiPatches.class, MapPatches.class,
+    static final Class<?>[] OUTERS = {Patches.class, DeliveryPatches.class, LuaPatches.class, ScriptPatches.class, EnumPatches.class, UiPatches.class, MapPatches.class,
         TexPatches.class,
         SoundPatches.class, WorldPatches.class, ChunkPatches.class, LogPatches.class, ZombiePatches.class, GpuPatches.class, CensusPatches.class,
         VehiclePatches.class, StreamPatches.class, LoadPatches.class, RuntimePatches.class, DevPatches.class, CameraPatches.class, ClockPatches.class,
@@ -93,6 +93,10 @@ Map.entry("LoadPatches.WaitFileTask", k("textureBufferMb")),
         Map.entry("TexPatches.CollectIcons", k("chatIconsRace")),
         Map.entry("TexPatches.SetShared", k("chatIconsRace")),
         Map.entry("TexPatches.PacksChanged", k("chatIconsRace")),
+        Map.entry("EnumPatches.TryParse", k("enumParseCache")),
+        Map.entry("EnumPatches.ThumpParse", k("enumParseCache")),
+        Map.entry("EnumPatches.WalkParse", k("enumParseCache")),
+        Map.entry("EnumPatches.ZombieParse", k("enumParseCache")),
         Map.entry("Patches.Frame", k("luaWorkerGate", "luaFileWriteThrottle", "logDedupe", "luaBudget", "luaTiming", "frameStartGate",
             "presentPacing", "reflexSleep", "bakeScheduler", "lightSwitchCheckFrames", "gridStackInterval", "roofHideDebounceFrames",
             "soundTickHz", "mapStreetMemo", "mapStreetCache", "textWidthCache", "uiTiming", "uiCensus", "uiRetained", "uiRetainCheck", "entityTiming", "spikeContext", "spikeThresholdMs", "spikeContextWindowMs", "hitchSampler", "stallProbe")),

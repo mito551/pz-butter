@@ -54,6 +54,7 @@ public final class SelfTest {
         TexTest.run();
         BodyLocTest.run();
         ScriptTest.run();
+        EnumTest.run();
         LuaGateTest.run();
         DevTest.run();
         SpikeTest.run();
