@@ -15,6 +15,7 @@ local skinTick = function() end
 Events.OnTick.Add(skinTick)
 ProjectALife = { DrivingSeats = S, Handlers = H, CorpseSkin = { onTick = skinTick } }
 print = function() end
+function isClient() return true end   -- multiplayer client first
 dofile("mod/PZButter_ProjectALifeNPCs/42/media/lua/shared/PZButter_ALife.lua")
 Events.OnGameStart.fns[1]()
 assert(PZB_ALIFE.applied.seatGuardSkip and not PZB_ALIFE.applied.gateEvery and not PZB_ALIFE.applied.corpseSkinEvery)
@@ -27,4 +28,20 @@ S.guardCollision(bare); assert(calls == 0, "vanilla zombie must not reach collis
 S.guardCollision(owned); assert(calls == 1)
 S.guardCollision(rec); assert(calls == 2, "seated record must still run")
 assert(H.adds.ALifeCombatKnee == nil and #Events.OnTick.fns == 1 and Events.OnTick.fns[1] == skinTick)
+-- single player: collisionSeat never answers there, so only a zombie with a seat record reaches the original
+local spCalls = 0
+local S2 = { records = {} }
+function S2.guardCollision(npc) spCalls = spCalls + 1 end
+Events.OnZombieUpdate = ev(); Events.OnGameStart = ev(); Events.OnServerStarted = ev()
+Events.OnZombieUpdate.Add(S2.guardCollision)
+ProjectALife.DrivingSeats = S2
+PZB_ALIFE = nil
+function isClient() return false end
+dofile("mod/PZButter_ProjectALifeNPCs/42/media/lua/shared/PZButter_ALife.lua")
+Events.OnGameStart.fns[1]()
+local hasCalls = 0
+local sp = { hasModData = function() hasCalls = hasCalls + 1 return true end }
+S2.guardCollision(sp); assert(spCalls == 0 and hasCalls == 0, "single player: unrecorded zombie must cost no engine call")
+S2.records[sp] = true
+S2.guardCollision(sp); assert(spCalls == 1, "single player: seated record must still run")
 print = io.write; print("ok\n")

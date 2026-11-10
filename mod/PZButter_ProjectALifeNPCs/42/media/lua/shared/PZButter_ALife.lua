@@ -22,15 +22,21 @@ end
 -- P1. DrivingSeats.guardCollision runs for EVERY zombie EVERY frame; collisionSeat calls getModData(), which
 -- creates a table on a vanilla zombie that has none. collisionSeat returns nothing without ProjectALifeOwned in
 -- modData, and S.record() needs S.records[npc], so skipping zombies without modData is output-identical.
+-- collisionSeat also returns nothing unless isClient(), so in single player and on a server only
+-- zombies with a seat record reach the original.
 item("seatGuardSkip", "Skip seat-collision guard for zombies without mod data", true, function()
     local S = ProjectALife.DrivingSeats
     local orig = S and S.guardCollision
     if type(orig) ~= "function" or not (Events and Events.OnZombieUpdate and Events.OnZombieUpdate.Remove) then return false end
     local records = S.records
+    -- Without a seat record the original asks DrivingPassengers.collisionSeat, which answers only on a
+    -- multiplayer client; anywhere else an unrecorded zombie costs one table lookup here.
+    local client = isClient ~= nil and isClient() == true
     local function guard(npc)
         if records[npc] == nil then
+            if not client then return false end
             local has = npc.hasModData
-            if has ~= nil and not has(npc) then return end
+            if has ~= nil and not has(npc) then return false end
         end
         return orig(npc)
     end
