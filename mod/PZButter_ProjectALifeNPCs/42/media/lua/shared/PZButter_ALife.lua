@@ -51,7 +51,7 @@ local gates = {
     { "OnTick", "ALifePushPlan", 8 },         -- sweepMs 1000
     { "OnTick", "ALifeSupport", 8 },          -- nextIntelAtMs +1000
 }
-item("gateEvery", "Thin out timer-gated per-frame handlers", true, function()
+item("gateEvery", "Thin out timer-gated per-frame handlers", false, function()
     local H = ProjectALife.Handlers
     if not (H and H.byName and H.add) then return false end
     local n = 0
@@ -67,7 +67,7 @@ item("gateEvery", "Thin out timer-gated per-frame handlers", true, function()
 end)
 
 -- P3. CorpseSkin.onTick is registered straight on Events.OnTick (no dispatcher) and its two timers are 2 s / 30 s.
-item("corpseSkinEvery", "Run corpse-skin tick through the dispatcher at 1/15 frames", true, function()
+item("corpseSkinEvery", "Run corpse-skin tick through the dispatcher at 1/15 frames", false, function()
     local Skin, H = ProjectALife.CorpseSkin, ProjectALife.Handlers
     if not (Skin and type(Skin.onTick) == "function" and H and H.add and Events and Events.OnTick.Remove) then return false end
     Events.OnTick.Remove(Skin.onTick)

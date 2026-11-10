@@ -199,7 +199,8 @@ local function processGlowstick(
 
 
     -- Depleted glowstick.
-    if item:getCurrentUsesFloat() <= 0 then
+    if item.getCurrentUsesFloat
+    and item:getCurrentUsesFloat() <= 0 then
 
         removeLight(
             player,
@@ -389,10 +390,6 @@ local function forEachGlowstickPlayer(callback)
 end
 
 local function updateGroundGlowsticks()
-    -- In MP the server drains and syncs; a client draining too would double it.
-    if isClient() then return end
-
-    -- Shared across players so an item near several of them drains once per minute.
     local processed = {}
 
     forEachGlowstickPlayer(function(player)
@@ -402,34 +399,25 @@ local function updateGroundGlowsticks()
         local cell = getCell()
         if not cell then return end
 
-        local radius = GROUND_SCAN_RADIUS
-        local radiusSq = radius * radius
+        for x = px - GROUND_SCAN_RADIUS, px + GROUND_SCAN_RADIUS do
+            for y = py - GROUND_SCAN_RADIUS, py + GROUND_SCAN_RADIUS do
+                local square = cell:getGridSquare(x, y, pz)
 
-        for x = px - radius, px + radius do
-            local dx = x - px
+                if square then
+                    local objects = square:getWorldObjects()
 
-            for y = py - radius, py + radius do
-                local dy = y - py
+                    for i = 0, objects:size() - 1 do
+                        local worldObj = objects:get(i)
 
-                if dx * dx + dy * dy <= radiusSq then
-                    local square = cell:getGridSquare(x, y, pz)
+                        if worldObj and not processed[worldObj] then
+                            processed[worldObj] = true
 
-                    if square then
-                        local objects = square:getWorldObjects()
+                            local item = worldObj:getItem()
 
-                        for i = 0, objects:size() - 1 do
-                            local worldObj = objects:get(i)
-
-                            if worldObj and not processed[worldObj] then
-                                processed[worldObj] = true
-
-                                local item = worldObj:getItem()
-
-                                if item
-                                and workingGlowSticksData[item:getType()]
-                                and instanceof(item, "DrainableComboItem") then
-                                    item:UseAndSync()
-                                end
+                            if item
+                            and workingGlowSticksData[item:getType()]
+                            and instanceof(item, "DrainableComboItem") then
+                                item:UseAndSync()
                             end
                         end
                     end
