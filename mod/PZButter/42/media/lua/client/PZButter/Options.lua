@@ -22,6 +22,7 @@ local KEYS = {
 	"chunkZExtentsFast",
 	"corpseFliesCap",
 	"cursorLatch",
+	"idleBakeBoost",
 	"cutawayFast",
 	"cutawayInvalidateChanged",
 	"cutawayVisitPrefilter",

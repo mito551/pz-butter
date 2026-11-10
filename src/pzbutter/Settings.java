@@ -218,6 +218,8 @@ public final class Settings {
       + "bakeBudgetAdaptive=false\n"
       + "# occlusionGrantedOnly: with bakeScheduler, the hidden-behind-buildings check ignores textures that wait this frame.\n"
       + "occlusionGrantedOnly=false\n"
+      + "# idleBakeBoost: while the player stands still and bakes wait, the frame's bake budget grows by a few pairs until the waits stop, the player acts, or 45 s pass (then a 30 s rest).\n"
+      + "idleBakeBoost=false\n"
       + "# rebakeBudget: with bakeScheduler, cutaway, tree and redraw redraws a frame (0 = only bakeFrameBudget limits them).\n"
       + "rebakeBudget=4\n"
       + "# rebakeMaxFrames: with bakeScheduler, the longest a cutaway, tree or redraw redraw waits, in frames.\n"

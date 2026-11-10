@@ -3,6 +3,8 @@ package pzbutter;
 import java.lang.invoke.VarHandle;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.function.BooleanSupplier;
+import zombie.characters.IsoPlayer;
 import zombie.core.Core;
 import zombie.core.PerformanceSettings;
 import zombie.core.math.PZMath;
@@ -245,6 +247,7 @@ final class BakeHold {
         bloodMs = Settings.num("bloodRebakeCoalesceMs", 250, 0, 10000);
         adaptiveOn = Settings.flag("bakeBudgetAdaptive");
         occlusionGranted = Settings.flag("occlusionGrantedOnly");
+        idleBoostOn = Settings.flag("idleBakeBoost");
         java.util.Arrays.fill(adaptiveTotal, frameBudget);
         java.util.Arrays.fill(globalFrame, -1);
         states.clear();   // position-keyed entries must not leak across runs (the pooled instance never gave that for free)
@@ -416,6 +419,79 @@ final class BakeHold {
         return fps <= 0 || fps > 1000 ? 0 : 1000.0 / fps;
     }
 
+    // ---- idleBakeBoost: extra bake pairs while the player stands still and bakes wait (SPEC 1040) ----
+
+    static boolean idleBoostOn;
+    static final int BOOST_TOTAL = 4, BOOST_REBAKE = 2;   // counts, not ms: the SPEC's 25 ms ≈ four chunk-level pairs; tune in game
+    static final long IDLE_MS = 1000, WAITS_MS = 2000, BOOST_MS = 45_000, REST_MS = 30_000;
+
+    static long stillStartMs = Long.MIN_VALUE / 2, boostStartMs = Long.MIN_VALUE / 2, restUntilMs = Long.MIN_VALUE / 2, lastWaitSeenMs = Long.MIN_VALUE / 2;
+    static boolean boosting;
+    static boolean boosting() { return boosting; }
+    static long machineFrame = Long.MIN_VALUE / 2;
+
+    /** Seams stand in for the player state (headless tests replace them; the defaults read the first player). IDLE_SEAM = "not moving at this observation"; the machine keeps the 1 s. */
+    public static BooleanSupplier IDLE_SEAM = BakeHold::playerIdle, BUSY_SEAM = BakeHold::playerBusy;
+
+    static void resetBoost() {
+        stillStartMs = boostStartMs = restUntilMs = lastWaitSeenMs = machineFrame = Long.MIN_VALUE / 2;
+        boosting = false;
+    }
+
+    /** A bakes-waiting frame was seen within the last WAITS_MS. */
+    private static boolean waiting(long now) { return now - lastWaitSeenMs < WAITS_MS; }
+
+    /** Called after each plan: one held pair means bakes are waiting. */
+    static void noteWaiting(boolean held, long now) {
+        if (held) lastWaitSeenMs = now;
+    }
+
+    /** The plan's Budget seam: steps the machine once per frame, then adds the boost's pairs while it holds. */
+    static void applyBoost(Budget b, long now, long frame) {
+        if (!idleBoostOn) return;
+        if (frame != machineFrame) {
+            machineFrame = frame;
+            if (boosting) {
+                if (BUSY_SEAM.getAsBoolean() || !IDLE_SEAM.getAsBoolean() || !waiting(now) || now - boostStartMs >= BOOST_MS) {
+                    boosting = false;
+                    restUntilMs = now + REST_MS;
+                }
+            } else if (now >= restUntilMs) {
+                if (!IDLE_SEAM.getAsBoolean()) {
+                    stillStartMs = Long.MIN_VALUE / 2;
+                } else {
+                    if (stillStartMs == Long.MIN_VALUE / 2) stillStartMs = now;
+                    if (waiting(now) && now - stillStartMs >= IDLE_MS) { boosting = true; boostStartMs = now; }
+                }
+            }
+        }
+        if (boosting) { b.total += BOOST_TOTAL; b.rebake += BOOST_REBAKE; }
+    }
+
+    private static long lastMoveMs = Long.MIN_VALUE / 2;
+    private static float px = Float.NaN, py, pz;   // NaN: the first observation never matches
+
+    private static boolean playerBusy() {
+        try {
+            IsoPlayer pl = IsoPlayer.getInstance();
+            return pl != null
+                && (nowMs() - lastMoveMs < IDLE_MS || pl.getVehicle() != null || pl.isAiming() || pl.isAttacking());
+        } catch (Throwable t) { return false; }
+    }
+
+    private static boolean playerIdle() {
+        try {
+            IsoPlayer pl = IsoPlayer.getInstance();
+            if (pl == null) return false;
+            if (pl.getX() != px || pl.getY() != py || pl.getZ() != pz) {
+                px = pl.getX(); py = pl.getY(); pz = pl.getZ();
+                lastMoveMs = nowMs();
+                return false;
+            }
+            return true;   // the machine keeps the 1 s of stillness
+        } catch (Throwable t) { return false; }
+    }
+
     /** FBORenderCell.prepareChunksForUpdating entry: decides every dirty on-screen pair of player p for this frame. */
     static void plan(Object cell, int p) {
         if (!FrameClock.on || p < 0 || p >= PLAYERS) return;
@@ -470,6 +546,7 @@ final class BakeHold {
         Budget b = budgets[p];
         b.total = adaptiveOn ? (adaptiveTotal[p] = adaptive(adaptiveTotal[p], frameBudget, GpuTimer.loadMs(FrameClock.stepMs), capMs())) : frameBudget;
         b.rebake = rebakeBudget;
+        if (idleBoostOn) applyBoost(b, now, frame);
         b.strong = strongCap(strongBudget, FrameClock.stepMs, strongFrameMs);
         b.light = lightBudget;
         b.rebakeMaxFrames = rebakeMaxFrames;
@@ -484,6 +561,11 @@ final class BakeHold {
             st.held = !pGrant[i];
             if (st.held) st.heldFrames++;
             pSt[i] = null;
+        }
+        if (idleBoostOn) {
+            boolean anyHeld = false;
+            for (int i = 0; i < n; i++) if (!pGrant[i]) { anyHeld = true; break; }
+            noteWaiting(anyHeld, now);
         }
     }
 

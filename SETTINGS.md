@@ -68,6 +68,7 @@ The mod creates `~/Zomboid/PZButter.properties` on first start and reads it once
 | `bakeScheduler` | Chunk texture redraws (cutaways, light, blood, redraws) are spread over frames under the budgets below; a waiting texture keeps its last picture. New chunks and object changes never wait. Off by default. |
 | `bakeFrameBudget` | With `bakeScheduler`: the most redraws that may wait their turn in one frame. Overdue ones always go. Default `8`. |
 | `bakeBudgetAdaptive` | With `bakeScheduler`: the budget halves after a frame over 90 % of the frame cap's time and grows by one under 60 %. |
+| `idleBakeBoost` | While the player stands still and bakes wait: the frame's bake budget grows by a few pairs until the waits stop, the player acts, or 45 s pass (then a 30 s rest). Off by default. |
 | `occlusionGrantedOnly` | With `bakeScheduler`: the hidden-behind-buildings check ignores textures that wait this frame. |
 | `rebakeBudget` | With `bakeScheduler`: cutaway, tree and redraw redraws a frame. `0`: only `bakeFrameBudget` limits them. Default `4`. |
 | `rebakeMaxFrames` | With `bakeScheduler`: the longest a cutaway, tree or redraw redraw waits, in frames. Default `3`. |
