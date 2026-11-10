@@ -106,6 +106,7 @@ local KEYS = {
 	"statsNoBox",
 	"streamTiming",
 	"texCompress",
+	"texParamCache",
 	"textWidthCache",
 	"translucentLightsPerFrame",
 	"translucentTilesInChunkTexture",

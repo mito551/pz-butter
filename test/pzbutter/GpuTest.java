@@ -10,6 +10,7 @@ final class GpuTest {
         catch (Throwable t) { throw new Exception(t); }
         bindCache();
         uniformCache();
+        texParamCache();
     }
 
     static void runAll() throws Throwable {
@@ -1050,5 +1051,34 @@ final class GpuTest {
         Settings.load(SelfTest.write("enabled=true\n"));
         GpuPatches.initUc();
         assert !GpuPatches.ucGuard.on : "defaults restored";
+    }
+
+    // ---- texParamCache: texture filter params are re-sent only when they change for that texture ----
+
+    static void texParamCache() throws Exception {
+        Settings.load(SelfTest.write("enabled=true\n"));
+        GpuPatches.initTc2();
+        assert !GpuPatches.tcGuard.on : "texParamCache defaults off";
+
+        Settings.load(SelfTest.write("enabled=true\ntexParamCache=true\n"));
+        GpuPatches.initTc2();
+        assert GpuPatches.tcGuard.on : "template turns the guard on";
+
+        GpuPatches.tcClearAll();
+        GpuPatches.tcBind(3553, 33);
+        assert !GpuPatches.onParam(3553, 10241, 9728) : "first param sends";
+        assert GpuPatches.tcParam(33, 3553, 10241, 9728) : "the same param for the same texture skips";
+        assert !GpuPatches.onParam(3553, 10241, 9729) : "a changed param sends";
+        assert GpuPatches.tcParam(33, 3553, 10241, 9729) : "recorded";
+        GpuPatches.tcBind(3553, 34);
+        assert !GpuPatches.onParam(3553, 10241, 9729) : "another texture sends its own";
+        GpuPatches.tcDeleted2(34);
+        assert !GpuPatches.tcParam(34, 3553, 10241, 9729) : "a deleted texture loses its params (fresh name reuse)";
+        assert !GpuPatches.onParam(3553, 10241, 9729) : "and it sends again";
+
+        Settings.load(SelfTest.write("enabled=true\n"));
+        GpuPatches.initTc2();
+        assert !GpuPatches.tcGuard.on : "defaults restored";
+        assert !GpuPatches.tcParam(33, 3553, 10241, 9728) : "off never skips";
     }
 }

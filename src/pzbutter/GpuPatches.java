@@ -674,4 +674,112 @@ public final class GpuPatches {
             return ucInvoke(self);
         }
     }
+
+    // ---- texParamCache: texture parameters are re-sent only when they change for that texture;
+    // the bound name per target is tracked from the game's own bind, and a delete drops the entries. ----
+
+    public static final Guard tcGuard = new Guard("texParamCache");
+
+    static void initTc2() {
+        try {
+            tcGuard.on = Settings.flag("texParamCache");
+            if (!tcGuard.on) tcClearAll();
+        } catch (Throwable t) {
+            tcGuard.fail(t);
+        }
+    }
+
+    static final java.util.HashMap<Integer, Integer> tcBound = new java.util.HashMap<>();
+    static long tcName = 33; // test name: any int the tests use freely
+
+    static final java.util.HashMap<Long, Integer> tcParams = new java.util.HashMap<>();
+
+    static void tcClearAll() {
+        tcBound.clear();
+        tcParams.clear();
+    }
+
+    public static void tcBind(int target, int name) {
+        if (!tcGuard.on) return;
+        try {
+            tcBound.put(target, name);
+        } catch (Throwable t) {
+            tcGuard.fail(t);
+        }
+    }
+
+    public static void tcDeleted2(int name) {
+        if (!tcGuard.on) return;
+        try {
+            tcParams.keySet().removeIf(k -> (k >>> 32) == (name & 0xffffffffL));
+        } catch (Throwable t) {
+            tcGuard.fail(t);
+        }
+    }
+
+    public static boolean tcParam(int name, int target, int pname, int value) {
+        if (!tcGuard.on) return false;
+        long key = ((long) name << 32) | ((long) (pname & 0xffff) << 16) | (target & 0xffff);
+        Integer cur = tcParams.get(key);
+        return cur != null && cur.intValue() == value;
+    }
+
+    public static void tcParamThrough(int name, int target, int pname, int value) {
+        if (!tcGuard.on) return;
+        long key = ((long) name << 32) | ((long) (pname & 0xffff) << 16) | (target & 0xffff);
+        tcParams.put(key, value);
+    }
+
+    /** The param advice face: true = skip the stock send (same value for that texture already sent). */
+    public static boolean onParam(int target, int pname, int value) {
+        if (!tcGuard.on) return false;
+        try {
+            Integer name = tcBound.get(target);
+            if (name == null) return false;
+            if (tcParam(name, target, pname, value)) return true;
+            tcParamThrough(name, target, pname, value);
+            return false;
+        } catch (Throwable t) {
+            tcGuard.fail(t);
+            return false;
+        }
+    }
+
+    @Patch(className = "org.lwjgl.opengl.GL11", methodName = "glBindTexture")
+    public static class TcBind {
+        @Patch.OnEnter
+        public static void enter(@Patch.Argument(0) int target, @Patch.Argument(1) int name) {
+            tcBind(target, name);
+        }
+    }
+
+    @Patch(className = "org.lwjgl.opengl.GL11", methodName = "glTexParameteri")
+    public static class TcParam {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.Argument(0) int target, @Patch.Argument(1) int pname, @Patch.Argument(2) int value) {
+            return onParam(target, pname, value);
+        }
+    }
+
+    @Patch(className = "zombie.IndieGL", methodName = "glTexParameteriActual")
+    public static class TcParamIndie {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.Argument(0) int target, @Patch.Argument(1) int pname, @Patch.Argument(2) int value) {
+            return onParam(target, pname, value);
+        }
+    }
+
+    @Patch(className = "org.lwjgl.opengl.GL11", methodName = "glDeleteTextures", strictMatch = true)
+    public static class TcDelete {
+        @Patch.OnEnter
+        public static void enter(@Patch.Argument(0) int name) {
+            if (tcGuard.on) {
+                try {
+                    tcDeleted2(name);
+                } catch (Throwable t) {
+                    tcGuard.fail(t);
+                }
+            }
+        }
+    }
 }
