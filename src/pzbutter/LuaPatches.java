@@ -766,4 +766,143 @@ public final class LuaPatches {
             swapLoadedIndex();
         }
     }
+
+    // ---- luaCallInvoker: after 64 calls of the same MethodCaller, the Java method is called through a
+    // MethodHandle instead of reflection; arguments, return values and the logged-throw behaviour stay stock. ----
+
+    public static final Guard invGuard = new Guard("luaCallInvoker");
+
+    static void initInv() {
+        try {
+            invGuard.on = Settings.flag("luaCallInvoker");
+        } catch (Throwable t) {
+            invGuard.fail(t);
+        }
+    }
+
+    static final java.util.concurrent.ConcurrentHashMap<se.krka.kahlua.integration.expose.caller.MethodCaller, long[]> invCounts =
+            new java.util.concurrent.ConcurrentHashMap<>();
+    static final java.util.concurrent.ConcurrentHashMap<se.krka.kahlua.integration.expose.caller.MethodCaller, Invoker> invokers =
+            new java.util.concurrent.ConcurrentHashMap<>();
+    static final java.util.concurrent.ConcurrentHashMap<se.krka.kahlua.integration.expose.caller.MethodCaller, java.lang.reflect.Method> invMethods =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    static final class Invoker {
+        final java.lang.invoke.MethodHandle h;
+        final boolean hasRet;
+        final boolean hasSelf;
+        final Object owner;
+
+        Invoker(java.lang.invoke.MethodHandle h, boolean hasRet, boolean hasSelf, Object owner) {
+            this.h = h;
+            this.hasRet = hasRet;
+            this.hasSelf = hasSelf;
+            this.owner = owner;
+        }
+
+        Object apply(Object self, Object[] args) throws Throwable {
+            return h.invoke(self, args);
+        }
+    }
+
+    static java.lang.reflect.Method methodOf(se.krka.kahlua.integration.expose.caller.MethodCaller mc) throws Exception {
+        java.lang.reflect.Method m = invMethods.get(mc);
+        if (m == null) {
+            java.lang.reflect.Field f = mc.getClass().getDeclaredField("method");
+            f.setAccessible(true);
+            m = (java.lang.reflect.Method) f.get(mc);
+            invMethods.put(mc, m);
+        }
+        return m;
+    }
+
+    static Invoker invokerOf(se.krka.kahlua.integration.expose.caller.MethodCaller mc) throws Exception {
+        java.lang.reflect.Method m = methodOf(mc);
+        boolean stat = java.lang.reflect.Modifier.isStatic(m.getModifiers());
+        java.lang.invoke.MethodHandle h = java.lang.invoke.MethodHandles.lookup().unreflect(m);
+        h = h.asSpreader(Object[].class, m.getParameterTypes().length);
+        Object owner = null;
+        boolean hasSelf = false;
+        try {
+            java.lang.reflect.Field sf = mc.getClass().getDeclaredField("hasSelf");
+            sf.setAccessible(true);
+            hasSelf = (Boolean) sf.get(mc);
+            if (!hasSelf) {
+                java.lang.reflect.Field of = mc.getClass().getDeclaredField("owner");
+                of.setAccessible(true);
+                owner = of.get(mc);
+            }
+        } catch (Throwable t) {
+            hasSelf = true; // the binding stayed unreadable: the caller's self is as good as any
+        }
+        if (!stat) {
+            h = h.asType(java.lang.invoke.MethodType.methodType(Object.class, Object.class, Object[].class));
+        } else {
+            h = java.lang.invoke.MethodHandles.dropArguments(h, 0, Object.class);
+            h = h.asType(java.lang.invoke.MethodType.methodType(Object.class, Object.class, Object[].class));
+        }
+        return new Invoker(h, !m.getReturnType().equals(void.class), hasSelf, owner);
+    }
+
+    /** The log the stock MethodCaller.call does for a thrown Java method (swallowed the same way). */
+    static void logCallerError(Throwable t) {
+        try {
+            zombie.ui.UIManager.defaultthread.doStacktraceProper();
+            zombie.ui.UIManager.defaultthread.debugException(t);
+            zombie.core.logger.ExceptionLogger.logException(t);
+        } catch (Throwable t2) {
+            try {
+                zombie.core.logger.ExceptionLogger.logException(t);
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
+    public static boolean callThrough(se.krka.kahlua.integration.expose.caller.MethodCaller mc, Object self,
+                                      se.krka.kahlua.integration.expose.ReturnValues rv, Object[] args) {
+        try {
+            if (!invGuard.on || args == null) return false;
+            Invoker inv = invokers.get(mc);
+            if (inv == null) {
+                long[] c = invCounts.computeIfAbsent(mc, k -> new long[1]);
+                if (++c[0] < 64) return false;
+                try {
+                    inv = invokerOf(mc);
+                    invokers.put(mc, inv);
+                } catch (Throwable t) {
+                    invGuard.fail(t);
+                    c[0] = 0; // the build failed: try again after another 64 calls
+                    return false;
+                }
+            }
+            Object recv = inv.hasSelf ? self : inv.owner;
+            Object r;
+            try {
+                r = inv.apply(recv, args);
+            } catch (Throwable t) {
+                logCallerError(t);
+                return true;
+            }
+            if (inv.hasRet) rv.push(r);
+            return true;
+        } catch (Throwable t) {
+            invGuard.fail(t);
+            return false;
+        }
+    }
+
+    @Patch(className = "se.krka.kahlua.integration.expose.caller.MethodCaller", methodName = "call")
+    public static class CallInvoker {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This se.krka.kahlua.integration.expose.caller.MethodCaller mc, @Patch.Argument(0) Object self,
+                                    @Patch.Argument(1) se.krka.kahlua.integration.expose.ReturnValues rv, @Patch.Argument(2) Object[] args) {
+            if (!invGuard.on) return false;
+            try {
+                return callThrough(mc, self, rv, args);
+            } catch (Throwable t) {
+                invGuard.fail(t);
+                return false;
+            }
+        }
+    }
 }

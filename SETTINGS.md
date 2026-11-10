@@ -204,6 +204,7 @@ These keys act only on a multiplayer client; on a server they stay off.
 | `luaBreakpointSkip` | The Lua debug-breakpoint checks answer at once while no breakpoint is set anywhere; the debugger keeps working once one is. Off by default. |
 | `kahluaTableAlloc` | Lua table constructors build tables whose backing store is pre-sized, so the usual first growth step is gone; iteration order is unchanged. Off by default. |
 | `luaRequireIndex` | The Lua require list answers `contains` from a name hash rebuilt when a change of the list shows up in its size. Off by default. |
+| `luaCallInvoker` | Java methods Lua has called 64 times run through a MethodHandle instead of reflection; the arguments, return values and the logged-throw behaviour stay the same. Off by default. |
 | `translatorPlainText` | Translations with no percent sign and no arguments are returned as is; the formatter (and its allocation) only runs for texts that use it. Off by default. |
 | `uiElementUpdateSkip` | An invisible UI element with no children runs no update tick of its own or of Lua (its children still update). Off by default. |
 | `chunkZExtentsFast` | The chunk-map z-extents loop only visits the cells whose chunk lookup can answer, instead of all cells of the swap array, with the same result. On by default. |

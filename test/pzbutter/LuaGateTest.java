@@ -112,6 +112,7 @@ final class LuaGateTest {
         luaBreakpointSkip();
         kahluaTableAlloc();
         luaRequireIndex();
+        luaCallInvoker();
     }
 
     static void plan7KeysDefaults() {
@@ -1745,5 +1746,108 @@ final class LuaGateTest {
 
     static boolean luaLoadedIsIndexed() {
         return zombie.Lua.LuaManager.loaded instanceof LuaPatches.IndexList;
+    }
+
+    // ---- luaCallInvoker: after 64 calls of the same MethodCaller, the call goes through a MethodHandle ----
+
+    static int rvArgs(Object rv) throws Exception {
+        java.lang.reflect.Field f = se.krka.kahlua.integration.expose.ReturnValues.class.getDeclaredField("args");
+        f.setAccessible(true);
+        return (Integer) f.get(rv);
+    }
+
+    static Object staticPing;
+    public static Object ping(Object x) { staticPing = x; return x; }
+
+    static int voidCount;
+    public static void nopVoid() { voidCount++; }
+
+    static int throwCount;
+    public static int throwing(String s) { throwCount++; return Integer.parseInt(s); }
+
+    static void luaCallInvoker() throws Exception {
+        Settings.load(SelfTest.write("enabled=true\n"));
+        LuaPatches.initInv();
+        assert !LuaPatches.invGuard.on : "luaCallInvoker defaults off";
+
+        Settings.load(SelfTest.write("enabled=true\nluaCallInvoker=true\n"));
+        LuaPatches.initInv();
+        assert LuaPatches.invGuard.on : "template turns the guard on";
+
+        // static with primitives: the 64th call switches to the invoker
+        se.krka.kahlua.integration.expose.caller.MethodCaller mc = new se.krka.kahlua.integration.expose.caller.MethodCaller(
+                LuaGateTest.class.getMethod("ping", Object.class), null, false);
+        for (int i = 0; i < 63; i++) {
+            assert !LuaPatches.callThrough(mc, null, rvPingReturn(), new Object[] {"w" + i}) : "warming up runs stock: " + i;
+        }
+        se.krka.kahlua.integration.expose.ReturnValues rv1 = se.krka.kahlua.integration.expose.ReturnValues.get(new se.krka.kahlua.converter.KahluaConverterManager(), nilFrame());
+        staticPing = null;
+        assert LuaPatches.callThrough(mc, null, rv1, new Object[] {"42"}) : "the 64th call uses the invoker";
+        assert staticPing != null && staticPing.equals("42") : "same arguments reach the method";
+        assert rvArgs(rv1) == 1 : "the return value is pushed";
+        se.krka.kahlua.integration.expose.ReturnValues rv2 = se.krka.kahlua.integration.expose.ReturnValues.get(new se.krka.kahlua.converter.KahluaConverterManager(), nilFrame());
+        staticPing = null;
+        assert LuaPatches.callThrough(mc, null, rv2, new Object[] {"43"}) : "the invoker is cached";
+        assert staticPing != null && staticPing.equals("43") : "same arguments again";
+        assert rvArgs(rv2) == 1 : "same return value again";
+
+        // instance method with a receiver: the receiver is used and the mutation persists
+        StringBuilder sb = new StringBuilder();
+        se.krka.kahlua.integration.expose.caller.MethodCaller mci = new se.krka.kahlua.integration.expose.caller.MethodCaller(
+                StringBuilder.class.getMethod("append", int.class), null, true);
+        for (int i = 0; i < 63; i++) {
+            assert !LuaPatches.callThrough(mci, null, rvNil(), new Object[] {1}) : "instance warms";
+        }
+        assert LuaPatches.callThrough(mci, sb, rvNil(), new Object[] {7}) : "instance invoker";
+        assert sb.toString().equals("7") : "the receiver's own result object comes back";
+
+        // a void static: counted, nothing pushed
+        se.krka.kahlua.integration.expose.caller.MethodCaller mcv = new se.krka.kahlua.integration.expose.caller.MethodCaller(
+                LuaGateTest.class.getMethod("nopVoid"), null, false);
+        for (int i = 0; i < 64; i++) LuaPatches.callThrough(mcv, null, rvNil(), new Object[0]);
+        int before = voidCount;
+        se.krka.kahlua.integration.expose.ReturnValues rv4 = se.krka.kahlua.integration.expose.ReturnValues.get(new se.krka.kahlua.converter.KahluaConverterManager(), nilFrame());
+        assert LuaPatches.callThrough(mcv, null, rv4, new Object[0]) : "void invoker";
+        assert voidCount == before + 1 : "the void method ran";
+        assert rvArgs(rv4) == 0 : "a void method pushes nothing";
+
+        // a throwing static: the exception is logged and swallowed like stock
+        se.krka.kahlua.integration.expose.caller.MethodCaller mct = new se.krka.kahlua.integration.expose.caller.MethodCaller(
+                LuaGateTest.class.getMethod("throwing", String.class), null, false);
+        for (int i = 0; i < 64; i++) LuaPatches.callThrough(mct, null, rvNil(), new Object[] {"5"});
+        int tb = throwCount;
+        se.krka.kahlua.integration.expose.ReturnValues rv5 = se.krka.kahlua.integration.expose.ReturnValues.get(new se.krka.kahlua.converter.KahluaConverterManager(), nilFrame());
+        assert LuaPatches.callThrough(mct, null, rv5, new Object[] {"not a number"}) : "the throw is swallowed";
+        assert throwCount == tb + 1 : "the method ran and threw";
+        assert rvArgs(rv5) == 0 : "nothing pushed after the throw";
+
+        // guard off answers stock
+        Settings.load(SelfTest.write("enabled=true\n"));
+        LuaPatches.initInv();
+        assert !LuaPatches.invGuard.on : "defaults restored";
+        staticPing = null;
+        assert !LuaPatches.callThrough(mc, null, rvNil(), new Object[] {9}) : "off is stock";
+        assert staticPing == null : "off never runs the method here";
+    }
+
+    static se.krka.kahlua.vm.LuaCallFrame nilFrame() {
+        return nilFrameStatic;
+    }
+    static se.krka.kahlua.vm.LuaCallFrame nilFrameStatic;
+    static {
+        try {
+            se.krka.kahlua.vm.Coroutine co = new se.krka.kahlua.vm.Coroutine();
+            co.objectStack = new Object[64];
+            co.environment = null;
+            nilFrameStatic = new se.krka.kahlua.vm.LuaCallFrame(co);
+        } catch (Throwable t) {
+            throw new AssertionError(t);
+        }
+    }
+    static se.krka.kahlua.integration.expose.ReturnValues rvNil() {
+        return se.krka.kahlua.integration.expose.ReturnValues.get(new se.krka.kahlua.converter.KahluaConverterManager(), nilFrame());
+    }
+    static se.krka.kahlua.integration.expose.ReturnValues rvPingReturn() {
+        return rvNil();
     }
 }

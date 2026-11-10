@@ -46,6 +46,7 @@ public class Main {
         LuaPatches.initBp();
         LuaPatches.initTa();
         LuaPatches.initLi();
+        LuaPatches.initInv();
         UiPatches.initPlain();
         UiPatches.initSkip();
         ScriptPatches.initOnce();

@@ -66,6 +66,7 @@ local KEYS = {
 	"luaBreakpointSkip",
 	"luaRequireIndex",
 	"luaBudget",
+	"luaCallInvoker",
 	"luaFileWriteThrottle",
 	"luaGcNoop",
 	"luaInternConstants",
