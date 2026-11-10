@@ -70,6 +70,7 @@ public class Main {
         WorldSounds.init();
         SoundFixes.init();
         VehiclePatches.init();
+        MpClientPatches.initDropItems();
         StreamPatches.init();
         RecalcMemo.init();
         CameraPatches.init();

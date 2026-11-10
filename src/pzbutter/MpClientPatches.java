@@ -3,10 +3,12 @@ package pzbutter;
 import java.nio.ByteBuffer;
 
 import me.zed_0xff.zombie_buddy.Patch;
+import zombie.characters.IsoPlayer;
 import zombie.core.network.ByteBufferReader;
 import zombie.iso.IsoChunk;
 import zombie.network.GameClient;
 import zombie.network.IConnection;
+import zombie.network.PacketTypes;
 import zombie.network.packets.vehicle.VehicleFullUpdatePacket;
 import zombie.network.packets.vehicle.VehicleUpdatePacket;
 import zombie.vehicles.VehicleInterpolation;
@@ -169,5 +171,31 @@ public final class MpClientPatches {
     static void resetForTest() {
         refills = 0;
         RANGE.remove();
+    }
+
+    /** A zombie's network component makes isLocal() true, so dropHeavyItems sends PlayerDropHeldItems and setData throws. */
+    public static final Guard dropGuard = new Guard("zombieDropItemsGuard");
+
+    static void initDropItems() {
+        try { dropGuard.on = Settings.flag("zombieDropItemsGuard"); }
+        catch (Throwable t) { dropGuard.fail(t); }
+    }
+
+    public static boolean skipDrop(PacketTypes.PacketType type, Object[] args) {
+        if (type != PacketTypes.PacketType.PlayerDropHeldItems) return false;
+        if (args == null || args.length == 0) return true;
+        return !(args[0] instanceof IsoPlayer);
+    }
+
+    /** The (IConnection, type, args) funnel; strict match keeps the other two send overloads vanilla. */
+    @Patch(className = "zombie.network.packets.INetworkPacket", methodName = "send", strictMatch = true)
+    public static class PlayerDrop {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.Argument(1) PacketTypes.PacketType type,
+                @Patch.Argument(2) Object[] args) {
+            if (!dropGuard.on) return false;
+            try { return skipDrop(type, args); }
+            catch (Throwable t) { dropGuard.fail(t); return false; }
+        }
     }
 }

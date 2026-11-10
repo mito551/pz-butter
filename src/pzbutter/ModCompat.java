@@ -295,6 +295,7 @@ Map.entry("LoadPatches.WaitFileTask", k("textureBufferMb")),
         Map.entry("MpClientPatches.VehicleClear", k("vehicleRemoteSmooth")),
         Map.entry("MpClientPatches.VehicleParse", k("vehicleRemoteSmooth")),
         Map.entry("MpClientPatches.VehicleFrame", k("vehicleRemoteSmooth", "vehicleSendMs")),
+        Map.entry("MpClientPatches.PlayerDrop", k("zombieDropItemsGuard")),
         Map.entry("MpClientPatches.VehicleSend", k("vehicleSendMs")));
 
     // ---- reading @Patch annotations without loading the class ----

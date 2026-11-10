@@ -50,6 +50,7 @@ public final class SelfTest {
         WorldTest.run();
         ChunkTest.run();
         ModelTest.run();
+        NetTest.run();
         LuaGateTest.run();
         DevTest.run();
         SpikeTest.run();

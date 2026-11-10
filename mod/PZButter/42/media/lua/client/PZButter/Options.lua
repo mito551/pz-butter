@@ -104,6 +104,7 @@ local KEYS = {
 	"worldSoundFast",
 	"zeroFacingFix",
 	"zombieCullSortFast",
+	"zombieDropItemsGuard",
 }
 
 local opts = PZAPI.ModOptions:create("PZButter", "PZ Butter")

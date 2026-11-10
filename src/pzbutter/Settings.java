@@ -441,6 +441,8 @@ public final class Settings {
 + "vehicleEarlyParse=off\n"
 + "# chunkRefill (MP client): request a dropped chunk slot again while the player stays in one chunk; at most 6 per pass, one pass every 3 s.\n"
 + "chunkRefill=false\n"
++ "# zombieDropItemsGuard: a zombie's dropHeavyItems no longer sends PlayerDropHeldItems, whose setData throws on a zombie and logs the send.\n"
++ "zombieDropItemsGuard=true\n"
 + "# serverCellSpread (server): spread a cell's second-stage load over ticks inside a per-tick budget (at least one chunk per tick); keeps a 120 ms floor near a player.\n"
 + "serverCellSpread=false\n"
 + "#\n"
@@ -599,7 +601,7 @@ public final class Settings {
     /** A feature switch: never on without the master switch; a missing key takes its default. */
     /** Features that passed their in-game check and default to on (still only with the master switch). */
     static final java.util.Set<String> ON_BY_DEFAULT = java.util.Set.of("limiterSleep", "inputLatch", "keyboardFresh", "frameStartGate",
-        "reflexSleep", "vsyncAdaptive", "luaBudget", "nullModelGuard", "doorToggleNpeGuard",
+        "reflexSleep", "vsyncAdaptive", "luaBudget", "nullModelGuard", "doorToggleNpeGuard", "zombieDropItemsGuard",
         "luaInternConstants", "luaSkipEmpty", "uiVerify", "uiRetainedMods", "uiTickStagger", "textWidthCache", "uiLuaFast", "mapStreetMemo", "mapStreetCache", "mapVisitedFast",   // these two only act with vsync on
         "audioLimiterStereoFold",
         "persistentVboFrameSync",   // acts only with persistentVbo (Plan 9)
