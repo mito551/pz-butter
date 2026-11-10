@@ -45,6 +45,7 @@ public class Main {
         LuaPatches.initWalk();
         LuaPatches.initBp();
         LuaPatches.initTa();
+        LuaPatches.initLi();
         ScriptPatches.initOnce();
         ScriptPatches.initKept();
         ScriptPatches.initMiss();

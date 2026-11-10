@@ -710,4 +710,60 @@ public final class LuaPatches {
             if (r != null) ret = (se.krka.kahlua.vm.KahluaTable) r;
         }
     }
+
+    // ---- luaRequireIndex: the require list (LuaManager.loaded) keeps a name hash so contains is O(1);
+    // the hash is rebuilt whenever the list's size changed behind it (the only cheap change stamp). ----
+
+    public static final Guard liGuard = new Guard("luaRequireIndex");
+
+    static void initLi() {
+        try {
+            liGuard.on = Settings.flag("luaRequireIndex");
+        } catch (Throwable t) {
+            liGuard.fail(t);
+        }
+    }
+
+    public static final class IndexList<E> extends java.util.ArrayList<E> {
+        private java.util.HashSet<E> names;
+        private int namesOf = -1; // size the names hash was built from; -1 = stale
+
+        private void hash() {
+            if (names != null && namesOf == size()) return;
+            names = new java.util.HashSet<>(this);
+            namesOf = size();
+        }
+
+        @Override public boolean contains(Object o) {
+            if (!(o instanceof String s)) return super.contains(o);
+            hash();
+            return names.contains(s);
+        }
+
+        @Override public E set(int i, E e) { namesOf = -1; return super.set(i, e); }
+        @Override public void clear() { namesOf = -1; super.clear(); }
+    }
+
+    /** The advice face: wrap the live require list (called from a LuaManager.init exit). */
+    public static void swapLoadedIndex() {
+        if (!liGuard.on) return;
+        try {
+            if (!(zombie.Lua.LuaManager.loaded instanceof IndexList)) {
+                @SuppressWarnings("unchecked")
+                IndexList<String> l = new IndexList<>();
+                l.addAll((java.util.List<String>) zombie.Lua.LuaManager.loaded);
+                zombie.Lua.LuaManager.loaded = l;
+            }
+        } catch (Throwable t) {
+            liGuard.fail(t);
+        }
+    }
+
+    @Patch(className = "zombie.Lua.LuaManager", methodName = "init")
+    public static class LoadedIndex {
+        @Patch.OnExit
+        public static void exit() {
+            swapLoadedIndex();
+        }
+    }
 }

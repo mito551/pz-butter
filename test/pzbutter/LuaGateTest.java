@@ -111,6 +111,7 @@ final class LuaGateTest {
         kahluaPoolDoublePut();
         luaBreakpointSkip();
         kahluaTableAlloc();
+        luaRequireIndex();
     }
 
     static void plan7KeysDefaults() {
@@ -1693,5 +1694,56 @@ final class LuaGateTest {
         Settings.load(SelfTest.write("enabled=true\n"));
         LuaPatches.initTa();
         assert !LuaPatches.taGuard.on : "defaults restored";
+    }
+
+    // ---- luaRequireIndex: the require list answers contains from a name hash rebuilt when its size changes ----
+
+    static void luaRequireIndex() throws Exception {
+        Settings.load(SelfTest.write("enabled=true\n"));
+        LuaPatches.initLi();
+        assert !LuaPatches.liGuard.on : "luaRequireIndex defaults off";
+
+        LuaPatches.IndexList<String> l = new LuaPatches.IndexList<>();
+        l.add("x.lua");
+        l.add("y.lua");
+        assert l.contains("x.lua") && l.contains("y.lua") && !l.contains("z.lua") : "hash contains like the list";
+        assert l.get(1).equals("y.lua") : "order preserved";
+
+        l.remove(0);
+        assert !l.contains("x.lua") && l.contains("y.lua") : "own mutators keep the hash";
+
+        // behind the back: an iterator remove (size only) is caught by the stamp
+        l.clear();
+        l.add("x.lua");
+        l.add("y.lua");
+        try {
+            java.util.Iterator<String> it = l.iterator();
+            it.next();
+            it.remove(); // mutates without my mutators: only the size changes
+        } catch (Throwable t) {
+            throw new AssertionError("iterator remove should work: " + t); }
+        assert !l.contains("x.lua") && l.contains("y.lua") : "a size change rebuilds the hash";
+
+        // the live swap: with the key on, wrapping takes over the list
+        Settings.load(SelfTest.write("enabled=true\nluaRequireIndex=true\n"));
+        LuaPatches.initLi();
+        assert LuaPatches.liGuard.on : "template turns the guard on";
+        java.util.List<String> saved = zombie.Lua.LuaManager.loaded;
+        try {
+            int before = zombie.Lua.LuaManager.loaded.size();
+            LuaPatches.swapLoadedIndex();
+            assert luaLoadedIsIndexed() : "LuaManager.loaded now answers contains from the hash";
+            assert zombie.Lua.LuaManager.loaded.size() == before : "contents preserved";
+        } finally {
+            zombie.Lua.LuaManager.loaded = saved;
+        }
+
+        Settings.load(SelfTest.write("enabled=true\n"));
+        LuaPatches.initLi();
+        assert !LuaPatches.liGuard.on : "defaults restored";
+    }
+
+    static boolean luaLoadedIsIndexed() {
+        return zombie.Lua.LuaManager.loaded instanceof LuaPatches.IndexList;
     }
 }
