@@ -51,13 +51,14 @@ local by_name = {}
 
 local paused = {}
 local fails = {}
-local lastVehicle, lastType, lastSeat
+-- split screen: each local player has its own vehicle snapshot and throttle state
+local pstates = {}
 
 local function error_key(row, vtype)
     return row.id .. "|" .. tostring(vtype or "")
 end
 
-local function should_run(h, now, vehicle, vtype, seat)
+local function should_run(h, now, vehicle, vtype, seat, ps)
     local row = h.row
     if not vehicle and row.onFoot == "none" then return false end
     if row.types and #row.types > 0 then
@@ -71,16 +72,15 @@ local function should_run(h, now, vehicle, vtype, seat)
     local p = paused[error_key(row, vtype)]
     if p and now < p then return false end
     if row.kind == "sync" then
-        local changed = h.vehicle ~= vehicle or h.vtype ~= vtype or h.seat ~= seat
-        if not changed and now - h.last < syncMs then return false end
+        if now - ps.last < syncMs then return false end
     end
     return true
 end
 
-local function run(h, player, now, vehicle, vtype, seat)
+local function run(h, player, now, vtype, ps)
     local row = h.row
     local ok, err = pcall(h.fn, player)
-    h.vehicle, h.vtype, h.seat, h.last = vehicle, vtype, seat, now
+    ps.last = now
     local k = error_key(row, vtype)
     if ok then
         paused[k] = nil
@@ -101,9 +101,13 @@ function Ki5.dispatch(player)
     local vehicle = player and player:getVehicle() or nil
     local vtype = vehicle and vehicle:getScriptName() or nil
     local seat = vehicle and vehicle:getSeat(player) or nil
-    if vehicle ~= lastVehicle or vtype ~= lastType or seat ~= lastSeat then
-        lastVehicle, lastType, lastSeat = vehicle, vtype, seat
-        for _, h in ipairs(handlers) do h.last = -math.huge end
+    -- stub players in the tests (and some mods) carry no getPlayerNum; slot 0 covers them
+    local idx = player and player.getPlayerNum and player:getPlayerNum() or 0
+    local ps = pstates[idx]
+    if not ps then ps = {vehicle = vehicle, vtype = vtype, seat = seat}; pstates[idx] = ps end
+    if vehicle ~= ps.vehicle or vtype ~= ps.vtype or seat ~= ps.seat then
+        ps.vehicle, ps.vtype, ps.seat = vehicle, vtype, seat
+        for _, h in ipairs(handlers) do h.per[idx] = nil end
     end
     local every = false
     for _, h in ipairs(handlers) do
@@ -111,8 +115,10 @@ function Ki5.dispatch(player)
     end
     if every and PZButter.ki5EveryStart then PZButter.ki5EveryStart() end
     for _, h in ipairs(handlers) do
-        if should_run(h, now, vehicle, vtype, seat) then
-            run(h, player, now, vehicle, vtype, seat)
+        local s = h.per[idx]
+        if not s then s = {last = -math.huge}; h.per[idx] = s end
+        if should_run(h, now, vehicle, vtype, seat, s) then
+            run(h, player, now, vtype, s)
         end
     end
     if every then
@@ -127,11 +133,15 @@ function Ki5.install()
     PZButter.Census.finish()
     rows = PZButter.Ki5Table or {}
     for _, row in ipairs(rows) do
-        local fn = resolve(row)
-        if fn then
-            local h = {row = row, fn = fn, last = -math.huge}
-            handlers[#handlers + 1] = h
-            by_name[row.name] = h
+        -- an "unchecked" row is no verified vehicle handler; taking it over (the resolve below)
+        -- would change other mods' stock behaviour (pausing a foreign handler on its errors)
+        if row.kind ~= "unchecked" then
+            local fn = resolve(row)
+            if fn then
+                local h = {row = row, fn = fn, per = {}}
+                handlers[#handlers + 1] = h
+                by_name[row.name] = h
+            end
         end
     end
     if #handlers == 0 then

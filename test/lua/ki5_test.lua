@@ -36,6 +36,7 @@ PZButter.Ki5Table = {
 assert(Stubs.count("OnPlayerUpdate", syncFn) == 1, "Ki5 took handlers over before OnGameStart")
 for _, cb in ipairs(Events.OnGameStart.callbacks) do cb() end
 assert(Stubs.count("OnPlayerUpdate", syncFn) == 0, "Ki5 did not take the sync handler over at OnGameStart")
+assert(Stubs.count("OnPlayerUpdate", uncheckedFn) == 1, "Ki5 took the unchecked (foreign) handler over")
 Ki5 = PZButter.Ki5
 Ki5.now = function() return now end
 
@@ -49,7 +50,7 @@ local inCar = {getVehicle = function() return carA end}
 
 Ki5.dispatch(foot)
 assert(calls.sync == 0, "sync handler ran on foot")
-assert(calls.every == 1 and calls.unchecked == 1 and calls.neighbour == 1, "on-foot skip was too broad")
+assert(calls.every == 1 and calls.unchecked == 0 and calls.neighbour == 1, "dispatch ran or skipped the wrong set")
 
 Ki5.dispatch(inCar)
 assert(calls.sync == 1, "sync handler did not run in car")
@@ -84,6 +85,27 @@ now = 9000; Ki5.dispatch(inCarC)
 assert(calls.bad == badBefore + 3, "bad handler ran inside its 30 s pause")
 now = 36200; Ki5.dispatch(inCarC)
 assert(calls.bad == badBefore + 4, "bad handler did not retry after 30 s")
+
+-- split screen: throttle and flush state are per local player
+local pcA, pcB = vehicle("carA", 0), vehicle("carA", 0)
+local p0 = {getVehicle = function() return pcA end, getPlayerNum = function() return 0 end}
+local p1 = {getVehicle = function() return pcB end, getPlayerNum = function() return 1 end}
+now = 40000
+Ki5.dispatch(p0)
+assert(calls.sync == 4, "player 0's sync did not run")
+Ki5.dispatch(p1)
+assert(calls.sync == 5, "player 1's sync was skipped as unchanged")
+now = 40050
+Ki5.dispatch(p0)
+assert(calls.sync == 5, "player 0's sync ran again within 100 ms")
+Ki5.dispatch(p1)
+assert(calls.sync == 5, "player 1's sync ran again within 100 ms")
+pcB.seat = 1
+now = 40060
+Ki5.dispatch(p1)
+assert(calls.sync == 6, "sync handler did not run immediately after player 1's seat change")
+Ki5.dispatch(p0)
+assert(calls.sync == 6, "player 1's seat change flushed player 0's throttle")
 
 -- offWithoutPZButter: without the PZButter global the fix mod returns at once and installs nothing
 do
