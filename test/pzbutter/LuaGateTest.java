@@ -109,6 +109,7 @@ final class LuaGateTest {
         modCompatInitOffDoesNothing();
         gpuQueueForcedOff();
         kahluaPoolDoublePut();
+        luaBreakpointSkip();
     }
 
     static void plan7KeysDefaults() {
@@ -1589,5 +1590,55 @@ final class LuaGateTest {
         assert LuaPatches.walkGuard.on : "the key enables the walk";
         Settings.load(SelfTest.write("enabled=true\n"));
         LuaPatches.initWalk();
+    }
+
+    // ---- luaBreakpointSkip: the breakpoint machinery answers at once while the maps are empty ----
+
+    static Object bareThread() throws Exception {
+        java.lang.reflect.Field f = sun.misc.Unsafe.class.getDeclaredField("theUnsafe");
+        f.setAccessible(true);
+        return ((sun.misc.Unsafe) f.get(null)).allocateInstance(se.krka.kahlua.vm.KahluaThread.class);
+    }
+
+    static void setMap(Object thread, String name, java.util.Map<?, ?> value) throws Exception {
+        java.lang.reflect.Field f = se.krka.kahlua.vm.KahluaThread.class.getDeclaredField(name);
+        f.setAccessible(true);
+        f.set(thread, value);
+    }
+
+    static void luaBreakpointSkip() throws Exception {
+        // default: off
+        Settings.load(SelfTest.write("enabled=true\n"));
+        LuaPatches.initBp();
+        assert !LuaPatches.bpGuard.on : "luaBreakpointSkip defaults off";
+
+        Object thread = bareThread();
+        setMap(thread, "breakpointMap", new java.util.HashMap<>());
+        setMap(thread, "breakpointDataMap", new java.util.HashMap<>());
+        setMap(thread, "breakpointReadDataMap", new java.util.HashMap<>());
+
+        // template on: every map empty -> skip; the answer matches stock (stock would answer false too)
+        Settings.load(SelfTest.write("enabled=true\nluaBreakpointSkip=true\n"));
+        LuaPatches.initBp();
+        assert LuaPatches.bpGuard.on : "template turns the guard on";
+        se.krka.kahlua.vm.KahluaThread t = (se.krka.kahlua.vm.KahluaThread) thread;
+        assert !t.hasDataBreakpoint(null, null) : "empty maps answer false like stock";
+        assert !t.hasReadDataBreakpoint(null, null) : "empty read maps answer false like stock";
+        assert LuaPatches.mapsEmpty(thread, new String[] {"breakpointDataMap"}) : "single-map predicate";
+
+        // one line breakpoint anywhere re-opens the stock path
+        java.util.Map<String, java.util.ArrayList<Long>> lines = new java.util.HashMap<>();
+        lines.put("x.lua", new java.util.ArrayList<>(java.util.List.of(3L)));
+        setMap(thread, "breakpointMap", lines);
+        assert !LuaPatches.mapsEmpty(thread, new String[] {"breakpointMap", "breakpointDataMap", "breakpointReadDataMap"})
+                : "a configured line breakpoint keeps the stock body";
+        assert !t.hasDataBreakpoint(null, null) : "has* answers from its own map still";
+
+        // has* predicate is per-method: empty data map + non-empty line map -> data skip still applies
+        assert LuaPatches.mapsEmpty(thread, new String[] {"breakpointDataMap"}) : "data map still empty";
+
+        Settings.load(SelfTest.write("enabled=true\n"));
+        LuaPatches.initBp();
+        assert !LuaPatches.bpGuard.on : "defaults restored";
     }
 }

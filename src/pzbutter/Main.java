@@ -43,6 +43,7 @@ public class Main {
         LuaPatches.initPoolPut();
         LuaPatches.initBodyLoc();
         LuaPatches.initWalk();
+        LuaPatches.initBp();
         ScriptPatches.initOnce();
         ScriptPatches.initKept();
         ScriptPatches.initMiss();

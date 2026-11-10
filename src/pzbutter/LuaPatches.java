@@ -552,4 +552,125 @@ public final class LuaPatches {
             }
         }
     }
+
+    // ---- luaBreakpointSkip: the breakpoint machinery answers at once while its maps are empty ----
+
+    public static final Guard bpGuard = new Guard("luaBreakpointSkip");
+
+    static void initBp() {
+        try {
+            bpGuard.on = Settings.flag("luaBreakpointSkip");
+        } catch (Throwable t) {
+            bpGuard.fail(t);
+        }
+    }
+
+    private static final java.util.Map<String, java.lang.reflect.Field> bpFields = new java.util.HashMap<>();
+
+    private static synchronized java.util.Map<?, ?> bpMap(Object thread, String name) throws Exception {
+        java.lang.reflect.Field f = bpFields.get(name);
+        if (f == null) {
+            f = se.krka.kahlua.vm.KahluaThread.class.getDeclaredField(name);
+            f.setAccessible(true);
+            bpFields.put(name, f);
+        }
+        return (java.util.Map<?, ?>) f.get(thread);
+    }
+
+    /** True when every named KahluaThread map reads empty (also when the thread reads null: nothing is configured). */
+    public static boolean mapsEmpty(Object thread, String[] names) {
+        try {
+            if (thread == null) return true;
+            for (String n : names) {
+                java.util.Map<?, ?> m = bpMap(thread, n);
+                if (m == null || !m.isEmpty()) return false;
+            }
+            return true;
+        } catch (Throwable t) {
+            bpGuard.fail(t);
+            return false;
+        }
+    }
+
+    public static final String[] BP_ALL = {"breakpointMap", "breakpointDataMap", "breakpointReadDataMap"};
+
+    /** The instance methods' shared advice body: skip the stock body while the relevant map is empty. */
+    public static Object bpSingle(Object self, String mapName) {
+        try {
+            if (!bpGuard.on) return null;
+            return mapsEmpty(self, new String[] {mapName}) ? Boolean.TRUE : null;
+        } catch (Throwable t) {
+            bpGuard.fail(t);
+            return null;
+        }
+    }
+
+    /** The write-side methods' shared advice body: skip only while nothing is configured at all. */
+    public static Object bpAll(Object self) {
+        try {
+            if (!bpGuard.on) return null;
+            return mapsEmpty(self, BP_ALL) ? Boolean.TRUE : null;
+        } catch (Throwable t) {
+            bpGuard.fail(t);
+            return null;
+        }
+    }
+
+    @Patch(className = "se.krka.kahlua.vm.KahluaThread", methodName = "hasDataBreakpoint")
+    public static class HasData {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This Object self, @Patch.Local("r") Object r) {
+            r = bpSingle(self, "breakpointDataMap");
+            return r != null;
+        }
+
+        @Patch.OnExit
+        public static void exit(@Patch.Return(readOnly = false) boolean ret, @Patch.Local("r") Object r) {
+            if (r != null) ret = false;
+        }
+    }
+
+    @Patch(className = "se.krka.kahlua.vm.KahluaThread", methodName = "hasReadDataBreakpoint")
+    public static class HasReadData {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This Object self, @Patch.Local("r") Object r) {
+            r = bpSingle(self, "breakpointReadDataMap");
+            return r != null;
+        }
+
+        @Patch.OnExit
+        public static void exit(@Patch.Return(readOnly = false) boolean ret, @Patch.Local("r") Object r) {
+            if (r != null) ret = false;
+        }
+    }
+
+    @Patch(className = "se.krka.kahlua.vm.KahluaThread", methodName = "toggleBreakOnRead")
+    public static class ToggleRead {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This Object self) {
+            return bpAll(self) != null;
+        }
+    }
+
+    @Patch(className = "se.krka.kahlua.vm.KahluaThread", methodName = "setLocalVarToStack")
+    public static class SetLocalVar {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This Object self) {
+            return bpAll(self) != null;
+        }
+    }
+
+    @Patch(className = "zombie.ui.UIManager", methodName = "debugBreakpoint")
+    public static class DebugBp {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter() {
+            if (!bpGuard.on) return false;
+            try {
+                return mapsEmpty(zombie.ui.UIManager.defaultthread, BP_ALL);
+            } catch (Throwable t) {
+                bpGuard.fail(t);
+                return false;
+            }
+        }
+    }
 }
