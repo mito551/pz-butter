@@ -19,6 +19,7 @@ public class ModelTest {
 
     public static void run() throws Exception {
         characterMaskLookup();
+        modelPathCache();
         animFolderMissing();
         animFolderScope();
         skinnedUniformSkip();
@@ -184,5 +185,31 @@ public class ModelTest {
         ModelPatches.initSkinnedUniform();
         assert !ModelPatches.suGuard.on : "defaults restored";
         assert !ModelPatches.suSkip1(sh, 0, 0.5f) : "off: stock (no skip)";
+    }
+
+    // ---- modelPathCache: normalised model paths answered from a per-input cache ----
+
+    static void modelPathCache() throws Exception {
+        Field uf = sun.misc.Unsafe.class.getDeclaredField("theUnsafe");
+        uf.setAccessible(true);
+        Object animModel = ((sun.misc.Unsafe) uf.get(null)).allocateInstance(zombie.core.skinnedmodel.advancedanimation.AnimatedModel.class);
+        java.lang.reflect.Method stock = zombie.core.skinnedmodel.advancedanimation.AnimatedModel.class
+            .getDeclaredMethod("processModelFileName", String.class);
+        stock.setAccessible(true);
+        String[] in = {"Media\\X\\Y.OBJ", "plain/OBJ", "A\\B", "C:/D\\E.FBX"};
+        for (String s : in) {
+            String want = (String) stock.invoke(animModel, s);
+            assert want.equals(ModelPatches.normalize(s)) : "normalise agrees with stock: " + s;
+        }
+        assert ModelPatches.normalize(in[0]) == ModelPatches.normalize(in[0]) : "cached answer is the same object";
+        assert !ModelPatches.normalize(in[0]).equals(ModelPatches.normalize(in[1])) : "distinct keys distinct answers";
+        assert ModelPatches.normalize(null) == null : "null stays null (advice declines to stock)";
+
+        Settings.load(SelfTest.write("enabled=true\nmodelPathCache=true\n"));
+        ModelPatches.initPath();
+        assert ModelPatches.pathGuard.on : "template turns the guard on";
+        Settings.load(SelfTest.write("enabled=true\n"));
+        ModelPatches.initPath();
+        assert !ModelPatches.pathGuard.on : "defaults restored";
     }
 }

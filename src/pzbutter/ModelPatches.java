@@ -388,4 +388,64 @@ public final class ModelPatches {
             if (r != null) ret = (zombie.core.skinnedmodel.model.CharacterMask.Part) r;
         }
     }
+
+    // ---- modelPathCache: processModelFileName normalises each input once (SPEC 6.x) ----
+
+    public static final Guard pathGuard = new Guard("modelPathCache");
+
+    static void initPath() {
+        try {
+            pathGuard.on = Settings.flag("modelPathCache");
+        } catch (Throwable t) {
+            pathGuard.fail(t);
+        }
+    }
+
+    private static final java.util.concurrent.ConcurrentHashMap<String, String> PATHS = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** Stock body: replaceAll("\\\\", "/").toLowerCase(Locale.ENGLISH), cached per input. Null declines to stock. */
+    public static String normalize(String s) {
+        if (s == null) return null;
+        return PATHS.computeIfAbsent(s, k -> k.replaceAll("\\\\", "/").toLowerCase(java.util.Locale.ENGLISH));
+    }
+
+    @Patch(className = "zombie.core.skinnedmodel.advancedanimation.AnimatedModel", methodName = "processModelFileName")
+    public static class AnimModelPath {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.Argument(0) String s, @Patch.Local("r") Object r) {
+            if (!pathGuard.on || s == null) return false;
+            try {
+                r = normalize(s);
+                return true;
+            } catch (Throwable t) {
+                pathGuard.fail(t);
+                return false;
+            }
+        }
+
+        @Patch.OnExit
+        public static void exit(@Patch.Return(readOnly = false) String ret, @Patch.Local("r") Object r) {
+            if (r != null) ret = (String) r;
+        }
+    }
+
+    @Patch(className = "zombie.core.skinnedmodel.population.PopTemplateManager", methodName = "processModelFileName")
+    public static class PopModelPath {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.Argument(0) String s, @Patch.Local("r") Object r) {
+            if (!pathGuard.on || s == null) return false;
+            try {
+                r = normalize(s);
+                return true;
+            } catch (Throwable t) {
+                pathGuard.fail(t);
+                return false;
+            }
+        }
+
+        @Patch.OnExit
+        public static void exit(@Patch.Return(readOnly = false) String ret, @Patch.Local("r") Object r) {
+            if (r != null) ret = (String) r;
+        }
+    }
 }

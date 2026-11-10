@@ -85,6 +85,7 @@ local KEYS = {
 	"mapStreetCache",
 	"mapStreetMemo",
 	"mapVisitedFast",
+	"modelPathCache",
 	"modScanWalk",
 	"modWatchAsync",
 	"noLoadFade",
