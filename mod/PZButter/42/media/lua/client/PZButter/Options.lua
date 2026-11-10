@@ -9,6 +9,7 @@ if not api or not PZButter or not PZButter.setting or not PZButter.setFromUi the
 local KEYS = {
 	"animFolderMissing",
 	"animFolderScope",
+	"animTransformPool",
 	"workshopAutoInstall",
 	"audioLimiter",
 	"audioLimiterStereoFold",

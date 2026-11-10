@@ -20,6 +20,7 @@ public class ModelTest {
     public static void run() throws Exception {
         characterMaskLookup();
         modelPathCache();
+        animTransformPool();
         animFolderMissing();
         animFolderScope();
         skinnedUniformSkip();
@@ -211,5 +212,74 @@ public class ModelTest {
         Settings.load(SelfTest.write("enabled=true\n"));
         ModelPatches.initPath();
         assert !ModelPatches.pathGuard.on : "defaults restored";
+    }
+
+    // ---- animTransformPool: pooled Matrix4f elements for model/skin transform sizing ----
+
+    private static sun.misc.Unsafe theUnsafe() throws Exception {
+        Field f = sun.misc.Unsafe.class.getDeclaredField("theUnsafe");
+        f.setAccessible(true);
+        return (sun.misc.Unsafe) f.get(null);
+    }
+
+    static void animTransformPool() throws Exception {
+        org.lwjgl.util.vector.Matrix4f[] fresh = ModelPatches.sizedTransforms(null, 3);
+        assert fresh.length == 3 : "fresh array sized";
+        assert fresh[0] != null && fresh[1] != null && fresh[2] != null : "supplier filled";
+
+        org.lwjgl.util.vector.Matrix4f[] same = ModelPatches.sizedTransforms(fresh, 3);
+        assert same == fresh : "same-length returns the same array";
+
+        // grow keeps the head elements, fills the tail
+        org.lwjgl.util.vector.Matrix4f[] grown = ModelPatches.sizedTransforms(fresh, 5);
+        assert grown != fresh && grown.length == 5 : "grow allocates a new array";
+        assert grown[0] == fresh[0] && grown[1] == fresh[1] : "head identity kept";
+        assert grown[4] != null : "tail filled";
+
+        // shrink frees the surplus; growing again hands the same transforms back
+        org.lwjgl.util.vector.Matrix4f tailX = grown[3];
+        org.lwjgl.util.vector.Matrix4f tailY = grown[4];
+        org.lwjgl.util.vector.Matrix4f[] shrunk = ModelPatches.sizedTransforms(grown, 3);
+        assert shrunk.length == 3 && shrunk[0] == grown[0] : "shrink keeps identity";
+        org.lwjgl.util.vector.Matrix4f[] regrown = ModelPatches.sizedTransforms(shrunk, 5);
+        assert regrown[3] == tailX && regrown[4] == tailY : "freed transforms are not allocated again";
+
+        // freeMatrix(null) is safe; the pool never grows past its cap
+        ModelPatches.freeMatrix(null);
+        for (int i = 0; i < 8300; i++) ModelPatches.freeMatrix(new org.lwjgl.util.vector.Matrix4f());
+        Field poolF = ModelPatches.class.getDeclaredField("TRANSFORM_POOL");
+        poolF.setAccessible(true);
+        assert ((java.util.ArrayDeque<?>) poolF.get(null)).size() <= ModelPatches.TRANSFORM_POOL_CAP
+            : "pool respects its cap";
+
+        // setSkinnedPool mirrors the stock setSkinnedTo body
+        Object sstd = theUnsafe().allocateInstance(Class.forName("zombie.core.skinnedmodel.animation.AnimationPlayer$SkinTransformData"));
+        zombie.core.skinnedmodel.model.SkinningData sd = new zombie.core.skinnedmodel.model.SkinningData(
+            new java.util.HashMap<>(), new java.util.ArrayList<>(), new java.util.ArrayList<>(),
+            new java.util.ArrayList<>(), new java.util.ArrayList<>(), new java.util.HashMap<>());
+        ModelPatches.setSkinnedPool(sstd, sd);
+        java.lang.reflect.Field ft = ModelPatches.class.getDeclaredField("fTransforms2");
+        ft.setAccessible(true);
+        java.lang.reflect.Field fd = ModelPatches.class.getDeclaredField("fDirty2");
+        fd.setAccessible(true);
+        java.lang.reflect.Field fs = ModelPatches.class.getDeclaredField("fSkinnedTo");
+        fs.setAccessible(true);
+        assert ft.get(sstd) != null : "transforms sized";
+        java.lang.reflect.Field tr2 = (java.lang.reflect.Field) ft.get(null);
+        tr2.setAccessible(true);
+        java.lang.reflect.Field di2 = (java.lang.reflect.Field) fd.get(null);
+        di2.setAccessible(true);
+        java.lang.reflect.Field sk2 = (java.lang.reflect.Field) fs.get(null);
+        sk2.setAccessible(true);
+        assert tr2.get(sstd) != null : "transforms sized";
+        assert di2.get(sstd) == Boolean.TRUE : "dirty set";
+        assert sk2.get(sstd) == sd : "skinnedTo stored";
+
+        Settings.load(SelfTest.write("enabled=true\nanimTransformPool=true\n"));
+        ModelPatches.initATP();
+        assert ModelPatches.atpGuard.on : "template turns the guard on";
+        Settings.load(SelfTest.write("enabled=true\n"));
+        ModelPatches.initATP();
+        assert !ModelPatches.atpGuard.on : "defaults restored";
     }
 }

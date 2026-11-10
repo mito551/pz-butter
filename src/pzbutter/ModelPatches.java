@@ -1,6 +1,7 @@
 package pzbutter;
 
 import java.io.File;
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import me.zed_0xff.zombie_buddy.Patch;
 import zombie.core.skinnedmodel.model.ModelInstance;
@@ -446,6 +447,160 @@ public final class ModelPatches {
         @Patch.OnExit
         public static void exit(@Patch.Return(readOnly = false) String ret, @Patch.Local("r") Object r) {
             if (r != null) ret = (String) r;
+        }
+    }
+
+    // ---- animTransformPool: pooled Matrix4f elements for model/skin transform sizing (SPEC 6.8) ----
+
+    public static final Guard atpGuard = new Guard("animTransformPool");
+
+    static void initATP() {
+        try {
+            atpGuard.on = Settings.flag("animTransformPool");
+        } catch (Throwable t) {
+            atpGuard.fail(t);
+        }
+    }
+
+    private static final Object POOL_LOCK = new Object();
+    private static final java.util.ArrayDeque<org.lwjgl.util.vector.Matrix4f> TRANSFORM_POOL = new java.util.ArrayDeque<>();
+    public static final int TRANSFORM_POOL_CAP = 8192;
+
+    /** A pooled transform, or a fresh one when the pool is empty. Threads: one pool, brief synchronized take. */
+    public static org.lwjgl.util.vector.Matrix4f matrix() {
+        synchronized (POOL_LOCK) {
+            org.lwjgl.util.vector.Matrix4f m = TRANSFORM_POOL.pollFirst();
+            if (m != null) return m;
+        }
+        return new org.lwjgl.util.vector.Matrix4f();
+    }
+
+    /** Return a transform to the pool (owner: this static pool), bounded by the cap. */
+    public static void freeMatrix(org.lwjgl.util.vector.Matrix4f m) {
+        if (m == null) return;
+        synchronized (POOL_LOCK) {
+            if (TRANSFORM_POOL.size() < TRANSFORM_POOL_CAP) TRANSFORM_POOL.addLast(m);
+        }
+    }
+
+    private static void freeRange(org.lwjgl.util.vector.Matrix4f[] old, int from, int to) {
+        for (int i = from; i < to; i++) freeMatrix(old[i]);
+    }
+
+    /**
+     * Stock PZArrayUtil.newInstance(Matrix4f.class, old, n, new Matrix4f()) with pooled elements.
+     * Same-size returns old untouched; shrink returns the dropped elements to the pool.
+     */
+    public static org.lwjgl.util.vector.Matrix4f[] sizedTransforms(org.lwjgl.util.vector.Matrix4f[] old, int n) {
+        // Pool.tryRelease nulls non-poolable surplus slots inside the game's shrink loop - free them first
+        if (old != null && n < old.length) freeRange(old, n, old.length);
+        return (org.lwjgl.util.vector.Matrix4f[]) zombie.util.list.PZArrayUtil
+            .newInstance(org.lwjgl.util.vector.Matrix4f.class, old, n, ModelPatches::matrix);
+    }
+
+    private static Field fModel, fModelTransforms, fSkinningData, fNeedFirst, fMultiTrack, fReparented, fTwistBones, fCounter;
+
+    private static void apFields() throws Exception {
+        if (fModel != null) return;
+        Class<?> c = zombie.core.skinnedmodel.animation.AnimationPlayer.class;
+        fModel = c.getDeclaredField("model");
+        fModelTransforms = c.getDeclaredField("modelTransforms");
+        fSkinningData = c.getDeclaredField("skinningData");
+        fNeedFirst = c.getDeclaredField("boneTransformsNeedFirstFrame");
+        fMultiTrack = c.getDeclaredField("multiTrack");
+        fReparented = c.getDeclaredField("reparentedBoneBindings");
+        fTwistBones = c.getDeclaredField("twistBones");
+        fCounter = c.getDeclaredField("counterRotationBone");
+        for (Field f : new Field[] {fModel, fModelTransforms, fSkinningData, fNeedFirst, fMultiTrack, fReparented, fTwistBones, fCounter})
+            f.setAccessible(true);
+    }
+
+    private static final Field fSkinnedTo, fAnimSkin, fTransforms2, fDirty2;
+
+    static {
+        try {
+            Class<?> c = Class.forName("zombie.core.skinnedmodel.animation.AnimationPlayer$SkinTransformData");
+            fSkinnedTo = c.getDeclaredField("skinnedTo");
+            fAnimSkin = c.getDeclaredField("animPlayerSkinningData");
+            fTransforms2 = c.getDeclaredField("transforms");
+            fDirty2 = c.getDeclaredField("dirty");
+            for (Field f : new Field[] {fSkinnedTo, fAnimSkin, fTransforms2, fDirty2}) f.setAccessible(true);
+        } catch (Exception e) {
+            throw new ExceptionInInitializerError(e);
+        }
+    }
+
+    /**
+     * Stock AnimationPlayer.initSkinningData body, with modelTransforms pooled. Reads private fields via
+     * cached reflection; throws (falling back to stock) before any mutation when lookup fails.
+     */
+    public static void initSkinning(Object self) throws Exception {
+        apFields();
+        zombie.core.skinnedmodel.model.Model m = (zombie.core.skinnedmodel.model.Model) fModel.get(self);
+        if (m == null || !m.isReady()) return;
+        zombie.core.skinnedmodel.model.SkinningData sd = (zombie.core.skinnedmodel.model.SkinningData) m.tag;
+        if (sd == null) return;
+        Object old = fSkinningData.get(self);
+        if (old == sd) return;
+        if (old != null) {
+            fSkinningData.set(self, null);
+            ((zombie.core.skinnedmodel.animation.AnimationMultiTrack) fMultiTrack.get(self)).reset();
+        }
+        fSkinningData.set(self, sd);
+        for (Object o : (java.util.List<?>) fReparented.get(self))
+            ((zombie.core.skinnedmodel.animation.AnimationBoneBindingPair) o).setSkinningData(sd);
+        for (Object o : (java.util.List<?>) fTwistBones.get(self))
+            ((zombie.core.skinnedmodel.animation.AnimationBoneBinding) o).setSkinningData(sd);
+        zombie.core.skinnedmodel.animation.AnimationBoneBinding crb =
+            (zombie.core.skinnedmodel.animation.AnimationBoneBinding) fCounter.get(self);
+        if (crb != null) crb.setSkinningData(sd);
+        int n = sd.numBones();
+        fModelTransforms.set(self, sizedTransforms((org.lwjgl.util.vector.Matrix4f[]) fModelTransforms.get(self), n));
+        zombie.core.skinnedmodel.animation.AnimatorsBoneTransform[] bt =
+            (zombie.core.skinnedmodel.animation.AnimatorsBoneTransform[]) zombie.util.list.PZArrayUtil.newInstance(
+                zombie.core.skinnedmodel.animation.AnimatorsBoneTransform.class,
+                ((zombie.core.skinnedmodel.animation.AnimationPlayer) self).boneTransforms, n,
+                zombie.core.skinnedmodel.animation.AnimatorsBoneTransform::alloc);
+        ((zombie.core.skinnedmodel.animation.AnimationPlayer) self).boneTransforms = bt;
+        for (int i = 0; i < n; i++) {
+            if (bt[i] == null) bt[i] = zombie.core.skinnedmodel.animation.AnimatorsBoneTransform.alloc();
+            bt[i].setIdentity();
+        }
+        fNeedFirst.set(self, Boolean.TRUE);
+    }
+
+    /** Stock SkinTransformData.setSkinnedTo body, with transforms pooled. */
+    public static void setSkinnedPool(Object self, zombie.core.skinnedmodel.model.SkinningData sd) throws Exception {
+        if (fSkinnedTo.get(self) == sd) return;
+        fDirty2.set(self, Boolean.TRUE);
+        fSkinnedTo.set(self, sd);
+        fTransforms2.set(self, sizedTransforms((org.lwjgl.util.vector.Matrix4f[]) fTransforms2.get(self), sd.numBones()));
+        fAnimSkin.set(self, null);
+    }
+
+    @Patch(className = "zombie.core.skinnedmodel.animation.AnimationPlayer", methodName = "initSkinningData")
+    public static class AnimSkinning {
+        @Patch.OnEnter(skipOn = true)
+        public static void enter(@Patch.This Object self) {
+            if (!atpGuard.on) return;
+            try {
+                initSkinning(self);
+            } catch (Throwable t) {
+                atpGuard.fail(t);
+            }
+        }
+    }
+
+    @Patch(className = "zombie.core.skinnedmodel.animation.AnimationPlayer$SkinTransformData", methodName = "setSkinnedTo")
+    public static class SkinDataPool {
+        @Patch.OnEnter(skipOn = true)
+        public static void enter(@Patch.This Object self, @Patch.Argument(0) zombie.core.skinnedmodel.model.SkinningData sd) {
+            if (!atpGuard.on) return;
+            try {
+                setSkinnedPool(self, sd);
+            } catch (Throwable t) {
+                atpGuard.fail(t);
+            }
         }
     }
 }

@@ -206,6 +206,7 @@ These keys act only on a multiplayer client; on a server they stay off.
 | `characterTexturePaths` | The smart-texture overlay entry points (blood, dirt, clothing patches) build their mask path strings once per body part, not once per call. Off by default. |
 | `characterMaskLookup` | CharacterMask.Part count and fromInt answer from a table seeded once, instead of cloning the constants on every call. Off by default. |
 | `modelPathCache` | `AnimatedModel.processModelFileName` and `PopTemplateManager.processModelFileName` answer each normalised model path from a cache keyed by the input string. Off by default. |
+| `animTransformPool` | Matrix4f objects used for model and skin transform sizing come from a pool with an explicit owner, so a released transform is not allocated again. Off by default. |
 | `bodyLocationOnce` | `getAllItemsForBodyLocation` (used by A-Life's creator) resolves the body-location string once per call instead of once per clothing item it checks. Order, comparisons and results are unchanged. Off by default. |
 | `findItemOnce` | `ScriptManager.FindItem` returns after the lookup it makes before its module loop; the loop only repeats that same lookup (its bug), so a missing item costs one lookup instead of one per loaded module. Same items for every name. On by default. |
 | `findItemKept` | Keeps each `FindItem` answer (an item, or nothing) per name until the game edits its script tables again, so repeated lookups for the same name read a cache. Off by default. |
