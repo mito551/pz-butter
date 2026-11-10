@@ -30,7 +30,9 @@ public final class Census {
     static volatile boolean installed;
 
     static {
-        resetForTest();
+        // Defer the census list parse (2.7 MB) until install() / resetForTest(); never parse on class init.
+        calm = new long[0];
+        other = new long[0];
     }
 
     public static void install(java.lang.instrument.Instrumentation inst) {
@@ -40,7 +42,7 @@ public final class Census {
             if (inst == null) return;
             String rev = Preload.gameRevision();
             CensusSites s = (rev == null || rev.isEmpty()) ? null : CensusSites.load(rev);
-            if (s == null) return;
+            if (s == null || !rev.equals(s.revision())) return;
             sites = s;
             allocate(s.size());
             CensusTransform t = new CensusTransform(s, null);

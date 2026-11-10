@@ -231,7 +231,8 @@ public final class GpuPstate {
                 long sc = GpuTimer.samples;
                 if (sc == lastSamples) stale++; else { stale = 0; lastSamples = sc; }
                 if (stale >= 4) {
-                    restore(); guard.on = false; System.out.println("[PZButter] gpuPstate off: no GPU time samples"); break;
+                    // no new samples for 2 s (minimised window / long load): skip this poll, keep waiting for samples to resume
+                    continue;
                 }
                 double gpu = GpuTimer.lastGpuMs;
                 if (gpu < 0) {

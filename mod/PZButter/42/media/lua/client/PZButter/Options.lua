@@ -106,7 +106,7 @@ local KEYS = {
 
 local opts = PZAPI.ModOptions:create("PZButter", "PZ Butter")
 for _, key in ipairs(KEYS) do
-	local option = opts:addTickBox(key, key, PZButter.setting(key) == true, "Restart to apply.")
+	local option = opts:addTickBox(key, key, false, "Restart to apply.")
 	option.onChangeApply = function(self, v)
 		local applied = PZButter.setFromUi(key, v and "true" or "false")   -- a boolean back from Java
 		if applied ~= v and self.element ~= nil then

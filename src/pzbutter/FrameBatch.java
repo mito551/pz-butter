@@ -24,7 +24,7 @@ final class FrameBatch {
     static final Guard guard = new Guard("frameThreads");
 
     /** Task Throwables after the first one, counted. */
-    static long suppressed;
+    static final java.util.concurrent.atomic.AtomicLong suppressed = new java.util.concurrent.atomic.AtomicLong();
 
     private static int pending;                                 // width to start at the first frame after the claim
 
@@ -126,7 +126,10 @@ final class FrameBatch {
             Batch b = cur;
             if (b == null) continue;
             int slot = 1 + b.ticket.getAndIncrement();
-            if (slot < b.slots) b.work(slot);
+            if (slot < b.slots) {
+                try { b.work(slot); }
+                catch (Throwable t) { try { guard.fail(t); } catch (Throwable ignored) {} }
+            }
         }
     }
 
@@ -167,7 +170,7 @@ final class FrameBatch {
             if (!b.done()) LuaGate.awaitYielding(b::done);
             cur = null;
             first = b.err.get();
-            suppressed += b.supp.get();
+            suppressed.addAndGet(b.supp.get());
         } finally { busy.set(false); }
         if (first != null) rethrow(first);
     }
@@ -176,7 +179,7 @@ final class FrameBatch {
         Throwable first = null;
         for (int i = 0; i < n; i++) {
             try { task.accept(i); }
-            catch (Throwable t) { if (first == null) first = t; else suppressed++; }
+            catch (Throwable t) { if (first == null) first = t; else suppressed.incrementAndGet(); }
         }
         if (first != null) rethrow(first);
     }

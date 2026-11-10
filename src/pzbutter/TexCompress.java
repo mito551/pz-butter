@@ -2,7 +2,7 @@ package pzbutter;
 
 import java.nio.ByteBuffer;
 import java.util.Collections;
-import java.util.IdentityHashMap;
+import java.util.WeakHashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -56,7 +56,7 @@ public final class TexCompress {
     public record Entry(Level[] levels, boolean mips) {}
 
     /** Synchronized identity map: ImageData instance -> its encoded per-level BC3 blocks. */
-    public static final Map<Object, Entry> encoded = Collections.synchronizedMap(new IdentityHashMap<>());
+    public static final Map<Object, Entry> encoded = Collections.synchronizedMap(new WeakHashMap<>());
 
     private static java.lang.invoke.VarHandle flagsH, dataH, assetFlagsH;   // package-private / protected game fields
     private static volatile boolean flagsBound, uploadBound;

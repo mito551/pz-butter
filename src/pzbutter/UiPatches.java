@@ -16,6 +16,7 @@ public final class UiPatches {
 
     static final Guard tickGuard = new Guard("uiTickStagger");
     private static boolean stockTick, swapped;
+    private static Object swappedElement;
 
     /** UIElement.update entry: a top-level window sees its own staggered tick; its children follow it. */
     public static void onUpdateEnter(Object element) {
@@ -24,17 +25,18 @@ public final class UiPatches {
             if (((UIElement) element).getParent() != null) return;
             stockTick = UIManager.doTick;
             swapped = true;
+            swappedElement = element;
             UIManager.doTick = UiTick.decide(element, System.currentTimeMillis());
         } catch (Throwable t) { tickGuard.fail(t); }
     }
 
     /** UIElement.update exit: the game's own tick flag back for everything else that reads it. */
     public static void onUpdateExit(Object element) {
-        if (!swapped) return;
+        if (!swapped || element != swappedElement) return;
         try {
-            if (((UIElement) element).getParent() != null) return;
             UIManager.doTick = stockTick;
             swapped = false;
+            swappedElement = null;
         } catch (Throwable t) { tickGuard.fail(t); }
     }
 

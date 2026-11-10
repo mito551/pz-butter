@@ -27,8 +27,6 @@ local function comboForJava(javaLevel)
 end
 
 local function toast(text)
-    local p = getSpecificPlayer and getSpecificPlayer(0)
-    if p then pcall(function() p:Say(text) end) end
     print("[PZButter_WindSway] " .. text)
 end
 
@@ -36,7 +34,7 @@ local function stepTo(javaLevel)
     if javaLevel == appliedJava then return end
     appliedJava = javaLevel
     ModJava.setTreeDetail(javaLevel)
-    WindSway.treeDetailOpt:setValue(comboForJava(javaLevel))
+    -- do not persist into the user's saved option: runtime-only change
 end
 
 local function tick()

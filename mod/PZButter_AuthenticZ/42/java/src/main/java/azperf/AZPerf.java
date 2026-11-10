@@ -20,7 +20,7 @@ public class AZPerf {
     private static final int SCAN_RADIUS = 12;
     // Keep LIGHT_RADIUS and COLORS in sync with media/lua/server/AuthenticZ_Glowstick.lua
     // so carried and dropped sticks look identical.
-    private static final int LIGHT_RADIUS = 7;
+    private static final int LIGHT_RADIUS = 8;
 
     private static final Map<String, float[]> COLORS = new HashMap<>();
     private static final Map<IsoWorldInventoryObject, IsoLightSource> LIGHTS = new IdentityHashMap<>();
@@ -32,7 +32,7 @@ public class AZPerf {
         COLORS.put("AuthenticGlowstick_Green_On", new float[]{0.0f, 1.0f, 0.0f});
         COLORS.put("AuthenticGlowstick_Purple_On", new float[]{1.0f, 0.0f, 1.0f});
         COLORS.put("AuthenticGlowstick_Yellow_On", new float[]{1.0f, 1.0f, 0.0f});
-        COLORS.put("AuthenticGlowstick_Orange_On", new float[]{1.0f, 0.3f, 0.0f});
+        COLORS.put("AuthenticGlowstick_Orange_On", new float[]{1.0f, 0.5f, 0.0f});
         COLORS.put("AuthenticGlowstick_Pink_On", new float[]{1.0f, 0.0f, 0.25f});
         COLORS.put("AuthenticGlowstick_White_On", new float[]{1.0f, 1.0f, 1.0f});
     }
@@ -61,7 +61,7 @@ public class AZPerf {
             int dx = x - px;
             for (int y = py - SCAN_RADIUS; y <= py + SCAN_RADIUS; y++) {
                 int dy = y - py;
-                if (dx * dx + dy * dy > SCAN_RADIUS * SCAN_RADIUS) continue;
+                // scan the full square (target scans +/-SCAN_RADIUS, not a circle)
 
                 IsoGridSquare square = cell.getGridSquare(x, y, pz);
                 if (square == null) continue;

@@ -26,7 +26,7 @@ public final class Side {
 
     private static volatile boolean testSet, testServer, testMpClient;
     private static volatile boolean serverResolved, clientResolved;
-    private static volatile VarHandle serverFlag, clientFlag;
+    private static volatile java.lang.reflect.Field serverFlag, clientFlag;
 
     private Side() {}
 
@@ -67,7 +67,7 @@ public final class Side {
         told.clear();
     }
 
-    private static VarHandle serverHandle() {
+    private static java.lang.reflect.Field serverHandle() {
         if (!serverResolved) {
             serverFlag = flag("zombie.network.GameServer", "server");
             serverResolved = true;
@@ -75,7 +75,7 @@ public final class Side {
         return serverFlag;
     }
 
-    private static VarHandle clientHandle() {
+    private static java.lang.reflect.Field clientHandle() {
         if (!clientResolved) {
             clientFlag = flag("zombie.network.GameClient", "client");
             clientResolved = true;
@@ -83,17 +83,36 @@ public final class Side {
         return clientFlag;
     }
 
-    private static VarHandle flag(String className, String field) {
+    // Static field handles kept as java.lang.reflect.Field (resolved without initialising the owner),
+    // and read through Unsafe so the owning class is never initialised by the read itself.
+    private static final sun.misc.Unsafe UNSAFE;
+    static {
+        sun.misc.Unsafe u = null;
+        try {
+            java.lang.reflect.Field f = sun.misc.Unsafe.class.getDeclaredField("theUnsafe");
+            f.setAccessible(true);
+            u = (sun.misc.Unsafe) f.get(null);
+        } catch (Throwable ignored) { u = null; }
+        UNSAFE = u;
+    }
+
+    private static java.lang.reflect.Field flag(String className, String field) {
         try {
             Class<?> c = Class.forName(className, false, Side.class.getClassLoader());
-            return Game.staticField(c, field, boolean.class);
+            java.lang.reflect.Field f = c.getDeclaredField(field);
+            f.setAccessible(true);
+            return f;
         } catch (Throwable t) {
             return null;
         }
     }
 
-    private static boolean read(VarHandle h) {
-        if (h == null) return false;
-        try { return Boolean.TRUE.equals(h.get()); } catch (Throwable t) { return false; }
+    private static boolean read(java.lang.reflect.Field f) {
+        if (f == null || UNSAFE == null) return false;
+        try {
+            long off = UNSAFE.staticFieldOffset(f);
+            Object base = UNSAFE.staticFieldBase(f);
+            return UNSAFE.getBoolean(base, off);
+        } catch (Throwable t) { return false; }
     }
 }

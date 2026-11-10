@@ -97,8 +97,7 @@ final class Preload {
                 } else {
                     try {
                         inst.addTransformer(new WakeTransform(), false);
-                        StreamWake.transformState = true;
-                        StreamWake.transformReason = "";
+                        // transformState is set by WakeTransform when WorldStreamer actually loads/rewrites
                         try (var log = new LogSink(new File(System.getProperty("user.home"), "Zomboid/PZButter/preload.log"), 1 << 20)) {
                             log.begin(System.currentTimeMillis()).text("wake transform installed").end(System.currentTimeMillis());
                             log.flushBuf();

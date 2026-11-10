@@ -6,7 +6,7 @@ import java.util.List;
 
 /** Thread-safe deduplicating buffer capped at {@link #CAP}. */
 public final class SeenBuffer<T> {
-    public static final int CAP = 256;
+    public static final int CAP = 4096;
 
     private final LinkedHashSet<T> items = new LinkedHashSet<>();
 

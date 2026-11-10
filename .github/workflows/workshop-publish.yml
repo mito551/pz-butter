@@ -194,7 +194,10 @@ jobs:
           umask 077
           mkdir -p ~/.local/share/Steam/config
           printf '%s' "$STEAM_CONFIG_VDF" | base64 -d > ~/.local/share/Steam/config/config.vdf
+          set -o pipefail
           "$STEAMCMD" +login "$STEAM_USERNAME" +workshop_build_item "$GITHUB_WORKSPACE/build/workshop/item.vdf" +quit 2>&1 | tee "$RUNNER_TEMP/upload.log"
+          rc=${PIPESTATUS[0]}
+          if [ "$rc" -ne 0 ]; then echo "::error::steamcmd exited $rc"; exit 1; fi
           grep -q "Success" "$RUNNER_TEMP/upload.log" || { echo "::error::steamcmd did not report success (login token expired?)"; exit 1; }
 
       - name: Remember what was published

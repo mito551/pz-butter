@@ -16,7 +16,7 @@ import zombie.iso.objects.IsoThumpable;
  * ends up with prior == current and no transition, exactly as a poll would have seen.
  */
 public final class Toggles {
-    private static final int CAP = 256;
+    private static final int CAP = 4096;
     private static final Map<Object, Boolean> PENDING = new LinkedHashMap<>();
 
     private Toggles() {}

@@ -17,6 +17,11 @@
 local initialized = false
 local itemsByCoord = {}
 
+-- Keep the event the target's file exposed, so other mods can register listeners.
+if LuaEventManager and LuaEventManager.AddEvent then
+    pcall(LuaEventManager.AddEvent, "OnGroundItemSpawned")
+end
+
 -- Numeric key, unique for x/y < 100000 and small z (fits exactly in a double).
 local function coordKey(x, y, z)
     return (z * 100000 + y) * 100000 + x

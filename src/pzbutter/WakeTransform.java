@@ -29,6 +29,7 @@ final class WakeTransform implements ClassFileTransformer {
             if (className == null || !className.equals("zombie/iso/WorldStreamer")) return null;
             byte[] out = transform(bytes, loader == null ? ClassLoader.getSystemClassLoader() : loader);
             if (out == null) { StreamWake.transformState = false; StreamWake.transformReason = "threadLoop not found"; }
+            else { StreamWake.transformState = true; StreamWake.transformReason = ""; }
             return out;
         } catch (Throwable t) {
             StreamWake.transformState = false;

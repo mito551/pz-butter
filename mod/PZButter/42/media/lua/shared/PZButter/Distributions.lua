@@ -15,8 +15,9 @@ local function isSourceItem(itemName, sourceItem)
 end
 
 -- Build (once) an index: normalized item name -> list of items tables that mention it.
-local function buildIndex()
-    if D.index then return D.index end
+local function buildIndex(force)
+    if D.index and not force and not D.indexDirty then return D.index end
+    D.indexDirty = false
     local index = {}
     local roots = {
         { root = SuburbsDistributions, name = "SuburbsDistributions" },
@@ -199,6 +200,12 @@ function D.add(listPath, itemType, weight)
         table.insert(items, weight)
         currentCount = currentCount + 1
     end
+end
+
+-- Invalidate the cached index so the next mirror/mirrorAll rebuilds it (call after other mods edit distribution lists).
+function D.rebuildIndex()
+    D.index = nil
+    D.indexDirty = true
 end
 
 -- Claim-friendly helper: called by fix mods if they want. No-op default.

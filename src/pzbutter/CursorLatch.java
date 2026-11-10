@@ -32,10 +32,16 @@ final class CursorLatch {
         seq++;
     }
 
-    /** Render thread: the slot of frameNo's cursor, or -1. */
+    /** Render thread: the slot of frameNo's cursor, or -1. Re-checks seq after reading the slot so a torn read is dropped. */
     static int find(long frameNo) {
-        if (frameNo < 0 || seq < 0) return -1;
-        for (int i = 0; i < N; i++) if (frame[i] == frameNo) return i;
+        if (frameNo < 0) return -1;
+        int s0 = seq;
+        for (int i = 0; i < N; i++) {
+            if (frame[i] == frameNo) {
+                if (seq == s0) return i;
+                return -1;
+            }
+        }
         return -1;
     }
 
