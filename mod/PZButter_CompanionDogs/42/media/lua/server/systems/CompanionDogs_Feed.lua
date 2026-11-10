@@ -155,9 +155,9 @@ end
 
 local troughZoneCalls = {}
 
-local function cfgOn(key)
+local function cfgIs(key)
     local c = rawget(_G, "CD_PerfPatchConfig")
-    return not (type(c) == "table" and c[key] == false)
+    return type(c) == "table" and c[key] == true
 end
 
 local function findTroughNear(animal, radius, wantFood, wantWater)
@@ -171,9 +171,10 @@ local function findTroughNear(animal, radius, wantFood, wantWater)
     local id = animal:getOnlineID()
     local calls = (troughZoneCalls[id] or 0) + 1
     troughZoneCalls[id] = calls
-    -- ranch fast path: the engine's own list of the troughs in the dog's animal zones.
-    -- Every 3rd search per dog still does the full one, so a closer dish is not missed for long.
-    local dzones = cfgOn("troughZone") and calls % 3 ~= 0 and animal:getConnectedDZone()
+    -- ranch fast path, off unless CD_PerfPatchConfig.troughZone == true: the engine's own list
+    -- of the troughs in the dog's animal zones. It can pick a zone trough over a closer dish
+    -- (every 3rd search per dog still does the full one), and the search is already throttled.
+    local dzones = cfgIs("troughZone") and calls % 3 ~= 0 and animal:getConnectedDZone()
     if dzones and dzones:size() > 0 then
         local list = animal:getBehavior():getRandomTroughList()
         local best, bestKind, bestDist = nil, nil, radius + 1

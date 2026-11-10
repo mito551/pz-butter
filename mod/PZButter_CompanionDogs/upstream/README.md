@@ -2,25 +2,13 @@
 
 Independent changes, written against Companion Dogs 0.7.4 (42.18+).
 
-## 0001-merge-event-handlers.patch  (U1)
+## Merged event handlers (U1): withdrawn
 
-`CD.evAdd` on `Events.OnTick` and `Events.OnPlayerUpdate` now adds the handler to ONE engine
-listener per event instead of one listener per handler (~30 on OnTick). Each engine listener is a
-Java -> Lua call; the merged listener calls the handlers from Lua.
-
-- Profiler unchanged: with `PERF_DEBUG` on, each handler is still wrapped in `perfEnter(key)` /
-  `perfExit()`, so the per-handler zones (`cli.*`, `srv.*`) keep working.
-- Errors stay isolated: each handler runs under `pcall`, a failing one does not stop the rest.
-  The first 3 errors per handler are logged through `CD.log` (the engine logged every one).
-- `CD.MERGE_EVENT_HANDLERS = false` (before the client/server files load) restores one listener
-  per handler.
-- Behaviour difference to know about: handlers registered through `CD.evAdd` now run together at
-  the position of the first one. Raw `Events.OnTick.Add(...)` calls (`tickFallFlagClient`,
-  `CD.perfSampleClient`, `CD.perfTickEnd`, `ApopSweep.step`) still get their own listener, so their
-  order relative to the evAdd handlers changes. Converting them to `CD.evAdd` would keep the
-  original order exactly.
-
-Apply: `patch -p1 < 0001-merge-event-handlers.patch` from the mod root.
+An earlier patch put every `CD.evAdd` handler on `OnTick` / `OnPlayerUpdate` behind one engine
+listener. Measured offline against the game's Kahlua (`../tools/bench/BenchMerge.java`, 27 trivial
+handlers, 42.21): one engine call per handler costs about 5.5 us per tick, the merged listener with
+a `pcall` per handler about 12 us, and even without `pcall` about 8 us. The interpreter's Lua-to-Lua
+call is dearer than the engine's Java-to-Lua call, so merging is a loss and was removed.
 
 ## tools/strip_perf.py  (V2)
 
@@ -49,12 +37,6 @@ Apply from the mod's `42/media/lua` folder: `patch -p1 < perf-<file>.patch`. The
 last `updateLOS` (CDPerf.jar, with a real scan at least every 2 s), one native box query
 (CDPerf.jar), or a Lua snapshot per dog that collects every category asked for in the last 3 s in
 one walk and refreshes it 400 squares per tick.
-
-## Tests
-
-`tests/` holds a stubbed-engine harness for the patch (needs fengari: `npm i fengari`):
-`node run_up.js <orig Perf.lua> <patched Perf.lua> cd_up_harness.lua`. It checks merging, argument
-forwarding, error isolation, profiler zones under merging, and the opt-out flag.
 
 Not done: no in-game frame-time measurement. The gain is fewer Java -> Lua crossings and calls per
 tick; measure it with your own profiler (`CD.perfCsvArm`) before claiming a number.

@@ -15,17 +15,12 @@
                              save, the admin commands or the Kennel UI say
       N2  evAdd              plain Event.Add, no per-handler wrapper closure
       N3  pz/pzd/perf*       straight passthroughs / no-ops
-      U1  MERGE_HANDLERS     every CD.evAdd on OnTick (and OnPlayerUpdate)
-                             shares ONE engine listener, so each tick crosses
-                             the Java -> Lua boundary once instead of ~30 times
 
-    To profile again: set PIN_PERF_OFF = false (and MERGE_HANDLERS = false to
-    get the original per-handler zones back), or disable this mod.
+    To profile again: set PIN_PERF_OFF = false, or disable this mod.
 ]]
 
 local cfg = rawget(_G, "CD_PerfPatchConfig") or {}
 local PIN_PERF_OFF   = cfg.pinPerfOff ~= false
-local MERGE_HANDLERS = cfg.mergeHandlers ~= false
 
 pcall(require, "CompanionDogs/Perf")
 pcall(require, "CompanionDogs/PerfReport")
@@ -36,8 +31,6 @@ local CD = CompanionDogs
 
 if CD._perfPatchLoaded then return end
 CD._perfPatchLoaded = true
-
-local MAX_LOGGED_ERRORS = 3
 
 ---------------------------------------------------------------------------
 -- N1 + N3: measurement pinned off, instrumentation reduced to passthroughs
@@ -82,45 +75,14 @@ if PIN_PERF_OFF then
 end
 
 ---------------------------------------------------------------------------
--- N2 + U1: handler registration
+-- N2: handler registration without the per-handler profiler closure
+-- (Boot.lua's own stand-in). Handlers are NOT put behind one shared listener: 27 handlers
+-- behind one listener with a pcall each cost ~12 us per tick against ~5.5 us for the
+-- engine's own dispatch (tools/bench/BenchMerge.java), and sharing changed their order.
 ---------------------------------------------------------------------------
 
-local merged = {}
-
-local function mergedListener(ev)
-    local m = merged[ev]
-    if m then return m end
-    m = { fns = {}, keys = {}, errors = {}, n = 0 }
-    merged[ev] = m
-    local fns, keys, errors = m.fns, m.keys, m.errors
-    ev.Add(function(a, b, c, d)
-        -- the engine isolates each listener's errors; keep that
-        for i = 1, m.n do
-            local ok, err = pcall(fns[i], a, b, c, d)
-            if not ok then
-                local count = (errors[i] or 0) + 1
-                errors[i] = count
-                -- the first few in full, then a reminder every 1000 so a broken handler stays visible
-                if count <= MAX_LOGGED_ERRORS or count % 1000 == 0 then
-                    print("[CD_Perf] handler '" .. tostring(keys[i]) .. "' raised (" .. count .. "x): " .. tostring(err))
-                end
-            end
-        end
-    end)
-    return m
-end
-
 if PIN_PERF_OFF then
-    CD.evAdd = function(ev, fn, key)
-        if MERGE_HANDLERS and (ev == Events.OnTick or ev == Events.OnPlayerUpdate) then
-            local m = mergedListener(ev)
-            local n = m.n + 1
-            m.fns[n], m.keys[n] = fn, key
-            m.n = n
-        else
-            ev.Add(fn)
-        end
-    end
+    CD.evAdd = function(ev, fn, _key) ev.Add(fn) end
 end
 
 ---------------------------------------------------------------------------

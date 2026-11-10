@@ -152,6 +152,7 @@ function M.step()
         end
         for i = 1, #gone do forget(gone[i]) end
     end
+    if next(builds) == nil then return end
     local budget = SLICE_BUDGET
     while budget > 0 do
         local dogs = {}

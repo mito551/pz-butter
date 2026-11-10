@@ -197,9 +197,14 @@ local function test_trough_zone_fast_path_and_every_third_full()
   local dog = W.animal(99, 0.5, 0.5, 0, "dog", false)
   function dog:getConnectedDZone() return list({ "zone" }) end
   function dog:getBehavior() return { getRandomTroughList = function() return list({ zoneTrough }) end } end
-  local _, fv = feedPair(W)
+  local _, fv = feedPair(W, { cfg = { troughZone = true } })
   local got = {}
   for i = 1, 3 do got[i] = fv(dog, 16, false, true) end
+  -- default (no opt-in): always the full search, so the closer dish wins as in the original
+  local fo, fd = feedPair(W)
+  local same = true
+  for _ = 1, 3 do if fd(dog, 16, false, true) ~= fo(dog, 16, false, true) then same = false end end
+  check("test_trough_zone_off_by_default", same and fd(dog, 16, false, true) ~= zoneTrough, "default differs from the original")
   check("test_trough_zone_fast_path_and_every_third_full",
     got[1] == zoneTrough and got[2] == zoneTrough and got[3] ~= zoneTrough and got[3] ~= nil,
     "picks=" .. tostring(got[1] == zoneTrough) .. "," .. tostring(got[2] == zoneTrough) .. "," .. tostring(got[3] == zoneTrough))
