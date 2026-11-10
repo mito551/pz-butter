@@ -49,6 +49,7 @@ local KEYS = {
 	"frameStartGate",
 	"bodyLocationOnce",
 	"chatIconsRace",
+	"characterTexturePaths",
 	"glassTilesPerFrame",
 	"glBufferBindCache",
 	"gloveBoxFix",

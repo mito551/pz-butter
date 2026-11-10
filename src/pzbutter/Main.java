@@ -83,6 +83,7 @@ public class Main {
         FileKnobs.init();
         TexCompress.init();
         TexPatches.init();
+        CharacterTexPatches.init();
         EnumPatches.init();
         GpuOverTarget.init();
         UiTiming.init();
