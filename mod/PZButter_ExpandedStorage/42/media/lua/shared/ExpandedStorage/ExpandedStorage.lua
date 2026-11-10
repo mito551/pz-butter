@@ -170,3 +170,14 @@ Events.OnGameStart.Add(initialize)
 Events.OnServerStarted.Add(initialize)
 Events.OnObjectAdded.Add(onObjectAdded)
 Events.LoadGridsquare.Add(applySquareCapacities)
+
+-- Once the world is in and the Java hooks have proven live, the two per-object and
+-- per-square listeners have nothing left to do: drop them, so a streamed square costs
+-- no Lua call at all. (Not done from inside the listeners: removing a listener while
+-- its event is being dispatched can make the engine skip the next one.)
+Events.OnGameStart.Add(function()
+    if javaHandlesContainers() then
+        Events.OnObjectAdded.Remove(onObjectAdded)
+        Events.LoadGridsquare.Remove(applySquareCapacities)
+    end
+end)
