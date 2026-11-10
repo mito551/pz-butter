@@ -243,6 +243,17 @@ final class UiRetain {
         return same(a, b);
     }
 
+    /** A recorded answer for later compares, arrays deep: an in-place mutation of a nested array must stay visible
+     * (the verify compares the recorded copy with the fresh invoke, so shared mutable slots always compare equal). */
+    static Object deepCopy(Object v) {
+        if (v instanceof Object[] a) {
+            Object[] out = a.clone();
+            for (int i = 0; i < out.length; i++) out[i] = deepCopy(out[i]);
+            return out;
+        }
+        return v;
+    }
+
     /** A MethodCaller's method, read once: how it is called again and what kind of answer it gives. */
     static final class CallInfo {
         final Method method;
@@ -909,6 +920,7 @@ final class UiRetain {
             c = MOUSE_CALL;
         } else if (ci.reinvoke) c = rec.addCall(new Call(ci, self, args instanceof Object[] a ? a.clone() : NO_ARGS));
         if (callDepth < pending.length) pending[callDepth] = c;
+        else rec.volatileSeen = true;   // nested deeper than the pending table: the answer would land on a stale ancestor slot
         callDepth++;
     }
 
@@ -923,7 +935,7 @@ final class UiRetain {
         if (c == MOUSE_CALL) return;
         if (c == null) { rec.volatileSeen = true; return; }   // an answer nobody can check again
         if (!c.answered) {
-            c.answer = value instanceof Object[] a ? a.clone() : value;
+            c.answer = deepCopy(value);
             c.answered = true;
         }
     }
@@ -960,6 +972,45 @@ final class UiRetain {
     static void noteError() {
         if (!noting || suspended || !main()) return;
         rec.errorSeen = true;
+    }
+
+    // ---- always-on method-call tracker (main thread): a void Java call from Lua on a recorded element between
+    // frames mutates it in ways no record fact can re-read, so its kept picture is dropped (findings G2-44).
+    // Getters skip it (their answer is re-read at verify); a call inside the element's own open render is what
+    // that picture is recording. shortcut: any void call between frames drops the picture, even one that changes
+    // nothing; curate uiRetainExclude if a window re-records every frame.
+    private static int trackDepth;
+    private static final Object[] trackSelf = new Object[64];
+    private static final boolean[] trackAnswered = new boolean[64];
+
+    static void callTrackEnter(Object self) {
+        if (!any || !main()) return;
+        if (trackDepth < trackSelf.length) { trackSelf[trackDepth] = self; trackAnswered[trackDepth] = false; }
+        trackDepth++;
+    }
+
+    static void callTrackAnswer() {
+        if (!any || !main() || trackDepth == 0 || trackDepth > trackAnswered.length) return;
+        trackAnswered[trackDepth - 1] = true;
+    }
+
+    static void callTrackExit() {
+        if (!any || !main() || trackDepth == 0) return;
+        trackDepth--;
+        if (trackDepth >= trackSelf.length || trackAnswered[trackDepth]) return;   // a getter (answered) or beyond the table
+        Object self = trackSelf[trackDepth];
+        trackSelf[trackDepth] = null;
+        if (self instanceof UIElement) {
+            Record r = records.get(self);
+            if (r != null && r.slice != null && !walkedNow(self)) r.slice = null;
+        }
+    }
+
+    /** The elements whose own picture is open right now: a void call they make is what that picture records. */
+    private static boolean walkedNow(Object self) {
+        if (root == self) return true;
+        for (int i = 0; i < sp; i++) if (stack[i].e == self) return true;
+        return false;
     }
 
     private static final Call MOUSE_CALL = new Call(null, null, null);   // a mouse answer: kept as the position it came from
@@ -1007,4 +1058,6 @@ final class UiRetain {
     static boolean openForTest() { return root != null; }
 
     static void closeForTest() { abort(); }
+
+    static void putRecordForTest(Object e, Record r) { records.put(e, r); }
 }

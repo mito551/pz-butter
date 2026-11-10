@@ -156,11 +156,13 @@ public final class UiPatches {
             try { UiCensus.noteCall(UiCensus.methodName(caller)); } catch (Throwable t) { UiCensus.guard.fail(t); }
         }
         if (UiRetain.noting) { try { UiRetain.noteCall(caller, self, args); } catch (Throwable t) { UiRetain.fail(t); } }
+        if (UiRetain.any) UiRetain.callTrackEnter(self);
     }
 
     /** MethodCaller.call exit, also when it threw. */
     public static void onJavaCallExit() {
         if (UiRetain.noting) UiRetain.callExit();
+        if (UiRetain.any) UiRetain.callTrackExit();
         if (!UiCensus.active()) return;
         try { UiCensus.callExit(); } catch (Throwable t) { UiCensus.guard.fail(t); }
     }
@@ -168,6 +170,7 @@ public final class UiPatches {
     /** ReturnValues.push entry: a Java answer for Lua. An array is the varargs overload, which pushes each element itself. */
     public static void onJavaAnswer(Object answer) {
         if (UiRetain.noting) { try { UiRetain.noteAnswer(answer); } catch (Throwable t) { UiRetain.fail(t); } }
+        if (UiRetain.any) UiRetain.callTrackAnswer();
         if (!UiCensus.active() || answer instanceof Object[]) return;
         try { UiCensus.noteRead(UiCensus.currentCall(), answer); } catch (Throwable t) { UiCensus.guard.fail(t); }
     }

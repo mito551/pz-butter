@@ -57,9 +57,10 @@ final class UiRetainTest {
         retainGeometryOfElement();
         try { retainNotesFillOpenRecord(); } catch (ReflectiveOperationException e) { throw new AssertionError(e); }
         retainSuspendedNotesNothing();
-        try { retainMouseNeedsSamePosition(); retainUnverifiableAnswerIsVolatile(); } catch (ReflectiveOperationException e) { throw new AssertionError(e); }
+        try { retainMouseNeedsSamePosition(); retainUnverifiableAnswerIsVolatile(); retainAnswerClonesNestedArrays(); retainDeepNestingKeepsNothing(); } catch (ReflectiveOperationException e) { throw new AssertionError(e); }
         retainJavaRenderOverrideIsLive();
         retainRenderWriteIsVolatile();
+        retainVoidCallBetweenFramesDropsPicture();
         retainBalanceOnErrorAndThrow();
         retainReplayThrowLeavesNothingOpen();
         retainExcludeAndModsFilter();
@@ -705,6 +706,71 @@ final class UiRetainTest {
     }
 
     public static final class Mouseish { public static int getMouseX() { return 5; } }
+
+    public static final class Holder { public final Object[][] v = new Object[][]{ new Object[]{1.0, 2.0} }; public Object[][] getV() { return v; } }
+
+    // the recorded answer is copied deeply, so a nested array mutated in place after the record fails the compare (G2-42)
+    static void retainAnswerClonesNestedArrays() throws ReflectiveOperationException {
+        UiRetain.Record r = new UiRetain.Record();
+        UiRetain.openForTest(r);
+        try {
+            Holder h = new Holder();
+            se.krka.kahlua.integration.expose.caller.MethodCaller getV =
+                new se.krka.kahlua.integration.expose.caller.MethodCaller(Holder.class.getMethod("getV"), null, true);
+            UiRetain.noteCall(getV, h, new Object[0]);
+            UiRetain.noteAnswer(h.v);
+            UiRetain.callExit();
+            assert r.nCalls == 1 && UiRetain.callsSame(r);
+            h.v[0][0] = 9.0;   // in-place: the fresh invoke returns an array that wraps the same mutated slots
+            assert !UiRetain.callsSame(r);
+        } finally { UiRetain.closeForTest(); }
+    }
+
+    // nesting deeper than the pending table cannot attribute answers: the record keeps nothing (G2-43)
+    static void retainDeepNestingKeepsNothing() throws ReflectiveOperationException {
+        se.krka.kahlua.integration.expose.caller.MethodCaller size =
+            new se.krka.kahlua.integration.expose.caller.MethodCaller(java.util.ArrayList.class.getMethod("size"), null, true);
+        java.util.ArrayList<Object> list = new java.util.ArrayList<>(List.of(1));
+        UiRetain.Record r = new UiRetain.Record();
+        UiRetain.openForTest(r);
+        try {
+            for (int i = 0; i < 128; i++) UiRetain.noteCall(size, list, new Object[0]);
+            assert r.volatileSeen;   // marked at the 65th noteCall, when depth passes the pending table
+            UiRetain.Record r2 = new UiRetain.Record();
+            UiRetain.openForTest(r2);   // a fresh frame: aborted brackets, answers attribute exactly again
+            for (int i = 0; i < 64; i++) UiRetain.noteCall(size, list, new Object[0]);   // at capacity is still fine
+            UiRetain.noteAnswer(1);
+            assert !r2.volatileSeen && r2.nCalls == 64 && r2.calls[63].answered;   // the innermost got its answer
+        } finally { UiRetain.closeForTest(); }
+    }
+
+    // a void Java call on a recorded element between frames mutates it invisibly: the kept picture is dropped (G2-44)
+    static void retainVoidCallBetweenFramesDropsPicture() {
+        zombie.ui.UIElement e = new zombie.ui.UIElement();
+        UiRetain.openForTest(new UiRetain.Record());
+        try {
+            UiRetain.any = true;
+            UiRetain.Record r = record();
+            UiRetain.putRecordForTest(e, r);
+            UiRetain.callTrackEnter(e);
+            UiRetain.callTrackExit();            // a void call (no answer): the picture is dropped
+            assert r.slice == null;
+            UiRetain.Record r2 = record();
+            UiRetain.putRecordForTest(e, r2);
+            UiRetain.callTrackEnter(e);
+            UiRetain.callTrackAnswer();          // a getter: answered, the picture stays
+            UiRetain.callTrackExit();
+            assert r2.slice != null;
+            UiRetain.openForTest(new UiRetain.Record(), e, null);   // e renders itself: its own call is what the record keeps
+            UiRetain.Record r3 = record();
+            UiRetain.putRecordForTest(e, r3);
+            UiRetain.callTrackEnter(e);
+            UiRetain.callTrackExit();
+            assert r3.slice != null;
+            UiRetain.callTrackEnter(new Object());   // not an element: nothing to look up, no throw
+            UiRetain.callTrackExit();
+        } finally { UiRetain.any = false; UiRetain.closeForTest(); }
+    }
 
     public static class Over extends zombie.ui.UIElement { public void render() { } }
     public static class Sub extends Over { }
