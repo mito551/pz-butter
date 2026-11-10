@@ -21,6 +21,8 @@ function afterGroundSpawn(worldItem)
 end
 
 LuaEventManager = {AddEvent = function() end}
+local client = true
+function isClient() return client end
 local loadGridSquare
 Events = {LoadGridsquare = {Add = function(fn) loadGridSquare = fn end}}
 
@@ -64,4 +66,20 @@ assert(readyAtTransmit, "world item was transmitted before its creation callback
 assert(worldItem.ignoreRemove == true, "world item cleanup protection was not set")
 assert(marker.data.spawnedItems["Base.Axe"] == true, "persistent spawn marker was not saved")
 assert(markerTransmitted == 1, "persistent spawn marker was not transmitted")
+
+-- Singleplayer: the target never transmits there, and 42.21 world items have no such
+-- method, so calling it would raise a Lua error.
+client = false
+transmitted = 0
+marker.data = {}
+loadGridSquare(square)
+assert(marker.data.spawnedItems["Base.Axe"] == true, "singleplayer spawn did not happen")
+assert(transmitted == 0, "singleplayer spawn must not transmit")
+
+-- MP client on a build without the method: no error.
+client = true
+worldItem.transmitCompleteItemToServer = nil
+marker.data = {}
+loadGridSquare(square)
+assert(marker.data.spawnedItems["Base.Axe"] == true, "spawn failed without the transmit method")
 print("authenticz_ground_test: ok")

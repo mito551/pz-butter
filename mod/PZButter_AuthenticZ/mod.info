@@ -5,5 +5,5 @@ require=\Authentic Z - Current,\ZombieBuddy
 javaJarFile=media/java/client/AZ_Perf.jar
 javaPkgName=azperf
 ZBVersionMin=1.0.0
-description=Load-after performance patch for Authentic Z (B42). Moves glowstick ground-light scanning to a Java ZombieBuddy module, stores spawner coordinates in a lookup map, caches hotbar visibility, and adds a server-side handcraft recipe recovery fallback.
+description=Load-after performance patch for Authentic Z (B42). Moves the glowstick ground-light scan and the once-a-minute ground drain to a Java ZombieBuddy module, stores spawner coordinates in a lookup map, and caches hotbar visibility.
 loadModAfter=Authentic Z - Current

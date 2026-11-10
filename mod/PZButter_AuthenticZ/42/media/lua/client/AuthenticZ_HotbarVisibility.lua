@@ -15,21 +15,21 @@ local hideSlotsOption = hotbarOptions:addTickBox(
     getText("UI_AuthenticZ_Hotbar_HideSlots_Tooltip")
 )
 
--- Authentic Z backpack slot families (lowercase; matched case-insensitively)
+-- Authentic Z backpack slot families
 local AZ_SLOT_PREFIXES = {
-    "schoolbag",
-    "dufflebag",
-    "hikingbag",
-    "bighiking",
-    "alicepack",
-    "arvn",
-    "bedrollbottom",
+    "Schoolbag",
+    "Dufflebag",
+    "HikingBag",
+    "Hikingbag",
+    "BigHiking",
+    "Alicepack",
+    "ARVN",
+    "BedrollBottom",
 }
 
 local function isAuthenticZSlot(slotType)
     if not slotType then return false end
 
-    slotType = string.lower(slotType)
     for _, prefix in ipairs(AZ_SLOT_PREFIXES) do
         if string.sub(slotType, 1, #prefix) == prefix then
             return true

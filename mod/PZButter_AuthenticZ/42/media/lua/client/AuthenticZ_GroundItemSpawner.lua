@@ -9,7 +9,8 @@
     You cannot spawn multiple instance of the same item on the same square.
 
     AZ_Perf: Build 42. Spawn data is indexed by a numeric coordinate key so
-    the LoadGridsquare hot path allocates no strings. MP clients transmit new
+    the LoadGridsquare hot path allocates no strings, and the handler is
+    registered once (the target registers it twice). MP clients transmit new
     world items and the persistent marker to the server.
 --]]
 
@@ -108,7 +109,10 @@ local function spawnItem(square, worldObjects, itemData, groundObject, groundMod
         _G[itemData.onCreateWorldItem](worldItem, square)
     end
 
-    if worldItem then
+    -- MP clients only, as in the target; sent after the callbacks so the server gets the
+    -- finished item. Build 42.21 has no such method on world items, so an unguarded call
+    -- raises a Lua error on every spawn.
+    if worldItem and isClient() and worldItem.transmitCompleteItemToServer then
         worldItem:transmitCompleteItemToServer()
     end
 

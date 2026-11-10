@@ -2,7 +2,8 @@ local here = debug.getinfo(1, "S").source:sub(2)
 local root = here:gsub("[/\\]?test/lua/authenticz_glowstick_test.lua$", "")
 if root == "" then root = "." end
 
--- Plan 18 B-D7-6: each split-screen player drains a shared ground glowstick.
+-- A ground glowstick near two split-screen players drains once a minute, as in the
+-- target (its `processed` set is shared by all players). Reverses Plan 18 B-D7-6.
 local updateGroundGlowsticks
 Events = {
     OnPlayerUpdate = {Add = function() end},
@@ -41,5 +42,5 @@ function instanceof(value, class) return value == item and class == "DrainableCo
 dofile(root .. "/mod/PZButter_AuthenticZ/42/media/lua/server/AuthenticZ_Glowstick.lua")
 assert(updateGroundGlowsticks, "ground glowstick drain was not registered")
 updateGroundGlowsticks()
-assert(uses == 2, "each split-screen player must drain the shared glowstick; got " .. uses)
+assert(uses == 1, "a shared glowstick must drain once per minute; got " .. uses)
 print("authenticz_glowstick_test: ok")

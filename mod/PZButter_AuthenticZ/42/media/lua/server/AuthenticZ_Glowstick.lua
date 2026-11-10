@@ -5,8 +5,8 @@ local updateCountByPlayer = {}
 
 local ACTIVE_UPDATE_INTERVAL = 3
 local INACTIVE_UPDATE_INTERVAL = 10
--- Keep LIGHT_RADIUS and the colours below in sync with azperf/AZPerf.java
--- (ground glowsticks) so carried and dropped sticks look identical.
+-- The target's values for carried sticks. Its ground-stick file (and azperf/AZPerf.java)
+-- uses radius 8 and a brighter orange; the two differ in the target too.
 local LIGHT_RADIUS = 7
 
 local workingGlowSticksData = {
@@ -285,7 +285,9 @@ local function glowstickUpdate(player)
                 attached:getItemByIndex(i)
 
 
-            if item then
+            -- AZ_Perf: skip non-glowsticks before building the key string
+            -- (processGlowstick ignores them anyway).
+            if item and workingGlowSticksData[item:getType()] then
                 local location =
                     attached:getLocation(item)
 
@@ -390,8 +392,16 @@ local function forEachGlowstickPlayer(callback)
 end
 
 local function updateGroundGlowsticks()
+    -- AZ_Perf: the Java module (client jar) does the same scan without Lua-side calls.
+    if AZ_Perf_drainGroundGlowsticks and not isServer() then
+        AZ_Perf_drainGroundGlowsticks()
+        return
+    end
+
+    -- Shared by all players, as in the target: a stick near two players drains once a minute.
+    local processed = {}
+
     forEachGlowstickPlayer(function(player)
-        local processed = {}
         local px = math.floor(player:getX())
         local py = math.floor(player:getY())
         local pz = math.floor(player:getZ())
