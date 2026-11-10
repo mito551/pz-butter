@@ -1,6 +1,10 @@
 package pzbutter;
 
+import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.List;
 import java.lang.reflect.Field;
 
 /** ModelPatches: the nullModelGuard filter (list copy, stock list untouched). */
@@ -15,6 +19,7 @@ public class ModelTest {
 
     public static void run() throws Exception {
         animFolderMissing();
+        animFolderScope();
         zombie.core.skinnedmodel.model.Model m = anyModel();
         zombie.core.skinnedmodel.model.ModelInstance full = new zombie.core.skinnedmodel.model.ModelInstance();
         full.model = m;
@@ -61,5 +66,70 @@ public class ModelTest {
         Settings.load(SelfTest.write("enabled=true\n"));
         ModelPatches.initAnimFolder();
         if (!ModelPatches.animFolderGuard.on) throw new AssertionError("default must be on");
+    }
+
+    // ---- animFolderScope: one dirs pass memoizes the state rels per root; files passes skip missing roots ----
+
+    static class Rec implements zombie.ZomboidFileSystem.IWalkFilesVisitor {
+        final List<String> got;
+        Rec(List<String> got) { this.got = got; }
+        public void visit(java.io.File f, String rel) { got.add(rel); }
+    }
+
+    static void invokeInternal(zombie.ZomboidFileSystem bare, File root, String rel, boolean deep, zombie.ZomboidFileSystem.IWalkFilesVisitor v) throws Exception {
+        var m = zombie.ZomboidFileSystem.class.getDeclaredMethod("walkGameAndModFilesInternal", File.class, String.class, boolean.class, zombie.ZomboidFileSystem.IWalkFilesVisitor.class);
+        m.setAccessible(true);
+        m.invoke(bare, root, rel, deep, v);
+    }
+
+    static zombie.ZomboidFileSystem bareZfs() throws Exception {
+        Field f = sun.misc.Unsafe.class.getDeclaredField("theUnsafe");
+        f.setAccessible(true);
+        return (zombie.ZomboidFileSystem) ((sun.misc.Unsafe) f.get(null)).allocateInstance(zombie.ZomboidFileSystem.class);
+    }
+
+    static void animFolderScope() throws Exception {
+        Settings.load(SelfTest.write("enabled=true\nanimFolderScope=true\n"));
+        ModelPatches.initAnimScope();
+        assert ModelPatches.scopeGuard.on : "template on for animFolderScope";
+        assert !ModelPatches.animScopeWindow : "window off at first";
+
+        zombie.ZomboidFileSystem bare = bareZfs();
+        Path gameRootP = Files.createTempDirectory("animscope");
+        Files.createDirectories(gameRootP.resolve("media/AnimSets/ZombieWalk/sub"));
+        Files.writeString(gameRootP.resolve("media/AnimSets/ZombieWalk/a.xml"), "x");
+        Files.writeString(gameRootP.resolve("media/AnimSets/ZombieWalk/sub/b.xml"), "x");
+        File gameRoot = gameRootP.toFile();
+        Path modRootP = Files.createTempDirectory("animscope2");
+        Files.createDirectories(modRootP.resolve("media/lua"));
+        File modRoot = modRootP.toFile();
+
+        ModelPatches.animScopeLoadEnter();
+        List<String> stockGot = new ArrayList<>();
+        zombie.ZomboidFileSystem.IWalkFilesVisitor v = new Rec(stockGot);
+        Object w = ModelPatches.animScopeVisit(gameRoot, "media/AnimSets/ZombieWalk", false, v);
+        assert w != v && w != null : "dirs pass wraps the visitor";
+        invokeInternal(bare, gameRoot, "media/AnimSets/ZombieWalk", false, (zombie.ZomboidFileSystem.IWalkFilesVisitor) w);
+        assert stockGot.size() == 2 : "wrapper delegated every visit: " + stockGot;
+
+        assert ModelPatches.animScopeVisit(gameRoot, "media/AnimSets/ZombieWalk/sub", true, v) == v : "recorded rel runs stock";
+        assert ModelPatches.animScopeVisit(gameRoot, "media/AnimSets/ZombieWalk/Nope", true, v) == ModelPatches.ANIM_SCOPE_SKIP : "unknown rel skipped";
+        assert ModelPatches.animScopeVisit(modRoot, "media/AnimSets/ZombieWalk/Nope", true, v) == v : "root without a dirs pass stock";
+        assert ModelPatches.animScopeVisit(gameRoot, "media/maps/X", true, v) == v : "other prefix stock";
+
+        List<String> none = new ArrayList<>();
+        invokeInternal(bare, modRoot, "media/AnimSets/ZombieWalk/Nope", true, new Rec(none));
+        assert none.isEmpty() : "a skipped root would visit nothing (skip == stock outcome)";
+
+        ModelPatches.animScopeLoadExit();
+        assert !ModelPatches.animScopeWindow : "window closes";
+        assert ModelPatches.animScopeVisit(gameRoot, "media/AnimSets/ZombieWalk/Nope", true, v) == v : "window cleared: stock again";
+
+        Settings.load(SelfTest.write("enabled=true\n"));
+        ModelPatches.initAnimScope();
+        assert !ModelPatches.scopeGuard.on : "defaults off";
+        ModelPatches.animScopeLoadEnter();
+        assert ModelPatches.animScopeVisit(gameRoot, "media/AnimSets/ZombieWalk", false, v) == v : "guard off: no wrap";
+        ModelPatches.animScopeLoadExit();
     }
 }

@@ -63,6 +63,7 @@ public class Main {
         ShaderReuse.init();
         ModelPatches.init();
         ModelPatches.initAnimFolder();
+        ModelPatches.initAnimScope();
         WorldPatches.initDoorNpe();
         ChunkPatches.initChunkZExtents();
         VehicleZones.init();
