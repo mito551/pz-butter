@@ -46,93 +46,98 @@ local function resolve(row)
     end)
 end
 
-local handlers = {}
+local handlers = {}   -- Ki5.install() appends one {row = row, fn = fn} per taken-over handler
 local by_name = {}
 local anyEvery = false   -- set at install: is any taken-over handler of kind "every"
+local errs = {}    -- tkey -> handler -> {n, till}; shared by reference into plan nodes
+-- split screen: each local player has its own plan. A plan is the chain of the handlers that fit
+-- the player's vehicle type, built when the vehicle, type or seat changes instead of filtering every
+-- handler on every dispatch; a fresh chain also lets every sync handler run at once again.
+local plans = {}   -- player index -> plan (head object carrying its own key + chain)
+local FOOT, NOVT = "\0foot", "\0nil"
 
--- split screen: each local player has its own vehicle snapshot and throttle state
-local pstates = {}
-local NEVER = -math.huge
+local function errRec(tkey, h)
+    local t = errs[tkey]
+    if not t then t = {} errs[tkey] = t end
+    local r = t[h]
+    if not r then r = {n = 0, till = -1e300} t[h] = r end
+    return r
+end
 
--- The handlers that can run for one vehicle type, worked out once per type instead of on every
--- dispatch. Key: false on foot, true in a vehicle without a script name, else the script name.
--- A slot also carries the error pause of its handler for that type.
-local lists = {}
-
-local function slots_for(vehicle, vtype)
-    local key = vtype or (vehicle ~= nil)
-    local list = lists[key]
-    if list then return list end
-    list = {}
-    for _, h in ipairs(handlers) do
+local function build(veh, vtype, seat)
+    local plan = {veh = veh, vtype = vtype, seat = seat}
+    local tkey = (not veh) and FOOT or vtype or NOVT
+    local tail = plan
+    for i = 1, #handlers do
+        local h = handlers[i]
         local row = h.row
-        local typed = row.types and #row.types > 0
-        local fits
-        if not vehicle then
-            fits = row.onFoot ~= "none" and not typed
-        elseif not typed then
-            fits = true
+        local types = row.types or {}
+        local ok
+        if not veh then
+            ok = row.onFoot ~= "none" and #types == 0
+        elseif #types == 0 then
+            ok = true
         else
-            fits = false
+            ok = false
             if vtype then
-                for _, t in ipairs(row.types) do
-                    if string.find(vtype, t, 1, true) then fits = true; break end
+                for j = 1, #types do
+                    if string.find(vtype, types[j], 1, true) then ok = true break end
                 end
             end
         end
-        if fits then list[#list + 1] = {h = h, sync = row.kind == "sync"} end
+        if ok then
+            local node = {h = h, sync = row.kind == "sync", e = errRec(tkey, h)}
+            tail.nxt = node
+            tail = node
+        end
     end
-    lists[key] = list
-    return list
-end
-
-local function failed(slot, now, err)
-    local n = (slot.fails or 0) + 1
-    slot.fails = n
-    slot.paused = now + (n == 1 and 1000 or (n == 2 and 5000 or 30000))
-    if n == 1 then
-        print("[PZButter_KI5] " .. tostring(slot.h.row.name) .. " error: " .. tostring(err))
-    end
+    return plan
 end
 
 function Ki5.dispatch(player)
+    if not player then return end
     local now = Ki5.now()
-    local vehicle = player and player:getVehicle() or nil
+    local veh = player:getVehicle()
     local vtype, seat
-    if vehicle then vtype, seat = vehicle:getScriptName(), vehicle:getSeat(player) end
-    -- stub players in the tests (and some mods) carry no getPlayerNum; slot 0 covers them
-    local idx = player and player.getPlayerNum and player:getPlayerNum() or 0
-    local ps = pstates[idx]
-    if not ps then
-        ps = {vehicle = vehicle, vtype = vtype, seat = seat, last = {}, list = slots_for(vehicle, vtype)}
-        pstates[idx] = ps
-    elseif vehicle ~= ps.vehicle or vtype ~= ps.vtype or seat ~= ps.seat then
-        -- a new vehicle, type or seat: every sync handler may run at once again
-        ps.vehicle, ps.vtype, ps.seat = vehicle, vtype, seat
-        ps.last, ps.list = {}, slots_for(vehicle, vtype)
+    if veh then
+        vtype = veh:getScriptName()
+        seat = veh:getSeat(player)
     end
-    if anyEvery and PZButter.ki5EveryStart then PZButter.ki5EveryStart() end
-    local list, last = ps.list, ps.last
-    for i = 1, #list do
-        local slot = list[i]
-        local paused = slot.paused
-        if not (paused and now < paused) then
-            local h = slot.h
-            -- a sync-only handler: at most every syncMs while vehicle, type and seat stay the same
-            if not slot.sync or now - (last[h] or NEVER) >= syncMs then
+    -- stub players in the tests (and some mods) carry no getPlayerNum; slot 0 covers them
+    local pi = player.getPlayerNum and player:getPlayerNum() or 0
+    local plan = plans[pi]
+    if not plan or plan.veh ~= veh or plan.vtype ~= vtype or plan.seat ~= seat then
+        plan = build(veh, vtype, seat)
+        plans[pi] = plan
+    end
+    local P = PZButter
+    if anyEvery and P.ki5EveryStart then P.ki5EveryStart() end
+    local node = plan.nxt
+    while node do
+        local e = node.e
+        if now >= e.till then
+            local last = node.last
+            if not (node.sync and last and now - last < syncMs) then
+                if node.sync then node.last = now end
+                local h = node.h
                 local ok, err = pcall(h.fn, player)
-                last[h] = now
                 if ok then
-                    if paused then slot.paused, slot.fails = nil, nil end
+                    if e.n > 0 then e.n = 0 e.till = -1e300 end
                 else
-                    failed(slot, now, err)
+                    local n = e.n + 1
+                    e.n = n
+                    e.till = now + (n == 1 and 1000 or n == 2 and 5000 or 30000)
+                    if n == 1 then
+                        print("[PZButter_KI5] " .. tostring(h.row.name) .. " error: " .. tostring(err))
+                    end
                 end
             end
         end
+        node = node.nxt
     end
     if anyEvery then
-        if PZButter.ki5EveryStop then PZButter.ki5EveryStop() end
-        if PZButter.ki5Flush then PZButter.ki5Flush() end
+        if P.ki5EveryStop then P.ki5EveryStop() end
+        if P.ki5Flush then P.ki5Flush() end
     end
 end
 
