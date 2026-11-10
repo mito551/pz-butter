@@ -448,6 +448,9 @@ public final class Settings {
 + "# kahluaPoolDoublePut: a failed Lua-to-Java call no longer returns its arguments to the game's\n"
 + "# method-argument pool twice, which made two nested calls share one object and fail far from the real error.\n"
 + "kahluaPoolDoublePut=true\n"
++ "# chatIconsRace (multiplayer): collecting the allowed chat icons reads an ordered snapshot of the\n"
++ "# game's shared texture table under a lock it shares with the table's writers, instead of scanning the live table.\n"
++ "chatIconsRace=true\n"
 + "# serverCellSpread (server): spread a cell's second-stage load over ticks inside a per-tick budget (at least one chunk per tick); keeps a 120 ms floor near a player.\n"
 + "serverCellSpread=false\n"
 + "#\n"
@@ -608,6 +611,7 @@ public final class Settings {
     static final java.util.Set<String> ON_BY_DEFAULT = java.util.Set.of("limiterSleep", "inputLatch", "keyboardFresh", "frameStartGate",
         "reflexSleep", "vsyncAdaptive", "luaBudget", "nullModelGuard", "doorToggleNpeGuard", "zombieDropItemsGuard",
         "kahluaPoolDoublePut",
+        "chatIconsRace",
         "luaInternConstants", "luaSkipEmpty", "uiVerify", "uiRetainedMods", "uiTickStagger", "textWidthCache", "uiLuaFast", "mapStreetMemo", "mapStreetCache", "mapVisitedFast",   // these two only act with vsync on
         "audioLimiterStereoFold",
         "persistentVboFrameSync",   // acts only with persistentVbo (Plan 9)

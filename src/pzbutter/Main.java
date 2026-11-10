@@ -61,6 +61,7 @@ public class Main {
         ScriptComments.init();
         FileKnobs.init();
         TexCompress.init();
+        TexPatches.init();
         GpuOverTarget.init();
         UiTiming.init();
         UiCensus.init();

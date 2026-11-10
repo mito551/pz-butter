@@ -37,6 +37,7 @@ local KEYS = {
 	"frameLog",
 	"frameStartGate",
 	"glassTilesPerFrame",
+	"chatIconsRace",
 	"gloveBoxFix",
 	"gpuPstate",
 	"gpuStats",

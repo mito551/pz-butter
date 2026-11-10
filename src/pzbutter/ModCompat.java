@@ -42,6 +42,7 @@ final class ModCompat {
 
     /** The classes whose nested classes are PZ Butter's holders. */
     static final Class<?>[] OUTERS = {Patches.class, DeliveryPatches.class, LuaPatches.class, UiPatches.class, MapPatches.class,
+        TexPatches.class,
         SoundPatches.class, WorldPatches.class, ChunkPatches.class, LogPatches.class, ZombiePatches.class, GpuPatches.class, CensusPatches.class,
         VehiclePatches.class, StreamPatches.class, LoadPatches.class, RuntimePatches.class, DevPatches.class, CameraPatches.class, ClockPatches.class,
         ServerPatches.class, HostPatches.class, MpClientPatches.class, NetStatsPatches.class, ThirdPartyPatches.class,
@@ -89,6 +90,9 @@ Map.entry("LoadPatches.WaitFileTask", k("textureBufferMb")),
         Map.entry("LoadPatches.FileTaskLoadImageDataCall", k("texCompress")),
         Map.entry("LoadPatches.ImageDataDispose", k("texCompress")),
         Map.entry("LoadPatches.TextureIDGenerateHwId", k("texCompress")),
+        Map.entry("TexPatches.CollectIcons", k("chatIconsRace")),
+        Map.entry("TexPatches.SetShared", k("chatIconsRace")),
+        Map.entry("TexPatches.PacksChanged", k("chatIconsRace")),
         Map.entry("Patches.Frame", k("luaWorkerGate", "luaFileWriteThrottle", "logDedupe", "luaBudget", "luaTiming", "frameStartGate",
             "presentPacing", "reflexSleep", "bakeScheduler", "lightSwitchCheckFrames", "gridStackInterval", "roofHideDebounceFrames",
             "soundTickHz", "mapStreetMemo", "mapStreetCache", "textWidthCache", "uiTiming", "uiCensus", "uiRetained", "uiRetainCheck", "entityTiming", "spikeContext", "spikeThresholdMs", "spikeContextWindowMs", "hitchSampler", "stallProbe")),

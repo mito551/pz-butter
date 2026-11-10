@@ -51,6 +51,7 @@ public final class SelfTest {
         ChunkTest.run();
         ModelTest.run();
         NetTest.run();
+        TexTest.run();
         LuaGateTest.run();
         DevTest.run();
         SpikeTest.run();
