@@ -454,6 +454,9 @@ public final class Settings {
 + "# bodyLocationOnce (Lua): getAllItemsForBodyLocation resolves the body-location string once per call\n"
 + "# instead of once per clothing item it checks.\n"
 + "bodyLocationOnce=false\n"
++ "# findItemOnce: ScriptManager.FindItem returns after the lookup it makes before its module loop;\n"
++ "# the loop only repeats that same lookup (its bug), so a missing item no longer costs one lookup per module.\n"
++ "findItemOnce=true\n"
 + "# serverCellSpread (server): spread a cell's second-stage load over ticks inside a per-tick budget (at least one chunk per tick); keeps a 120 ms floor near a player.\n"
 + "serverCellSpread=false\n"
 + "#\n"
@@ -615,6 +618,7 @@ public final class Settings {
         "reflexSleep", "vsyncAdaptive", "luaBudget", "nullModelGuard", "doorToggleNpeGuard", "zombieDropItemsGuard",
         "kahluaPoolDoublePut",
         "chatIconsRace",
+        "findItemOnce",
         "luaInternConstants", "luaSkipEmpty", "uiVerify", "uiRetainedMods", "uiTickStagger", "textWidthCache", "uiLuaFast", "mapStreetMemo", "mapStreetCache", "mapVisitedFast",   // these two only act with vsync on
         "audioLimiterStereoFold",
         "persistentVboFrameSync",   // acts only with persistentVbo (Plan 9)

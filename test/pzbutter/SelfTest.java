@@ -53,6 +53,7 @@ public final class SelfTest {
         NetTest.run();
         TexTest.run();
         BodyLocTest.run();
+        ScriptTest.run();
         LuaGateTest.run();
         DevTest.run();
         SpikeTest.run();

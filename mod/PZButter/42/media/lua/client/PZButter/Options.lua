@@ -30,6 +30,7 @@ local KEYS = {
 	"emitterIdleSkip",
 	"enabled",
 	"entityTiming",
+	"findItemOnce",
 	"fliesToggleFix",
 	"fmodNullHandleFix",
 	"fogEarlyZ",

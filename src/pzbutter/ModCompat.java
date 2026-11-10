@@ -41,7 +41,7 @@ final class ModCompat {
     record Target(String className, String methodName, boolean replaces, String where) {}
 
     /** The classes whose nested classes are PZ Butter's holders. */
-    static final Class<?>[] OUTERS = {Patches.class, DeliveryPatches.class, LuaPatches.class, UiPatches.class, MapPatches.class,
+    static final Class<?>[] OUTERS = {Patches.class, DeliveryPatches.class, LuaPatches.class, ScriptPatches.class, UiPatches.class, MapPatches.class,
         TexPatches.class,
         SoundPatches.class, WorldPatches.class, ChunkPatches.class, LogPatches.class, ZombiePatches.class, GpuPatches.class, CensusPatches.class,
         VehiclePatches.class, StreamPatches.class, LoadPatches.class, RuntimePatches.class, DevPatches.class, CameraPatches.class, ClockPatches.class,
@@ -146,6 +146,7 @@ Map.entry("LoadPatches.WaitFileTask", k("textureBufferMb")),
         Map.entry("LuaPatches.FileOutput", k("luaFileWriteThrottle")),
         Map.entry("LuaPatches.PoolPut", k("kahluaPoolDoublePut")),
         Map.entry("LuaPatches.BodyLocation", k("bodyLocationOnce")),
+        Map.entry("ScriptPatches.FindItemOnce", k("findItemOnce")),
         // zombies and entities (Plan 8)
         Map.entry("ZombiePatches.ForwardDirection", k("zeroFacingFix")),
         Map.entry("ZombiePatches.SceneCull", k("numberZombiesBlended", "zombieLodFixed3d", "zombieModelAddBudgetUs", "entityTiming")),
