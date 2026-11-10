@@ -86,7 +86,7 @@ This builds the mod, runs the self-tests, and copies the mod to `~/Zomboid/mods/
 | Variable | Default |
 |---|---|
 | `JDK` | `/usr/lib/jvm/java-25-openjdk` |
-| `PZ_GAME` | `<Steam library>/steamapps/common/ProjectZomboid/projectzomboid` |
+| `PZ_GAME` | the Project Zomboid install dir, `<Steam library>/steamapps/common/ProjectZomboid/projectzomboid` on a typical Linux install. The default built into `build.sh` is a fixed path on this repo's development machine; set your own when it differs |
 
 ## Settings
 
@@ -124,8 +124,9 @@ Fixes for other mods ship in the same Workshop item as separate mods, one per ta
 | `PZButter_KI5` | damnlib (the KI5 vehicles) | yes: it takes handlers over through `handlerCensus` | Runs the recognised `OnPlayerUpdate` handlers of KI5 vehicles and the other mods `tools/ki5scan.py` lists from one dispatcher at the end. On foot, handlers whose work needs a vehicle are skipped; a sync-only handler runs at most every 100 ms while the vehicle, type and seat stay the same. While an every-frame handler runs, one `BaseVehicle.transmitPartModData` call per vehicle part passes per 100 ms, and the last state is sent afterwards. A multiplayer client only. |
 | `PZButter_TsarsLib` | tsarslib | yes: only `handlerCensus` can take out its local `OnTick` handler | tsarslib asks the server for its animation data every 100 ticks for the whole session. This asks once on the first tick and then at most every 5 minutes; the answer changes only when a mod is added or updated. |
 | `PZButter_DamnLib` | damnlib | no | damnlib checks every loaded square against its spawn locations. This keeps an index of those locations and answers a square with none at once; the rest still go to damnlib. A new location marks the index stale. It stays off when another mod already wrapped the check. |
+| `PZButter_LongTermPreservationExtended_Index` | Long Term Preservation Extended | yes: it needs PZ Butter's distribution index | Uses PZ Butter's inverted distribution index so LTPE's loot mirroring costs O(hits) instead of O(tree) (LTPE-2); LTPE-1 is the standalone fallback. |
 
-`mod/UNSHIPPED` lists fix mods that are kept in the repository but not packed or installed, for targets that are not available at the moment.
+`mod/UNSHIPPED` lists fix mods that are kept in the repository but not packed or installed: fixes paused as "target unavailable" or "no measured gain" (see the status list under 'Mods that get optimizations').
 
 ## Recommended JVM flags (optional)
 
