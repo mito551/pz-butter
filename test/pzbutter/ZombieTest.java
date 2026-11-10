@@ -64,10 +64,11 @@ final class ZombieTest {
         zombieStatsLine();
         zombieStatsCadence();
         zombieStatsFrameEnd();
+        zombieFovCone();
         zombieShimsOffTouchNothing();
     }
 
-    static final String[] PLAN8_FLAGS = {"zeroFacingFix", "playerLosFast", "zombieCullSortFast", "statsNoBox", "entityTiming"};
+    static final String[] PLAN8_FLAGS = {"zeroFacingFix", "playerLosFast", "zombieCullSortFast", "statsNoBox", "entityTiming", "zombieFovAwareness"};
 
     static void plan8KeysDefaults() {
         Settings.load(SelfTest.write(Settings.render(new java.util.Properties()).replace("\nenabled=false\n", "\nenabled=true\n")));
@@ -81,7 +82,7 @@ final class ZombieTest {
         String t = Settings.render(new java.util.Properties());
         for (String k : new String[] {"zeroFacingFix=false", "numberZombiesBlended=0", "zombieLodFixed3d=0", "zombieModelAddBudgetUs=0",
                 "zombieSimLodTiles=0", "zombieSimLodSteps=1", "playerLosFast=false", "zombieCullSortFast=false", "statsNoBox=false",
-                "entityTiming=false"})
+                "entityTiming=false", "zombieFovAwareness=false"})
             assert t.contains("\n" + k + "\n") : k;
         assert t.indexOf("\nbloodRebakeCoalesceMs=250\n") < t.indexOf("\nzeroFacingFix=false\n") && t.indexOf("\nentityTiming=false\n") < t.indexOf("\ninputLatch=true\n");
         for (String k : new String[] {"zombieLodFixed3d", "zombieModelAddBudgetUs", "zombieSimLodTiles"})
@@ -952,5 +953,62 @@ final class ZombieTest {
         ZombiePatches.init();
         assert !ZombieStats.guard.on;
         assert !EntityTiming.guard.on && EntityTiming.log == null;
+    }
+
+    // ---- Task 6: zombieFovAwareness ----
+
+    /** The cone gate on IsoZombie.spotted: seam-driven (a bare zombie has no look vector), stock answers stay when the guard is off. */
+    static void zombieFovCone() throws Throwable {
+        java.lang.reflect.Field x = up(zombie.characters.IsoZombie.class, "x"), y = up(zombie.characters.IsoZombie.class, "y");
+        zombie.characters.IsoZombie z = (zombie.characters.IsoZombie) ChunkTest.bare(zombie.characters.IsoZombie.class);
+        zombie.characters.IsoZombie t = (zombie.characters.IsoZombie) ChunkTest.bare(zombie.characters.IsoZombie.class);
+        x.setFloat(t, 1f);
+        Settings.load(SelfTest.write("enabled=true\n"));
+        assert !Settings.flag("zombieFovAwareness");
+        boolean oldGuard = ZombiePatches.fovGuard.on;
+        var oldSeam = ZombiePatches.DOT_SEAM;
+        try {
+            // the default leaves the sight test like stock: nothing rejects
+            assert !ZombiePatches.onSpotted(z, t);
+            // the template key switches it on
+            Settings.load(SelfTest.write("enabled=true\nzombieFovAwareness=true\n"));
+            assert Settings.flag("zombieFovAwareness");
+            ZombiePatches.fovGuard.on = true;
+            // standing on the zombie is seen whatever the dot says (stock premise)
+            ZombiePatches.DOT_SEAM = (zz, tt) -> { throw new RuntimeException("same-pos must short-circuit"); };
+            assert !ZombiePatches.onSpotted(z, t);
+            // outside the 90° cone: rejected
+            x.setFloat(t, 100f);
+            ZombiePatches.DOT_SEAM = (zz, tt) -> 0.6;
+            assert ZombiePatches.onSpotted(z, t);
+            // inside the cone: seen
+            ZombiePatches.DOT_SEAM = (zz, tt) -> 0.9;
+            assert !ZombiePatches.onSpotted(z, t);
+            // the edge: a dot exactly at the half-angle cosine stays seen (strict <)
+            ZombiePatches.DOT_SEAM = (zz, tt) -> (double) ZombiePatches.CONE_MIN;
+            assert !ZombiePatches.onSpotted(z, t);
+            ZombiePatches.DOT_SEAM = (zz, tt) -> 0.707;
+            assert ZombiePatches.onSpotted(z, t);
+            // a null target is never rejected
+            ZombiePatches.DOT_SEAM = (zz, tt) -> 0.0;
+            assert !ZombiePatches.onSpotted(z, null);
+            // a throwing dot is charged to the guard and the target stays seen
+            y.setFloat(t, 2f);
+            ZombiePatches.DOT_SEAM = (zz, tt) -> { throw new RuntimeException("seam"); };
+            assert !ZombiePatches.onSpotted(z, t);
+        } finally {
+            ZombiePatches.fovGuard.on = oldGuard;
+            ZombiePatches.DOT_SEAM = oldSeam;
+            Settings.load(SelfTest.write("enabled=true\n"));
+        }
+    }
+
+    /** A field on self or any superclass (IsoMovingObject owns x/y, not IsoZombie). */
+    static java.lang.reflect.Field up(Class<?> c, String name) throws Exception {
+        for (; c != null; c = c.getSuperclass()) {
+            try { java.lang.reflect.Field f = c.getDeclaredField(name); f.setAccessible(true); return f; }
+            catch (NoSuchFieldException ignored) {}
+        }
+        throw new NoSuchFieldException(name);
     }
 }

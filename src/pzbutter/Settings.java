@@ -260,6 +260,8 @@ public final class Settings {
       + "zombieCullSortFast=false\n"
       + "# statsNoBox: character stat reads skip a throwaway object per read; the same values.\n"
       + "statsNoBox=false\n"
+      + "# zombieFovAwareness: a zombie's sight test rejects targets outside a 90 degree cone around its facing. Changes which zombies notice the player, so it is off by default.\n"
+      + "zombieFovAwareness=false\n"
       + "# entityTiming: diagnostic; once a minute, the time per frame of the zombie update phases goes to the console (and entity.out with frameLog).\n"
       + "entityTiming=false\n"
       + "# frameThreads: width of PZ Butter's frame worker pool for the zombie update on workers. Needs luaWorkerGate and one restart after it changes (0 or 1 = no pool, no class changes). Max 32.\n"

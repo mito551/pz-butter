@@ -14,6 +14,7 @@ public final class ZombiePatches {
         FacingFix.init();
         ZombieLod.init();
         losGuard.on = Settings.flag("playerLosFast");
+        fovGuard.on = Settings.flag("zombieFovAwareness");
         CullSort.init();
         ZombieMisc.init();
         EntityTiming.init();
@@ -32,6 +33,49 @@ public final class ZombiePatches {
     public static class ForwardDirection {
         @Patch.OnEnter(skipOn = true)
         public static boolean enter(@Patch.Argument(0) float x, @Patch.Argument(1) float y) { return ZombiePatches.onForward(x, y); }
+    }
+
+    // ---- zombieFovAwareness: the sight cone ----
+
+    /** The gate is off unless the template turns it on; it changes which zombies get spotted, so it is opt-in. */
+    public static final Guard fovGuard = new Guard("zombieFovAwareness");
+
+    /** A 90° cone is a 45° half-angle: the game's own dot-with-forward goes below this only outside the cone. */
+    public static final float CONE_MIN = 0.70710677f;
+
+    /**
+     * Test-only seam over the game's dot-with-forward (a bare zombie has no look vector headless). Null = the real call;
+     * the real call takes the target's absolute position and normalises against the zombie's look vector.
+     */
+    public static java.util.function.BiFunction<zombie.characters.IsoZombie, zombie.iso.IsoMovingObject, Double> DOT_SEAM;
+
+    /**
+     * outside the cone → the target is rejected: null targets and targets standing on the zombie stay seen (the stock
+     * isFacingTarget premise), exceptions charge the guard and stay seen.
+     */
+    public static boolean fovReject(zombie.characters.IsoZombie z, zombie.iso.IsoMovingObject target) {
+        if (target == null) return false;
+        float dx = target.getX() - z.getX(), dy = target.getY() - z.getY();
+        if (dx == 0f && dy == 0f) return false;
+        try {
+            double dot = DOT_SEAM != null ? DOT_SEAM.apply(z, target) : z.getDotWithForwardDirection(target.getX(), target.getY());
+            return dot < CONE_MIN;
+        }
+        catch (Throwable t) { fovGuard.fail(t); return false; }
+    }
+
+    /** IsoZombie.spotted entry (any caller): true rejects the target as outside the sight cone. */
+    public static boolean onSpotted(Object self, Object target) {
+        if (!fovGuard.on) return false;
+        try { return fovReject((zombie.characters.IsoZombie) self, (zombie.iso.IsoMovingObject) target); }
+        catch (Throwable t) { fovGuard.fail(t); return false; }
+    }
+
+    /** The sight-test dispatcher (one signature; spottedNew/spottedOld ride behind it, so every caller is gated alike). */
+    @Patch(className = "zombie.characters.IsoZombie", methodName = "spotted")
+    public static class FovGate {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This Object self, @Patch.Argument(0) Object target) { return ZombiePatches.onSpotted(self, target); }
     }
 
     // ---- numberZombiesBlended, zombieLodFixed3d, zombieModelAddBudgetUs: the cull loop ----
