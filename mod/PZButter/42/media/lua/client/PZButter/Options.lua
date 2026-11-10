@@ -107,6 +107,7 @@ local KEYS = {
 	"translucentTilesInChunkTexture",
 	"treesInChunkTexture",
 	"uiCensus",
+	"uiElementUpdateSkip",
 	"uiLuaFast",
 	"uiRetainCheck",
 	"uiRetained",

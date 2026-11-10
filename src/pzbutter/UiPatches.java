@@ -330,4 +330,34 @@ public final class UiPatches {
             if (r != null) ret = (String) r;
         }
     }
+
+    // ---- uiElementUpdateSkip: update() returns early for an element that is not visible and has no children ----
+
+    public static final Guard skipGuard = new Guard("uiElementUpdateSkip");
+
+    static void initSkip() {
+        try {
+            skipGuard.on = Settings.flag("uiElementUpdateSkip");
+        } catch (Throwable t) {
+            skipGuard.fail(t);
+        }
+    }
+
+    public static boolean skipElementUpdate(zombie.ui.UIElement e) {
+        try {
+            if (!skipGuard.on) return false;
+            return !e.visible && e.getControls().isEmpty();
+        } catch (Throwable t) {
+            skipGuard.fail(t);
+            return false;
+        }
+    }
+
+    @Patch(className = "zombie.ui.UIElement", methodName = "update")
+    public static class ElementUpdate {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This zombie.ui.UIElement self) {
+            return skipElementUpdate(self);
+        }
+    }
 }

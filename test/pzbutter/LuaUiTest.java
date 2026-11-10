@@ -24,6 +24,7 @@ final class LuaUiTest {
         visitedRowsSameBytes();
         uiLuaFastKeepsBackpacksCurrent();
         translatorPlainText();
+        uiElementUpdateSkip();
         uiTimingSelfExcludesChildren();
         uiTimingBalancedAfterThrow();
         uiTimingDeepNesting();
@@ -388,5 +389,31 @@ final class LuaUiTest {
         Settings.load(SelfTest.write("enabled=true\n"));
         UiPatches.initPlain();
         assert !UiPatches.plainGuard.on : "defaults restored";
+    }
+
+    // ---- uiElementUpdateSkip: update() returns early for an invisible element with no children ----
+
+    static void uiElementUpdateSkip() throws Exception {
+        Settings.load(SelfTest.write("enabled=true\n"));
+        UiPatches.initSkip();
+        assert !UiPatches.skipGuard.on : "uiElementUpdateSkip defaults off";
+
+        Settings.load(SelfTest.write("enabled=true\nuiElementUpdateSkip=true\n"));
+        UiPatches.initSkip();
+        assert UiPatches.skipGuard.on : "template turns the guard on";
+
+        zombie.ui.UIElement e = new zombie.ui.UIElement();
+        assert UiPatches.skipElementUpdate(e) == false : "a visible element keeps updating";
+        e.visible = false;
+        assert UiPatches.skipElementUpdate(e) : "invisible and childless: skip";
+        zombie.ui.UIElement child = new zombie.ui.UIElement();
+        e.AddChild(child);
+        assert UiPatches.skipElementUpdate(e) == false : "children keep their updates";
+        e.RemoveChild(child);
+        assert UiPatches.skipElementUpdate(e) : "childless again";
+
+        Settings.load(SelfTest.write("enabled=true\n"));
+        UiPatches.initSkip();
+        assert !UiPatches.skipGuard.on : "defaults restored";
     }
 }
