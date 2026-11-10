@@ -185,6 +185,8 @@ final class WorldTest {
         assert !GridGate.shouldRun(0, 12, 11, 10, 0, 3, false, 8);
         assert GridGate.shouldRun(0, 13, 11, 10, 0, 3, false, 8);      // 8 frames since the last run
         assert GridGate.shouldRun(1, 13, 11, 10, 0, 3, false, 8);      // other player: own state
+        assert GridGate.shouldRun(0, 20, 11, 10, 0, 8, false, 8);      // facing 8: the last facing value changed (from 3)
+        assert !GridGate.shouldRun(0, 21, 11, 10, 0, 0, false, 8);     // 360° (8) and 0° are the same octant (G2-39)
     }
 
     // the roof flag flips once a reading has differed from the held value for n frames (time counts frames, not calls)

@@ -36,6 +36,7 @@ final class GridGate {
 
     /** True when the scan must run for this player now; records the run. Runs every frame when interval is 0 or less. */
     static boolean shouldRun(int player, long frame, int camX, int camY, int camZ, int facing, boolean dirty, int interval) {
+        facing &= 7;   // eight octants: 360° quantises to 8, which is the same octant as 0 (plan 5a follow-up)
         if (player < 0 || player >= PLAYERS) return true;
         boolean run = !seen[player] || dirty || frame - lastRun[player] >= interval
                 || camX != lastX[player] || camY != lastY[player] || camZ != lastZ[player] || facing != lastFacing[player];
