@@ -126,4 +126,30 @@ public final class LogPatches {
             return onLine(self, sev, msg, args, allowRepeat);
         }
     }
+
+    // errorBoxOff: the red on-screen ERROR counter box is not drawn; errors keep going to the log.
+
+    public static final Guard boxGuard = new Guard("errorBoxOff");
+
+    static void initErrorBox() {
+        try {
+            boxGuard.on = Settings.flag("errorBoxOff");
+        } catch (Throwable t) {
+            boxGuard.fail(t);
+        }
+    }
+
+    @Patch(className = "zombie.core.logger.ExceptionLogger", methodName = "render")
+    public static class ErrorBox {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter() {
+            if (!boxGuard.on) return false;
+            try {
+                return true;
+            } catch (Throwable t) {
+                boxGuard.fail(t);
+                return false;
+            }
+        }
+    }
 }

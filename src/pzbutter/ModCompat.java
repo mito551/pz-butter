@@ -218,6 +218,7 @@ Map.entry("LoadPatches.WaitFileTask", k("textureBufferMb")),
         // log
         Map.entry("LogPatches.Writeln", k("logDedupe", "quietLog")),
         Map.entry("LogPatches.PrefixLine", k("logDedupe", "quietLog")),
+        Map.entry("LogPatches.ErrorBox", k("errorBoxOff")),
         // runtime
         Map.entry("RuntimePatches.CollectGarbage", k("luaGcNoop")),
         Map.entry("RuntimePatches.LightSync", k("lightingSyncPark", "corePlacement")),

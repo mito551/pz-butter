@@ -31,6 +31,7 @@ local KEYS = {
 	"emitterIdleSkip",
 	"enabled",
 	"entityTiming",
+	"errorBoxOff",
 	"findItemKept",
 	"findItemOnce",
 	"fliesToggleFix",

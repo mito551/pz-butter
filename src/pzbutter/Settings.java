@@ -86,6 +86,8 @@ public final class Settings {
       + "luaFileWriteThrottle=false\n"
       + "# quietLog: changes the log. Vanilla lines the game already worked around (font fallback, name sanitising, defaulted helper bone, skipped vehicle script part, a duplicate item id) are not printed; other lines print like before.\n"
       + "quietLog=false\n"
+      + "# errorBoxOff: the red on-screen ERROR counter box is not drawn; errors still go to the log.\n"
+      + "errorBoxOff=false\n"
       + "# logDedupe: changes the log. A line printed again within 3 s is dropped and counted; one summary line per repeated line every 3 s.\n"
       + "logDedupe=false\n"
       + "#\n"

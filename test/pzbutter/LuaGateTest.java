@@ -73,6 +73,7 @@ final class LuaGateTest {
         firstPrintedRepeatsDropped();
         argsLinesNeverDropped();
         quietLogLinesDropped();
+        errorBoxHidden();
         otherStreamOrSeverityPrinted();
         summaryPassesThrough();
         keyCapPassesThrough();
@@ -112,14 +113,14 @@ final class LuaGateTest {
     static void plan7KeysDefaults() {
         // the written template itself, master on: every Plan 7 key at its shipped value
         Settings.load(SelfTest.write(Settings.render(new java.util.Properties()).replace("\nenabled=false\n", "\nenabled=true\n")));
-        for (String k : new String[] {"luaWorkerGate", "luaFileWriteThrottle", "logDedupe", "quietLog"}) assert !Settings.flag(k) : k;
+        for (String k : new String[] {"luaWorkerGate", "luaFileWriteThrottle", "logDedupe", "quietLog", "errorBoxOff"}) assert !Settings.flag(k) : k;
         assert Settings.text("modProfile", "?").equals("custom") && Settings.text("modCompat", "?").equals("off");
         assert Settings.flag("uiRetainedMods");
     }
 
     static void settingsTemplateHasPlan7Keys() {
         String t = Settings.render(new java.util.Properties());
-        for (String k : new String[] {"luaWorkerGate=false", "luaFileWriteThrottle=false", "logDedupe=false", "quietLog=false", "modProfile=custom", "modCompat=off"})
+        for (String k : new String[] {"luaWorkerGate=false", "luaFileWriteThrottle=false", "logDedupe=false", "quietLog=false", "errorBoxOff=false", "modProfile=custom", "modCompat=off"})
             assert t.contains("\n" + k + "\n") : k;
         assert t.indexOf("\nluaInternConstants=true\n") < t.indexOf("\nluaWorkerGate=false\n");
     }
@@ -956,6 +957,15 @@ final class LuaGateTest {
     }
 
     // ---- quietLog: known-noise lines the game already worked around are dropped; everything else passes ----
+    static void errorBoxHidden() throws Exception {
+        Settings.load(SelfTest.write("enabled=true\n" + "errorBoxOff=true\n"));
+        LogPatches.initErrorBox();
+        assert LogPatches.boxGuard.on : "the template turns the box off";
+        Settings.load(SelfTest.write("enabled=true\n"));
+        LogPatches.initErrorBox();
+        assert !LogPatches.boxGuard.on : "the default keeps the box";
+    }
+
     static void quietLogLinesDropped() {
         LogPatches.initQuiet();
         assert !LogPatches.quietGuard.on;                                              // off by default
@@ -1170,6 +1180,7 @@ final class LuaGateTest {
         for (Class<?> c : LogPatches.class.getDeclaredClasses()) {
             me.zed_0xff.zombie_buddy.Patch p = c.getAnnotation(me.zed_0xff.zombie_buddy.Patch.class);
             if (p == null) continue;
+            if (p.className().equals("zombie.core.logger.ExceptionLogger")) { assert p.methodName().equals("render") : p.methodName(); continue; }
             assert p.className().equals("zombie.debug.DebugLogStream") : p.className();
             seen.merge(p.methodName(), 1, Integer::sum);
             int enters = 0;
