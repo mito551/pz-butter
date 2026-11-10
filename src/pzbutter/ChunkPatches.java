@@ -252,4 +252,49 @@ public final class ChunkPatches {
         @Patch.OnExit
         public static void exit(@Patch.This Object self) { onZoomUpdate(self); }
     }
+
+    // chunkZExtentsFast: getChunk returns null outside 0..chunkGridWidth-1, so the extents loop
+    // only needs to cover the cells the chunk lookup can answer.
+
+    public static final Guard extentsGuard = new Guard("chunkZExtentsFast");
+
+    static void initChunkZExtents() {
+        try {
+            extentsGuard.on = Settings.flag("chunkZExtentsFast");
+        } catch (Throwable t) {
+            extentsGuard.fail(t);
+        }
+    }
+
+    public static void calculateZExtents(zombie.iso.IsoChunkMap m) {
+        int w = zombie.iso.IsoChunkMap.chunkGridWidth;
+        int max = 0;
+        int min = 0;
+        for (int x = 0; x < w; x++) {
+            for (int y = 0; y < w; y++) {
+                zombie.iso.IsoChunk c = m.getChunk(x, y);
+                if (c != null) {
+                    max = Math.max(max, c.maxLevel);
+                    min = Math.min(min, c.minLevel);
+                }
+            }
+        }
+        m.maxHeight = max;
+        m.minHeight = min;
+    }
+
+    @Patch(className = "zombie.iso.IsoChunkMap", methodName = "calculateZExtentsForChunkMap")
+    public static class ZExtents {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This Object self) {
+            if (!extentsGuard.on) return false;
+            try {
+                calculateZExtents((zombie.iso.IsoChunkMap) self);
+                return true;
+            } catch (Throwable t) {
+                extentsGuard.fail(t);
+                return false;
+            }
+        }
+    }
 }

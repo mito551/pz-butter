@@ -284,6 +284,7 @@ Map.entry("LoadPatches.WaitFileTask", k("textureBufferMb")),
         Map.entry("ChunkPatches.BakeGate", k("bakeScheduler", "treeBakeMaxChunksPerSec")),
         Map.entry("ChunkPatches.ZoomScroll", k("zoomEaseMs")),
         Map.entry("ChunkPatches.ZoomUpdate", k("zoomEaseMs")),
+        Map.entry("ChunkPatches.ZExtents", k("chunkZExtentsFast")),
         // server (Plan 15)
         Map.entry("ServerPatches.TickStart", k("serverTickLog", "serverLuaSample", "serverPrewarm", "serverClassPrewarm")),
         Map.entry("ServerPatches.NetDone", k("serverTickLog", "serverLuaSample")),

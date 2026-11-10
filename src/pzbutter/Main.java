@@ -60,6 +60,7 @@ public class Main {
         ShaderReuse.init();
         ModelPatches.init();
         WorldPatches.initDoorNpe();
+        ChunkPatches.initChunkZExtents();
         VehicleZones.init();
         ScriptComments.init();
         FileKnobs.init();

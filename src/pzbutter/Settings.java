@@ -460,6 +460,9 @@ public final class Settings {
 + "# findItemKept: keeps the item each FindItem name resolves to (an item, or nothing) until the\n"
 + "# game edits its script tables again (generation counter plus item/module counts).\n"
 + "findItemKept=false\n"
++ "# chunkZExtentsFast: the chunk-map z-extents loop only visits the cells whose chunk lookup can\n"
++ "# answer, instead of all cells of the swap array, with the same result.\n"
++ "chunkZExtentsFast=true\n"
 + "# serverCellSpread (server): spread a cell's second-stage load over ticks inside a per-tick budget (at least one chunk per tick); keeps a 120 ms floor near a player.\n"
 + "serverCellSpread=false\n"
 + "#\n"
@@ -622,6 +625,7 @@ public final class Settings {
         "kahluaPoolDoublePut",
         "chatIconsRace",
         "findItemOnce",
+        "chunkZExtentsFast",
         "luaInternConstants", "luaSkipEmpty", "uiVerify", "uiRetainedMods", "uiTickStagger", "textWidthCache", "uiLuaFast", "mapStreetMemo", "mapStreetCache", "mapVisitedFast",   // these two only act with vsync on
         "audioLimiterStereoFold",
         "persistentVboFrameSync",   // acts only with persistentVbo (Plan 9)

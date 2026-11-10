@@ -16,6 +16,7 @@ local KEYS = {
 	"bakeScheduler",
 	"bloodFadeFix",
 	"cameraScreenPixels",
+	"chunkZExtentsFast",
 	"corpseFliesCap",
 	"cursorLatch",
 	"cutawayFast",

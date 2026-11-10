@@ -3,6 +3,7 @@ package pzbutter;
 import zombie.iso.IsoCamera;
 import zombie.iso.IsoCell;
 import zombie.iso.IsoChunk;
+import zombie.iso.IsoChunkMap;
 import zombie.iso.IsoGridSquare;
 import zombie.iso.IsoObject;
 import zombie.iso.SpriteDetails.IsoFlagType;
@@ -38,6 +39,11 @@ final class ChunkTest {
         zoomKeyDefaults();
         holdNeverForNewOrObject();
         budgetNearestFirst();
+        try {
+            chunkZExtentsFast();
+        } catch (Exception e) {
+            throw new AssertionError(e);
+        }
         classOrderBeatsDistance();
         overdueAlwaysGranted();
         lightRateLimitedButOverdueWins();
@@ -1203,6 +1209,60 @@ final class ChunkTest {
             zombie.core.PerformanceSettings.fboRenderChunk = fboWas;
             Settings.load(SelfTest.write("enabled=true\n"));
             ChunkTrees.init();
+        }
+    }
+
+    static void check(String what, boolean ok) {
+        if (!ok) throw new AssertionError(what);
+    }
+
+    /** Unsafe allocation for bare game objects whose constructors need a world. */
+    static Object bare(Class<?> c) throws Exception {
+        java.lang.reflect.Field f = sun.misc.Unsafe.class.getDeclaredField("theUnsafe");
+        f.setAccessible(true);
+        return ((sun.misc.Unsafe) f.get(null)).allocateInstance(c);
+    }
+
+    static Object read(Object o, String field) throws Exception {
+        java.lang.reflect.Field f = o.getClass().getDeclaredField(field);
+        f.setAccessible(true);
+        return f.get(o);
+    }
+
+    static void write(Object o, String field, Object value) throws Exception {
+        java.lang.reflect.Field f = o.getClass().getDeclaredField(field);
+        f.setAccessible(true);
+        f.set(o, value);
+    }
+
+    static void chunkZExtentsFast() throws Exception {
+        int saved = IsoChunkMap.chunkGridWidth;
+        try {
+            IsoChunkMap.chunkGridWidth = 2;
+            IsoChunkMap m = (IsoChunkMap) bare(IsoChunkMap.class);
+            write(m, "readBufferA", Boolean.TRUE);
+            write(m, "chunksSwapA", new IsoChunk[4]);
+            IsoChunk hi = (IsoChunk) bare(IsoChunk.class);
+            hi.maxLevel = 5;
+            hi.minLevel = -1;
+            IsoChunk lo = (IsoChunk) bare(IsoChunk.class);
+            lo.maxLevel = 2;
+            lo.minLevel = -3;
+            IsoChunk[] a = (IsoChunk[]) read(m, "chunksSwapA");
+            a[1] = hi; // slot = chunkGridWidth * y + x = (x=1, y=0)
+            a[2] = lo; // (x=0, y=1)
+            m.calculateZExtentsForChunkMap();
+            check("stock z extents from both present chunks", m.maxHeight == 5 && m.minHeight == -3);
+            ChunkPatches.calculateZExtents(m);
+            check("fast z extents equal stock", m.maxHeight == 5 && m.minHeight == -3);
+            a[1] = null;
+            a[2] = null;
+            m.calculateZExtentsForChunkMap();
+            check("stock empty grid", m.maxHeight == 0 && m.minHeight == 0);
+            ChunkPatches.calculateZExtents(m);
+            check("fast empty grid", m.maxHeight == 0 && m.minHeight == 0);
+        } finally {
+            IsoChunkMap.chunkGridWidth = saved;
         }
     }
 }
