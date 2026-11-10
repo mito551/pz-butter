@@ -15,6 +15,41 @@ public final class ScriptTest {
         fullTypeHit();
         keptDefaults();
         keptMatchesStockAndInvalidates();
+        missMemo();
+    }
+
+    // ---- findItemMiss: a missed name is remembered per generation (cleared on scripts reload, the gen hooks) ----
+
+    static void missMemo() throws Exception {
+        Settings.load(SelfTest.write("enabled=true\nfindItemOnce=true\nfindItemMiss=true\n"));
+        ScriptPatches.initOnce();
+        ScriptPatches.initKept();
+        ScriptPatches.initMiss();
+        check("miss on, kept off", ScriptPatches.missGuard.on && !ScriptPatches.keptGuard.on);
+
+        ScriptManager m = new ScriptManager(); // empty mod list: every lookup misses
+        ScriptPatches.missed.clear();
+        check("first lookup of a missing name is null", ScriptPatches.findMiss(m, "plain", true) == null);
+        check("the miss is memoised", ScriptPatches.missed.containsKey(new ScriptPatches.Key("plain", true)));
+        check("repeat answers null too", ScriptPatches.findMiss(m, "plain", true) == null);
+
+        Item probe = new Item();
+        ScriptBucketCollectionBridge.putFullType(m, "probe.item", probe);
+        ScriptPatches.gen++; // the script-reload hooks bump the generation; the memo entry is stale
+        check("a stale miss does not hide a new item", ScriptPatches.findMiss(m, "probe.item", true) == probe);
+        check("a hit is never memoised", !ScriptPatches.missed.containsKey(new ScriptPatches.Key("probe.item", true)));
+
+        Settings.load(SelfTest.write("enabled=true\nfindItemKept=true\nfindItemMiss=true\n"));
+        ScriptPatches.initKept();
+        ScriptPatches.initMiss();
+        check("with kept on, the miss memory is left to it", ScriptPatches.findMiss(m, "probe.item", true) == probe
+                && !ScriptPatches.missed.containsKey(new ScriptPatches.Key("probe.item", true)));
+
+        Settings.load(SelfTest.write("enabled=true\n"));
+        ScriptPatches.initOnce();
+        ScriptPatches.initKept();
+        ScriptPatches.initMiss();
+        check("defaults off", !ScriptPatches.missGuard.on && !ScriptPatches.keptGuard.on);
     }
 
     static void check(String what, boolean ok) {

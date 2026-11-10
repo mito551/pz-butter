@@ -37,6 +37,7 @@ local KEYS = {
 	"enumParseCache",
 	"errorBoxOff",
 	"findItemKept",
+	"findItemMiss",
 	"findItemOnce",
 	"fliesToggleFix",
 	"fmodNullHandleFix",

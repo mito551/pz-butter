@@ -109,6 +109,39 @@ public final class ScriptPatches {
         synchronized (LOCK) { gen++; }
     }
 
+    // ---- findItemMiss: a name without an item is remembered per generation (the script-reload hooks bump it);
+    // hits are never stored. With findItemKept on, its memo already keeps misses and this stays out of the way. ----
+
+    public static final Guard missGuard = new Guard("findItemMiss");
+
+    static void initMiss() {
+        try {
+            missGuard.on = Settings.flag("findItemMiss");
+        } catch (Throwable t) {
+            missGuard.fail(t);
+        }
+    }
+
+    record Miss(long gen, Object item) {}
+
+    static final java.util.concurrent.ConcurrentHashMap<Key, Miss> missed = new java.util.concurrent.ConcurrentHashMap<>();
+
+    public static Item findMiss(ScriptManager m, String name, boolean defaultsToBase) throws Exception {
+        if (keptGuard.on) return findKept(m, name, defaultsToBase); // kept keeps misses too; one memo wins
+        Key k = new Key(name, defaultsToBase);
+        for (;;) {
+            Miss e = missed.get(k);
+            long g = gen;
+            if (e != null) {
+                if (e.gen == g) return e.item == MISS ? null : (Item) e.item;
+                missed.remove(k, e); // a reload dropped the memory: look again
+            }
+            Item item = findOnce(m, name, defaultsToBase);
+            if (item == null && gen == g) missed.put(k, new Miss(g, MISS));
+            return item;
+        }
+    }
+
     @Patch(className = "zombie.scripting.ScriptManager", methodName = "FindItem", strictMatch = true)
     public static class FindItemOnce {
         @Patch.OnEnter(skipOn = true)
@@ -117,7 +150,8 @@ public final class ScriptPatches {
                                     @Patch.Local("r") Item r) {
             if (!onceGuard.on) return false;
             try {
-                r = keptGuard.on ? findKept((ScriptManager) self, name, defaultsToBase)
+                r = missGuard.on ? findMiss((ScriptManager) self, name, defaultsToBase)
+                        : keptGuard.on ? findKept((ScriptManager) self, name, defaultsToBase)
                         : findOnce((ScriptManager) self, name, defaultsToBase);
                 return true;
             } catch (Throwable t) {
