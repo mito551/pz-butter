@@ -9,6 +9,7 @@ final class GpuTest {
         catch (Exception | Error e) { throw e; }
         catch (Throwable t) { throw new Exception(t); }
         bindCache();
+        uniformCache();
     }
 
     static void runAll() throws Throwable {
@@ -1022,5 +1023,32 @@ final class GpuTest {
         Settings.load(SelfTest.write("enabled=true\n"));
         GpuPatches.initBindCache();
         assert !GpuPatches.bcGuard.on : "defaults restored";
+    }
+
+    // ---- uniformCache: 1f/1i uniforms already on the program skip their upload; a program bind clears it ----
+
+    static void uniformCache() throws Exception {
+        Settings.load(SelfTest.write("enabled=true\n"));
+        GpuPatches.initUc();
+        assert !GpuPatches.ucGuard.on : "uniformCache defaults off";
+
+        Settings.load(SelfTest.write("enabled=true\nuniformCache=true\n"));
+        GpuPatches.initUc();
+        assert GpuPatches.ucGuard.on : "template turns the guard on";
+
+        GpuPatches.ucClear();
+        assert !GpuPatches.ucSame(7, 0.5f, true) : "first 1f uploads";
+        GpuPatches.ucThrough(7, 0.5f, true);
+        assert GpuPatches.ucSame(7, 0.5f, true) : "same 1f skips";
+        assert !GpuPatches.ucSame(7, 0.25f, true) : "a change uploads";
+        assert !GpuPatches.ucSame(7, 3, false) : "1i has its own entry";
+        GpuPatches.ucThrough(7, 3, false);
+        assert GpuPatches.ucSame(7, 3, false) : "same 1i skips";
+        GpuPatches.ucUse();
+        assert !GpuPatches.ucSame(7, 0.25f, true) : "a program bind clears the cache";
+
+        Settings.load(SelfTest.write("enabled=true\n"));
+        GpuPatches.initUc();
+        assert !GpuPatches.ucGuard.on : "defaults restored";
     }
 }

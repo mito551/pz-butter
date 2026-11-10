@@ -564,4 +564,114 @@ public final class GpuPatches {
             }
         }
     }
+
+    // ---- uniformCache: 1f/1i uniforms already on the program skip their upload; a program bind clears it ----
+
+    public static final Guard ucGuard = new Guard("uniformCache");
+
+    static void initUc() {
+        try {
+            ucGuard.on = Settings.flag("uniformCache");
+            if (!ucGuard.on) ucClear();
+        } catch (Throwable t) {
+            ucGuard.fail(t);
+        }
+    }
+
+    static final java.util.HashMap<Integer, Long> ucF = new java.util.HashMap<>();
+    static final java.util.HashMap<Integer, Long> ucI = new java.util.HashMap<>();
+
+    static void ucClear() {
+        ucF.clear();
+        ucI.clear();
+    }
+
+    /** The glUseProgram advice face: the cache means the CURRENT program only. */
+    public static void ucUse() {
+        if (!ucGuard.on) return;
+        try {
+            ucClear();
+        } catch (Throwable t) {
+            ucGuard.fail(t);
+        }
+    }
+
+    /** True when the exact same value is already uploaded at that location. kind: true = 1f, false = 1i. */
+    public static boolean ucSame(int location, float v, boolean kind) {
+        if (!ucGuard.on) return false;
+        try {
+            java.util.HashMap<Integer, Long> m = kind ? ucF : ucI;
+            long raw = kind ? (long) Float.floatToRawIntBits(v) : (long) v;
+            Long cur = m.get(location);
+            return cur != null && cur.longValue() == raw;
+        } catch (Throwable t) {
+            ucGuard.fail(t);
+            return false;
+        }
+    }
+
+    public static void ucThrough(int location, float v, boolean kind) {
+        if (!ucGuard.on) return;
+        try {
+            (kind ? ucF : ucI).put(location, kind ? (long) Float.floatToRawIntBits(v) : (long) v);
+        } catch (Throwable t) {
+            ucGuard.fail(t);
+        }
+    }
+
+    @Patch(className = "org.lwjgl.opengl.GL20", methodName = "glUseProgram")
+    public static class UcUse {
+        @Patch.OnEnter
+        public static void enter(@Patch.Argument(0) int program) {
+            ucUse();
+        }
+    }
+
+    // the ShaderUniformSetter.invoke advice reads the private slots through cached Fields
+    static java.lang.reflect.Field ucLocation, ucType, ucF1, ucI1;
+
+    static synchronized void ucReflect() throws Exception {
+        if (ucLocation != null) return;
+        Class<?> c = zombie.core.opengl.ShaderUniformSetter.class;
+        ucLocation = c.getDeclaredField("location");
+        ucType = c.getDeclaredField("type");
+        ucF1 = c.getDeclaredField("f1");
+        ucI1 = c.getDeclaredField("i1");
+        for (java.lang.reflect.Field f : new java.lang.reflect.Field[] {ucLocation, ucType, ucF1, ucI1}) f.setAccessible(true);
+    }
+
+    /**
+     * The invoke advice face: true = skip the stock body (a 1f/1i already on the program); anything else stocks it.
+     */
+    public static boolean ucInvoke(Object self) {
+        if (!ucGuard.on) return false;
+        try {
+            ucReflect();
+            int ord = ((Enum<?>) ucType.get(self)).ordinal(); // 1 = 1f, 2 = 1i (the game's tableswitch order)
+            if (ord == 1) {
+                int loc = ucLocation.getInt(self);
+                if (ucSame(loc, ucF1.getFloat(self), true)) return true;
+                ucThrough(loc, ucF1.getFloat(self), true);
+                return false;
+            }
+            if (ord == 2) {
+                int loc = ucLocation.getInt(self);
+                if (ucSame(loc, (float) ucI1.getInt(self), false)) return true;
+                ucThrough(loc, (float) ucI1.getInt(self), false);
+                return false;
+            }
+            return false;
+        } catch (Throwable t) {
+            ucGuard.fail(t);
+            return false;
+        }
+    }
+
+    @Patch(className = "zombie.core.opengl.ShaderUniformSetter", methodName = "invoke")
+    public static class UcInvoke {
+        @Patch.OnEnter(skipOn = true)
+        public static boolean enter(@Patch.This Object self) {
+            return ucInvoke(self);
+        }
+    }
 }

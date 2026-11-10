@@ -99,6 +99,7 @@ local KEYS = {
 	"scriptParserFast",
 	"shaderCache",
 	"skinnedUniformSkip",
+	"uniformCache",
 	"skipIdChecks",
 	"smartTextureRelease",
 	"soundZoneCache",
