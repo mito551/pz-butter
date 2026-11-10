@@ -2,5 +2,5 @@ name=PZ Butter fix: Long Term Preservation Extended (distribution index)
 id=PZButter_LongTermPreservationExtended_Index
 versionMin=42.21
 require=\ZombieBuddy,\LongTermPreservationExtended,\PZButter
-description=Load-after patch for Long Term Preservation Extended: uses PZ Butter's inverted distribution index so mirroring is O(hits) instead of O(tree) (LTPE-2); LTPE-1 is the standalone fallback.
+description=Superseded: changes nothing. Its index-based mirroring added oat seed and sheaf entries to bag lists that the original does not, and rebuilt its index on every call (as slow as the original). Use PZ Butter fix: Long Term Preservation Extended instead.
 loadModAfter=LongTermPreservationExtended,PZButter
