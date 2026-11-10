@@ -16,7 +16,7 @@ import zombie.iso.objects.IsoThumpable;
  * ends up with prior == current and no transition, exactly as a poll would have seen.
  */
 public final class Toggles {
-    private static final int CAP = 4096;
+    // ponytail: unbounded between drains; revisit only if a caller can stop draining.
     private static final Map<Object, Boolean> PENDING = new LinkedHashMap<>();
 
     private Toggles() {}
@@ -32,7 +32,7 @@ public final class Toggles {
         if (door == null) return;
         Boolean was = stateOf(door);
         synchronized (PENDING) {
-            if (PENDING.size() < CAP) PENDING.putIfAbsent(door, was);
+            PENDING.putIfAbsent(door, was);
         }
     }
 

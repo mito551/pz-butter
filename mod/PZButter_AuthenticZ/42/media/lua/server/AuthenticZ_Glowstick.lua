@@ -390,9 +390,8 @@ local function forEachGlowstickPlayer(callback)
 end
 
 local function updateGroundGlowsticks()
-    local processed = {}
-
     forEachGlowstickPlayer(function(player)
+        local processed = {}
         local px = math.floor(player:getX())
         local py = math.floor(player:getY())
         local pz = math.floor(player:getZ())

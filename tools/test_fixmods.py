@@ -1,3 +1,4 @@
+import hashlib
 import os
 import sys
 import tempfile
@@ -91,20 +92,43 @@ class OverrideFreshnessTest(unittest.TestCase):
             f.write(text)
         return d
 
+    def reviewed(self, mod, text):
+        p = os.path.join(mod, "upstream", "client", "XEG", "XEG_QuickAccess.lua.sha256")
+        os.makedirs(os.path.dirname(p))
+        with open(p, "w") as f:
+            f.write(hashlib.sha256(text.encode()).hexdigest() + "\n")
+
+    def override(self):
+        return make_mod(self.root, "PZButter_XensEnhancedGUI",
+                        "require=\\ZombieBuddy,\\XensEnhancedGUI\nloadModAfter=XensEnhancedGUI\n",
+                        {"client/XEG/XEG_QuickAccess.lua": "lineA\nlineB\n-- PZ Butter: edit\n"})
+
     def test_staleOverrideFlagged(self):
         self.target("lineA\nlineB\nnew upstream line\n")
-        d = make_mod(self.root, "PZButter_XensEnhancedGUI",
-                     "require=\\ZombieBuddy,\\XensEnhancedGUI\nloadModAfter=XensEnhancedGUI\n",
-                     {"client/XEG/XEG_QuickAccess.lua": "lineA\nlineB\n-- PZ Butter: edit\n"})
+        d = self.override()
+        self.reviewed(d, "lineA\nlineB\n")
         problems = [p for p in fixmods.check(d, install_root=self.install) if "stale" in p]
         self.assertEqual(len(problems), 1)
         self.assertIn("1 line(s) absent", problems[0])
 
+    def test_deletedUpstreamLineFlagged(self):
+        self.target("lineA\n")
+        d = self.override()
+        self.reviewed(d, "lineA\nlineB\n")
+        problems = [p for p in fixmods.check(d, install_root=self.install) if "stale" in p]
+        self.assertEqual(len(problems), 1, "upstream deletion was not detected")
+
+    def test_reorderedUpstreamLinesFlagged(self):
+        self.target("lineB\nlineA\n")
+        d = self.override()
+        self.reviewed(d, "lineA\nlineB\n")
+        problems = [p for p in fixmods.check(d, install_root=self.install) if "stale" in p]
+        self.assertEqual(len(problems), 1, "upstream reordering was not detected")
+
     def test_freshOverridePasses(self):
         self.target("lineA\nlineB\n")
-        d = make_mod(self.root, "PZButter_XensEnhancedGUI",
-                     "require=\\ZombieBuddy,\\XensEnhancedGUI\nloadModAfter=XensEnhancedGUI\n",
-                     {"client/XEG/XEG_QuickAccess.lua": "lineA\nlineB\n-- PZ Butter: edit\n"})
+        d = self.override()
+        self.reviewed(d, "lineA\nlineB\n")
         self.assertEqual(fixmods.check(d, install_root=self.install), [])
 
     def test_targetNotInstalledSkipped(self):

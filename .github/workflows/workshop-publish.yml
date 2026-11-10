@@ -199,6 +199,7 @@ jobs:
           "$STEAMCMD" +login "$STEAM_USERNAME" +workshop_build_item "$GITHUB_WORKSPACE/build/workshop/item.vdf" +quit 2>&1 | tee "$RUNNER_TEMP/upload.log"
           rc=${PIPESTATUS[0]}
           if [ "$rc" -ne 0 ]; then echo "::error::steamcmd exited $rc"; exit 1; fi
+          if grep -q "ERROR!" "$RUNNER_TEMP/upload.log"; then echo "::error::steamcmd reported a Workshop error"; exit 1; fi
           grep -q "Success" "$RUNNER_TEMP/upload.log" || { echo "::error::steamcmd did not report success (login token expired?)"; exit 1; }
 
       - name: Remember what was published

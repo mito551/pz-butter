@@ -14,6 +14,13 @@ final class CursorLatch {
     private static int next;
     private static volatile int seq;   // written last by the game thread, read first by the render thread
 
+    static final class Snapshot {
+        Object draw;
+        int x, y;
+    }
+    // ponytail: one render-thread snapshot avoids allocation; use fresh objects if snapshots ever need retaining.
+    private static final Snapshot FOUND = new Snapshot();
+
     private CursorLatch() {}
 
     static void init() {
@@ -32,22 +39,21 @@ final class CursorLatch {
         seq++;
     }
 
-    /** Render thread: the slot of frameNo's cursor, or -1. Re-checks seq after reading the slot so a torn read is dropped. */
-    static int find(long frameNo) {
-        if (frameNo < 0) return -1;
+    /** Render thread: a consistent snapshot, or null. Consume it before the next find; the object is reused. */
+    static Snapshot find(long frameNo) {
+        if (frameNo < 0) return null;
         int s0 = seq;
         for (int i = 0; i < N; i++) {
             if (frame[i] == frameNo) {
-                if (seq == s0) return i;
-                return -1;
+                Object d = draw[i];
+                int x = rx[i], y = ry[i];
+                if (seq != s0) return null;
+                FOUND.draw = d;
+                FOUND.x = x;
+                FOUND.y = y;
+                return FOUND;
             }
         }
-        return -1;
+        return null;
     }
-
-    static Object drawAt(int i) { return draw[i]; }
-
-    static int xAt(int i) { return rx[i]; }
-
-    static int yAt(int i) { return ry[i]; }
 }

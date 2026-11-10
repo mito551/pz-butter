@@ -4,18 +4,16 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 
-/** Thread-safe deduplicating buffer capped at {@link #CAP}. */
+/** Thread-safe deduplicating buffer; entries remain until drained. */
 public final class SeenBuffer<T> {
-    public static final int CAP = 4096;
-
+    // ponytail: unbounded between drains; revisit only if a caller can stop draining.
     private final LinkedHashSet<T> items = new LinkedHashSet<>();
 
     public SeenBuffer() {}
 
-    /** @return false if the item is null, already present, or the buffer is full. */
+    /** @return false if the item is null or already present. */
     public synchronized boolean add(T item) {
         if (item == null) return false;
-        if (items.size() >= CAP) return false;
         return items.add(item);
     }
 

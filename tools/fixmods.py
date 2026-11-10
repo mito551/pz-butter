@@ -12,6 +12,7 @@ check(mod_dir, packaged=False) -> list of problems (empty: the mod passes).
 CLI: fixmods.py [--install ROOT] [--packaged] MOD_DIR...  (prints problems, exit 1 if any)
      fixmods.py --shipped MOD_ROOT        (prints the PZButter_* folders not in MOD_ROOT/UNSHIPPED)
 """
+import hashlib
 import os
 import re
 import sys
@@ -22,8 +23,9 @@ GUARD = re.compile(r"^\s*if\s+not\s+\(?\s*PZButter\b.*\breturn\b", re.M)
 
 # Full-file overrides: fix mod id -> {override path under 42/media/lua/: target mod folder name}.
 # A copy drifts when the target mod updates its file (Plan 18 B-D8-9): the copy then silently
-# reverts those changes. With --install, check() reports any installed-target line absent from
-# the copy; a target that is not installed under --install is simply unchecked today.
+# reverts those changes. With --install, check() reports absent lines and compares the installed
+# file with upstream/<override>.sha256 so deletions and reordering are visible too. A target that
+# is not installed under --install is simply unchecked today.
 OVERRIDES = {"PZButter_XensEnhancedGUI": {"client/XEG/XEG_QuickAccess.lua": "XensEnhancedGUI"}}
 
 
@@ -79,6 +81,20 @@ def override_problems(mod_dir, mod_id, install_root):
             head = " | ".join(sorted(stale)[:3])
             problems.append("override %s is stale: installed %s has %d line(s) absent from the copy "
                             "(rebase the copy): %s" % (rel, target, len(stale), head))
+            continue
+        checksum_path = os.path.join(mod_dir, "upstream", *rel.split("/")) + ".sha256"
+        if not os.path.isfile(checksum_path):
+            problems.append("override %s has no reviewed upstream checksum" % rel)
+            continue
+        with open(checksum_path, encoding="ascii") as f:
+            expected = f.read().split()[0]
+        changed = False
+        for p in installed:
+            with open(p, "rb") as f:
+                changed |= hashlib.sha256(f.read()).hexdigest() != expected
+        if changed:
+            problems.append("override %s is stale: installed %s differs from the reviewed upstream "
+                            "(rebase the copy and checksum)" % (rel, target))
     return problems
 
 

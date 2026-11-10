@@ -61,6 +61,7 @@ final class DeliveryTest {
         probeUnavailableOff();
         vblankSecondsMargin();
         cursorRecordLookup();
+        cursorLookupDoesNotAliasReusedSlot();
         cursorNoRecordNoMove();
         aimHoldDelay();
         capNotSavedToOptions();
@@ -153,14 +154,22 @@ final class DeliveryTest {
         Object a = new Object(), b = new Object();
         CursorLatch.record(7, a, 100, 200);
         CursorLatch.record(8, b, 110, 205);
-        int i = CursorLatch.find(8);
-        assert i >= 0 && CursorLatch.drawAt(i) == b && CursorLatch.xAt(i) == 110 && CursorLatch.yAt(i) == 205;
-        assert CursorLatch.drawAt(CursorLatch.find(7)) == a;
+        CursorLatch.Snapshot cursor = CursorLatch.find(8);
+        assert cursor != null && cursor.draw == b && cursor.x == 110 && cursor.y == 205;
+        assert CursorLatch.find(7).draw == a;
+    }
+
+    static void cursorLookupDoesNotAliasReusedSlot() {
+        Object original = new Object();
+        CursorLatch.record(1000, original, 10, 20);
+        CursorLatch.Snapshot cursor = CursorLatch.find(1000);
+        for (int n = 1; n <= 8; n++) CursorLatch.record(1000 + n, new Object(), n, n);
+        assert cursor.draw == original && cursor.x == 10 && cursor.y == 20;
     }
 
     // no cursor drawn in that frame: nothing to move
     static void cursorNoRecordNoMove() {
-        assert CursorLatch.find(9) == -1 && CursorLatch.find(-1) == -1;
+        assert CursorLatch.find(9) == null && CursorLatch.find(-1) == null;
     }
 
     // aiming starts once the right button has been held aimHoldMs (stock: 150 ms)

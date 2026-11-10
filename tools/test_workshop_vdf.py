@@ -35,6 +35,26 @@ class VdfTest(unittest.TestCase):
 
 
 class WorkflowTest(unittest.TestCase):
+    def test_login_success_with_workshop_error_is_rejected(self):
+        workflow_path = os.path.join(HERE, "..", ".github", "workflows", "workshop-publish.yml")
+        with open(workflow_path) as f:
+            workflow = f.read()
+        block = workflow.split("      - name: Upload to the Workshop\n", 1)[1]
+        block = block.split("\n      - name:", 1)[0]
+        script = textwrap.dedent(block.split("        run: |\n", 1)[1])
+
+        root = tempfile.mkdtemp()
+        steamcmd = os.path.join(root, "steamcmd")
+        with open(steamcmd, "w") as f:
+            f.write("#!/bin/sh\nprintf 'Success\\nERROR! Failed to build item\\n'\n")
+        os.chmod(steamcmd, 0o755)
+        env = dict(os.environ, RUNNER_TEMP=root, HOME=os.path.join(root, "home"),
+                   GITHUB_WORKSPACE=root, STEAMCMD=steamcmd, STEAM_USERNAME="fixture",
+                   STEAM_CONFIG_VDF="Zml4dHVyZQ==")
+        result = subprocess.run(["bash", "-c", script], env=env, capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0,
+                            "a Workshop error after a successful login was accepted:\n" + result.stdout + result.stderr)
+
     def test_corrupt_zombiebuddy_download_is_rejected(self):
         workflow_path = os.path.join(HERE, "..", ".github", "workflows", "workshop-publish.yml")
         with open(workflow_path) as f:

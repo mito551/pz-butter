@@ -215,6 +215,7 @@ public final class GpuPstate {
         }
         long lastSamples = GpuTimer.samples;
         int stale = 0;
+        boolean staleRestored = false;
         while (!Thread.currentThread().isInterrupted() && guard.on) {
             try {
                 Thread.sleep(500);
@@ -231,8 +232,19 @@ public final class GpuPstate {
                 long sc = GpuTimer.samples;
                 if (sc == lastSamples) stale++; else { stale = 0; lastSamples = sc; }
                 if (stale >= 4) {
-                    // no new samples for 2 s (minimised window / long load): skip this poll, keep waiting for samples to resume
+                    // No new samples for 2 s: hand the card back to auto, but keep waiting for samples to resume.
+                    if (!staleRestored) {
+                        Path pp = powerPath;
+                        String orig = originalLevel;
+                        if (pp != null && orig != null) Files.writeString(pp, orig);
+                        staleRestored = true;
+                    }
                     continue;
+                }
+                if (staleRestored) {
+                    Path pp = powerPath;
+                    if (pp != null) Files.writeString(pp, "manual");
+                    staleRestored = false;
                 }
                 double gpu = GpuTimer.lastGpuMs;
                 if (gpu < 0) {

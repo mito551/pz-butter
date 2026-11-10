@@ -10,9 +10,12 @@ public final class Guard {
 
     public void fail(Throwable t) {
         try {
-            if (failures.incrementAndGet() >= 5 && on) {
-                on = false;
-                System.out.println("[PZButter] " + name + " off after repeated failures: " + t);
+            if (failures.incrementAndGet() >= 5) {
+                synchronized (this) {
+                    if (!on) return;
+                    on = false;
+                    System.out.println("[PZButter] " + name + " off after repeated failures: " + t);
+                }
             }
         } catch (Throwable ignored) { }
     }

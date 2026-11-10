@@ -236,14 +236,14 @@ public final class DeliveryPatches {
 
     private static void moveCursor() {
         try {
-            int i = CursorLatch.find(FrameStamps.renderFrameNo);
-            if (i < 0) return;
+            CursorLatch.Snapshot cursor = CursorLatch.find(FrameStamps.renderFrameNo);
+            if (cursor == null) return;
             GLFW.glfwGetCursorPos(Display.getWindow(), cursorX, cursorY);   // asks the window system: fresher than the event queue
             int nx = (int) cursorX[0];
             int ny = Core.getInstance().getScreenHeight() - (Display.getHeight() - (int) cursorY[0]) - 1;   // as Mouse.update
-            float dx = nx - CursorLatch.xAt(i), dy = ny - CursorLatch.yAt(i);
+            float dx = nx - cursor.x, dy = ny - cursor.y;
             if (dx == 0 && dy == 0) return;
-            TextureDraw d = (TextureDraw) CursorLatch.drawAt(i);
+            TextureDraw d = (TextureDraw) cursor.draw;
             d.x0 += dx; d.x1 += dx; d.x2 += dx; d.x3 += dx;
             d.y0 += dy; d.y1 += dy; d.y2 += dy; d.y3 += dy;
         } catch (Throwable t) { CursorLatch.guard.fail(t); }

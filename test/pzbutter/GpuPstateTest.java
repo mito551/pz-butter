@@ -18,6 +18,7 @@ final class GpuPstateTest {
         defaultsAndTemplate();
         findCardTest();
         gpuPstateStepsDownAfterFourLowPolls();
+        gpuPstateRestoresWhileStaleAndResumes();
         gpuPstateStopsOnStaleSamples();
         gpuPstateMeasuresButBakeIgnores();
     }
@@ -110,6 +111,42 @@ final class GpuPstateTest {
         }
         r = GpuPstate.step(cur, max, 6, 16.67, low);
         assert r[0] == 1 : "second step down on the 4th more low poll";
+    }
+
+    static void gpuPstateRestoresWhileStaleAndResumes() throws Exception {
+        Path root = Files.createTempDirectory("gpu-stale");
+        Path dev = root.resolve("card0/device");
+        Files.createDirectories(dev);
+        Files.writeString(dev.resolve("pp_dpm_sclk"), "0: 300Mhz\n1: 500Mhz*\n2: 800Mhz\n");
+        Path power = dev.resolve("power_dpm_force_performance_level");
+        Files.writeString(power, "auto\n");
+        Settings.load(SelfTest.write("enabled=true\ngpuPstate=true\n"));
+        GpuTimer.resetForTest();
+        GpuTimer.guard.on = true;
+        GpuTimer.lastGpuMs = 10;
+        GpuTimer.samples = 1;
+        GpuPstate.resetForTest();
+        try {
+            GpuPstate.init(root);
+            awaitPower(power, "manual", 1000);
+            awaitPower(power, "auto", 3000);
+            GpuTimer.samples++;
+            awaitPower(power, "manual", 1000);
+        } finally {
+            GpuPstate.restore();
+            GpuPstate.resetForTest();
+            GpuTimer.resetForTest();
+            delete(root.toFile());
+        }
+    }
+
+    private static void awaitPower(Path power, String expected, long timeoutMs) throws Exception {
+        long deadline = System.nanoTime() + timeoutMs * 1_000_000L;
+        while (System.nanoTime() < deadline) {
+            if (Files.readString(power).trim().equals(expected)) return;
+            Thread.sleep(50);
+        }
+        assert Files.readString(power).trim().equals(expected) : "expected " + expected + ", got " + Files.readString(power).trim();
     }
 
     static void gpuPstateStopsOnStaleSamples() {

@@ -69,7 +69,7 @@ end
 
 -- Mirror one source item (bare or Base.-qualified) into every items list that lists it.
 function D.mirror(sourceItem, targetItem)
-    buildIndex()
+    buildIndex(true)
     local lists = D.index[normName(sourceItem)] or {}
     local seen = {}
     for _, items in ipairs(lists) do
@@ -104,7 +104,7 @@ end
 -- Mirror several source->target pairs into every items list that contains any of them,
 -- raising a shared target to the maximum count among its sources, as LTPE-1 does.
 function D.mirrorAll(pairList)
-    buildIndex()
+    buildIndex(true)
     local uniqueLists = {}
     local listSeen = {}
     for _, p in ipairs(pairList or {}) do
