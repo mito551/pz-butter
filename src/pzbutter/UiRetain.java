@@ -38,6 +38,11 @@ import zombie.ui.UIManager;
  * recorded then. While a top-level render is open, everything it reads (Lua table reads, Java getters, item icons)
  * goes into that window's record, children included; the next frame re-reads all of it, and replays only when every
  * value is the same. Only the main thread; a window nested in another is part of the outer record.
+ *
+ * Known limit (Plan 18 B-D3-2): the read set sees table reads (KahluaTableImpl.rawget/rawset/iterator) and Java
+ * calls, not Lua upvalues — a render that draws from a file-level `local` changed elsewhere in Lua reads nothing
+ * new and replays stale state. No such vanilla render; a full Lua-hooking rewrite would close it (Plan 3c Task 6).
+ * shortcut: upvalues stay outside the read set; upgrade when a shipped mod window proves to hit it.
  */
 final class UiRetain {
     static final Guard guard = new Guard("uiRetained");
