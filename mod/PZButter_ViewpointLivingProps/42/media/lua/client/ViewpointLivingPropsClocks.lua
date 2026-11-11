@@ -120,7 +120,8 @@ local function onScreenCached(o, s, now)
         s.osVal = onScreen(o)
         s.osSeen = now
     end
-    return s.osVal ~= false
+    -- as the caller tests it: nil from sees() counts as not on screen, like the original
+    return s.osVal
 end
 
 local function near(o, r)
