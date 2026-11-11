@@ -500,6 +500,7 @@ final class LoadTest {
     static void stripCommentsMatchesStock() {
         ScriptComments.guard.on = true;
         java.nio.file.Path root = java.nio.file.Paths.get("/home/mitori/Sonic/SteamLibrary/steamapps/common/ProjectZomboid/projectzomboid/media/scripts");
+        if (!java.nio.file.Files.isDirectory(root)) { System.out.println("[test] stripComments vs stock: no game media here, skipped"); return; }   // CI has the jars only
         java.util.concurrent.atomic.AtomicInteger count = new java.util.concurrent.atomic.AtomicInteger();
         try (java.util.stream.Stream<java.nio.file.Path> w = java.nio.file.Files.walk(root)) {
             w.filter(p -> p.toString().endsWith(".txt")).forEach(p -> {
