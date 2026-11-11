@@ -37,6 +37,7 @@ public final class NetTest {
         check("other packet kept", !MpClientPatches.skipDrop(PacketTypes.PacketType.Equip, odd));
         check("null type kept", !MpClientPatches.skipDrop(null, odd));
         serverNioPool();
+        serverNioPoolCapacity();
     }
 
     /** serverNioPool: oversized packets' readers pool around instead of one ZomboidNetData per packet. */
@@ -78,6 +79,26 @@ public final class NetTest {
         zombie.network.ZomboidNetData off = ServerPatches.pooledBig(4096);
         check("guard off declines", off == null);
         check("guard off no recycle", !ServerPatches.nioRecycle(new zombie.network.ZomboidNetData(4096)));
+    }
+
+    /** R18S-B1: a pooled reader must never be smaller than the packet now asked for. */
+    static void serverNioPoolCapacity() {
+        ServerPatches.nioGuard.on = true;
+        try {
+            java.lang.reflect.Field f = ServerPatches.class.getDeclaredField("BIG_POOL");
+            f.setAccessible(true);
+            ((java.util.Collection<?>) f.get(null)).clear(); // serverNioPool()'s leftovers sit at BIG_CAP
+        } catch (ReflectiveOperationException e) {
+            throw new RuntimeException(e);
+        }
+        // the leftovers from serverNioPool() (4,096s and 8,192s) must not answer a 16,384-byte packet
+        zombie.network.ZomboidNetData big = ServerPatches.pooledBig(16384);
+        check("bigger ask gets a big enough reader", big != null && big.buffer.bb.capacity() >= 16384);
+        ServerPatches.nioRecycle(big);
+        zombie.network.ZomboidNetData again = ServerPatches.pooledBig(16384);
+        check("equal ask reuses the big reader", again == big);
+        zombie.network.ZomboidNetData small = ServerPatches.pooledBig(4096);
+        check("smaller ask never under-caps", small != null && small.buffer.bb.capacity() >= 4096);
     }
 
     private static void check(String what, boolean ok) {

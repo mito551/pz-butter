@@ -116,7 +116,13 @@ public final class ServerPatches {
     public static zombie.network.ZomboidNetData pooledBig(int n) {
         if (!nioGuard.on || n <= 2048) return null;
         try {
-            zombie.network.ZomboidNetData d = BIG_POOL.poll();
+            java.util.ArrayList<zombie.network.ZomboidNetData> spare = new java.util.ArrayList<>();
+            zombie.network.ZomboidNetData d;
+            while ((d = BIG_POOL.poll()) != null) {
+                if (d.buffer != null && d.buffer.bb != null && d.buffer.bb.capacity() >= n) break;
+                spare.add(d); // smaller buffer: back to the pool, it serves smaller asks
+            }
+            for (int i = spare.size() - 1; i >= 0; i--) BIG_POOL.add(spare.get(i));
             if (d == null) {
                 d = new zombie.network.ZomboidNetData(n);
                 backWithDirect(d, n);

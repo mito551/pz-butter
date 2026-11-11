@@ -9,6 +9,16 @@ if not PZButter then return end
 
 local stock = ISToolTipInv.render
 local cache = {} -- key -> { width, height }
+local lastBucket = nil
+
+-- The cache lives one 250 ms bucket: on a new bucket the whole table is swept (cleared IN PLACE),
+-- so old keys can never accumulate (PZButter.invTooltipCache stays a valid handle).
+local function sweep(b)
+    if b ~= lastBucket then
+        for k in pairs(cache) do cache[k] = nil end
+        lastBucket = b
+    end
+end
 
 local function key(item)
     local k = tostring(item)
@@ -18,7 +28,7 @@ local function key(item)
     if ok then k = k .. "|" .. v end
     ok, v = pcall(function() return tostring(item:getFavorite()) end)
     if ok then k = k .. "|" .. v end
-    return k .. "|" .. tostring(math.floor(Calendar.getInstance():getTimeInMillis() / 250))
+    return k
 end
 
 function ISToolTipInv:render()
@@ -30,7 +40,9 @@ function ISToolTipInv:render()
         end
 
         local item = self.item
-        local k = key(item)
+        local b = math.floor(Calendar.getInstance():getTimeInMillis() / 250)
+        sweep(b)
+        local k = key(item) .. "|" .. tostring(b)
         local hit = cache[k]
 
         local mx = getMouseX() + 24;
@@ -107,3 +119,5 @@ function ISToolTipInv:render()
         end
     end
 end
+
+PZButter.invTooltipCache = cache -- test/debug handle (the sweep clears the table in place)

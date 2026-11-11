@@ -21,6 +21,7 @@ public class ModelTest {
         characterMaskLookup();
         modelPathCache();
         animTransformPool();
+        matrixRecycledIdentity();
         animFolderMissing();
         animFolderScope();
         skinnedUniformSkip();
@@ -274,12 +275,27 @@ public class ModelTest {
         assert tr2.get(sstd) != null : "transforms sized";
         assert di2.get(sstd) == Boolean.TRUE : "dirty set";
         assert sk2.get(sstd) == sd : "skinnedTo stored";
-
         Settings.load(SelfTest.write("enabled=true\nanimTransformPool=true\n"));
         ModelPatches.initATP();
         assert ModelPatches.atpGuard.on : "template turns the guard on";
         Settings.load(SelfTest.write("enabled=true\n"));
         ModelPatches.initATP();
         assert !ModelPatches.atpGuard.on : "defaults restored";
+    }
+
+    /** R18S-B3: a recycled matrix must come back as a fresh identity, never with stale values. */
+    static void matrixRecycledIdentity() throws Exception {
+        Field poolF = ModelPatches.class.getDeclaredField("TRANSFORM_POOL");
+        poolF.setAccessible(true);
+        ((java.util.ArrayDeque<?>) poolF.get(null)).clear();
+        org.lwjgl.util.vector.Matrix4f m = ModelPatches.matrix();
+        m.m00 = 5f;
+        m.m01 = 7f;
+        m.m32 = 9f;
+        ModelPatches.freeMatrix(m);
+        org.lwjgl.util.vector.Matrix4f again = ModelPatches.matrix();
+        assert again == m : "recycled matrix identity";
+        assert again.m00 == 1f && again.m01 == 0f && again.m11 == 1f
+            && again.m32 == 0f && again.m33 == 1f : "recycled matrix reset to identity";
     }
 }

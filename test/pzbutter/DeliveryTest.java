@@ -443,6 +443,13 @@ final class DeliveryTest {
                 if (!isPublic(owner.replace('/', '.'), name, field)) bad.add(c.getSimpleName() + "." + mm.methodName() + " -> " + owner + "." + name);
             }));
         }
+        // R18S-B2: advice with OnEnter(skipOn=true) must return boolean — void cannot skip,
+        // the real transformation rejects it and the patch does not install.
+        for (java.lang.reflect.Method am : c.getDeclaredMethods()) {
+            me.zed_0xff.zombie_buddy.Patch.OnEnter on = am.getAnnotation(me.zed_0xff.zombie_buddy.Patch.OnEnter.class);
+            if (on != null && on.skipOn() && am.getReturnType() != boolean.class)
+                bad.add(c.getSimpleName() + "." + am.getName() + " skipOn advice must return boolean");
+        }
     }
 
     static boolean isPublic(String cls, String name, boolean field) {

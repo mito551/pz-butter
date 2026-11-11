@@ -72,7 +72,6 @@ local KEYS = {
 	"loaderCpuFixes",
 	"logDedupe",
 	"luaBreakpointSkip",
-	"luaRequireIndex",
 	"luaBudget",
 	"luaCallInvoker",
 	"luaFileWriteThrottle",

@@ -356,12 +356,14 @@ public final class ModelPatches {
     @Patch(className = "zombie.core.skinnedmodel.model.CharacterMask$Part", methodName = "count")
     public static class MaskCount {
         @Patch.OnEnter(skipOn = true)
-        public static void enter(@Patch.Local("r") Object r) {
-            if (!maskGuard.on) return;
+        public static boolean enter(@Patch.Local("r") Object r) {
+            if (!maskGuard.on) return false;
             try {
                 r = Integer.valueOf(count());
+                return true;
             } catch (Throwable t) {
                 maskGuard.fail(t);
+                return false;
             }
         }
 
@@ -374,13 +376,15 @@ public final class ModelPatches {
     @Patch(className = "zombie.core.skinnedmodel.model.CharacterMask$Part", methodName = "fromInt")
     public static class MaskFromInt {
         @Patch.OnEnter(skipOn = true)
-        public static void enter(@Patch.Argument(0) int i, @Patch.Local("r") Object r) {
-            if (!maskGuard.on) return;
+        public static boolean enter(@Patch.Argument(0) int i, @Patch.Local("r") Object r) {
+            if (!maskGuard.on) return false;
             try {
                 zombie.core.skinnedmodel.model.CharacterMask.Part p = fromInt(i);
                 if (p != null) r = p;
+                return true;
             } catch (Throwable t) {
                 maskGuard.fail(t);
+                return false;
             }
         }
 
@@ -470,7 +474,10 @@ public final class ModelPatches {
     public static org.lwjgl.util.vector.Matrix4f matrix() {
         synchronized (POOL_LOCK) {
             org.lwjgl.util.vector.Matrix4f m = TRANSFORM_POOL.pollFirst();
-            if (m != null) return m;
+            if (m != null) {
+                m.setIdentity(); // stock appends a fresh identity; a recycled one must not carry stale values
+                return m;
+            }
         }
         return new org.lwjgl.util.vector.Matrix4f();
     }
@@ -581,12 +588,14 @@ public final class ModelPatches {
     @Patch(className = "zombie.core.skinnedmodel.animation.AnimationPlayer", methodName = "initSkinningData")
     public static class AnimSkinning {
         @Patch.OnEnter(skipOn = true)
-        public static void enter(@Patch.This Object self) {
-            if (!atpGuard.on) return;
+        public static boolean enter(@Patch.This Object self) {
+            if (!atpGuard.on) return false;
             try {
                 initSkinning(self);
+                return true;
             } catch (Throwable t) {
                 atpGuard.fail(t);
+                return false;
             }
         }
     }
@@ -594,12 +603,14 @@ public final class ModelPatches {
     @Patch(className = "zombie.core.skinnedmodel.animation.AnimationPlayer$SkinTransformData", methodName = "setSkinnedTo")
     public static class SkinDataPool {
         @Patch.OnEnter(skipOn = true)
-        public static void enter(@Patch.This Object self, @Patch.Argument(0) zombie.core.skinnedmodel.model.SkinningData sd) {
-            if (!atpGuard.on) return;
+        public static boolean enter(@Patch.This Object self, @Patch.Argument(0) zombie.core.skinnedmodel.model.SkinningData sd) {
+            if (!atpGuard.on) return false;
             try {
                 setSkinnedPool(self, sd);
+                return true;
             } catch (Throwable t) {
                 atpGuard.fail(t);
+                return false;
             }
         }
     }

@@ -165,13 +165,15 @@ public final class CharacterTexPatches {
     @Patch(className = "zombie.characterTextures.CharacterSmartTexture", methodName = "setBlood")
     public static class SetBlood {
         @Patch.OnEnter(skipOn = true)
-        static void enter(@Patch.This CharacterSmartTexture self, @Patch.Argument(0) BloodBodyPartType part,
+        static boolean enter(@Patch.This CharacterSmartTexture self, @Patch.Argument(0) BloodBodyPartType part,
             @Patch.Argument(1) float intensity) {
-            if (!guard.on) return;
+            if (!guard.on) return false;
             try {
                 applySetBlood(self, part, intensity);
+                return true;
             } catch (Throwable t) {
                 guard.fail(t);
+                return false;
             }
         }
     }
@@ -179,13 +181,15 @@ public final class CharacterTexPatches {
     @Patch(className = "zombie.characterTextures.CharacterSmartTexture", methodName = "setDirt")
     public static class SetDirt {
         @Patch.OnEnter(skipOn = true)
-        static void enter(@Patch.This CharacterSmartTexture self, @Patch.Argument(0) BloodBodyPartType part,
+        static boolean enter(@Patch.This CharacterSmartTexture self, @Patch.Argument(0) BloodBodyPartType part,
             @Patch.Argument(1) float intensity) {
-            if (!guard.on) return;
+            if (!guard.on) return false;
             try {
                 applySetDirt(self, part, intensity);
+                return true;
             } catch (Throwable t) {
                 guard.fail(t);
+                return false;
             }
         }
     }
@@ -193,14 +197,16 @@ public final class CharacterTexPatches {
     @Patch(className = "zombie.characterTextures.ItemSmartTexture", methodName = "addBlood", strictMatch = true)
     public static class AddBlood {
         @Patch.OnEnter(skipOn = true)
-        static void enter(@Patch.This ItemSmartTexture self, @Patch.Argument(0) String texName,
+        static boolean enter(@Patch.This ItemSmartTexture self, @Patch.Argument(0) String texName,
             @Patch.Argument(1) BloodBodyPartType part, @Patch.Argument(2) float intensity,
             @Patch.Local("r") Object r) {
-            if (!guard.on) return;
+            if (!guard.on) return false;
             try {
                 r = applyAddBlood(self, texName, part, intensity);
+                return true;
             } catch (Throwable t) {
                 guard.fail(t);
+                return false;
             }
         }
 
@@ -213,14 +219,16 @@ public final class CharacterTexPatches {
     @Patch(className = "zombie.characterTextures.ItemSmartTexture", methodName = "addDirt", strictMatch = true)
     public static class AddDirt {
         @Patch.OnEnter(skipOn = true)
-        static void enter(@Patch.This ItemSmartTexture self, @Patch.Argument(0) String texName,
+        static boolean enter(@Patch.This ItemSmartTexture self, @Patch.Argument(0) String texName,
             @Patch.Argument(1) BloodBodyPartType part, @Patch.Argument(2) float intensity,
             @Patch.Local("r") Object r) {
-            if (!guard.on) return;
+            if (!guard.on) return false;
             try {
                 r = applyAddDirt(self, texName, part, intensity);
+                return true;
             } catch (Throwable t) {
                 guard.fail(t);
+                return false;
             }
         }
 
@@ -233,12 +241,14 @@ public final class CharacterTexPatches {
     @Patch(className = "zombie.characterTextures.ItemSmartTexture", methodName = "setBasicPatches")
     public static class SetBasicPatches {
         @Patch.OnEnter(skipOn = true)
-        static void enter(@Patch.This ItemSmartTexture self, @Patch.Argument(0) BloodBodyPartType part) {
-            if (!guard.on) return;
+        static boolean enter(@Patch.This ItemSmartTexture self, @Patch.Argument(0) BloodBodyPartType part) {
+            if (!guard.on) return false;
             try {
                 applySetBasicPatches(self, part);
+                return true;
             } catch (Throwable t) {
                 guard.fail(t);
+                return false;
             }
         }
     }
@@ -246,12 +256,14 @@ public final class CharacterTexPatches {
     @Patch(className = "zombie.characterTextures.ItemSmartTexture", methodName = "setDenimPatches")
     public static class SetDenimPatches {
         @Patch.OnEnter(skipOn = true)
-        static void enter(@Patch.This ItemSmartTexture self, @Patch.Argument(0) BloodBodyPartType part) {
-            if (!guard.on) return;
+        static boolean enter(@Patch.This ItemSmartTexture self, @Patch.Argument(0) BloodBodyPartType part) {
+            if (!guard.on) return false;
             try {
                 applySetDenimPatches(self, part);
+                return true;
             } catch (Throwable t) {
                 guard.fail(t);
+                return false;
             }
         }
     }
