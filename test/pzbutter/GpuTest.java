@@ -1015,6 +1015,7 @@ final class GpuTest {
         assert !GpuPatches.sameBind(34962, 6) : "a different buffer binds through";
         assert !GpuPatches.sameBind(34963, 5) : "targets are separate";
         GpuPatches.bindThrough(34963, 5);
+        assert !GpuPatches.sameBind(34963, 5) : "the element array binding is VAO state and never cached";
         GpuPatches.deleted(5);
         assert !GpuPatches.sameBind(34962, 5) && !GpuPatches.sameBind(34963, 5) : "a delete clears the name everywhere";
         GpuPatches.bindThrough(34962, 6);

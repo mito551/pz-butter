@@ -461,6 +461,10 @@ public final class GpuPatches {
 
     public static final Guard bcGuard = new Guard("glBufferBindCache");
 
+    /** GL_ELEMENT_ARRAY_BUFFER is part of the bound VAO's state: a VAO switch changes it without a bind call, so it is never cached
+     *  (a stale record skipped ImGui's index-buffer bind and the driver crashed in glDrawElementsBaseVertex). */
+    static final int ELEMENT_ARRAY = 0x8893;
+
     static final java.util.HashMap<Integer, Integer> bound = new java.util.HashMap<>();
 
     static void initBindCache() {
@@ -473,13 +477,13 @@ public final class GpuPatches {
     }
 
     public static boolean sameBind(int target, int buffer) {
-        if (!bcGuard.on) return false;
+        if (!bcGuard.on || target == ELEMENT_ARRAY) return false;
         Integer cur = bound.get(target);
         return cur != null && cur.intValue() == buffer;
     }
 
     public static void bindThrough(int target, int buffer) {
-        if (!bcGuard.on) return;
+        if (!bcGuard.on || target == ELEMENT_ARRAY) return;
         bound.put(target, buffer);
     }
 
