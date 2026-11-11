@@ -761,8 +761,12 @@ public final class Settings {
         "cutawayInvalidateChanged", "cutawayVisitPrefilter", "cutawayRadius", "cutawayFast",
         "edgeTestFast");
 
+    /** Verified revisions: both censuses ship in the jar, one per game build. */
+    static volatile java.util.Set<String> VERIFIED_REVISIONS =
+        java.util.Set.of("4a0e9546ec", "3d39148846");   // 42.21, 42.22
+
     private static boolean revisionVerified() {
-        try { return "4a0e9546ec".equals(Preload.gameRevision()); }
+        try { return VERIFIED_REVISIONS.contains(Preload.gameRevision()); }
         catch (Throwable t) { return false; }
     }
 

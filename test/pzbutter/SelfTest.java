@@ -22,6 +22,7 @@ public final class SelfTest {
         settingsDefaultsWritten();
         settingsRead();
         settingsGarbage();
+        revisionGatesOnKnownRevisions();
         setFromUiValid();
         setFromUiRejects();
         setFromUiUnknownKey();
@@ -134,6 +135,22 @@ public final class SelfTest {
         File d = tmp("dir.properties"); d.mkdirs();
         Settings.load(d);
         assert !Settings.enabled && !Settings.frameLog;
+    }
+
+    // the revision gate consults Settings.VERIFIED_REVISIONS: the 42.21 and 42.22 revisions are both
+    // verified in this source tree (both censuses ship), anything else keeps the gate closed.
+    static void revisionGatesOnKnownRevisions() {
+        java.util.Set<String> saved = Settings.VERIFIED_REVISIONS;
+        Settings.load(write("enabled=true\ntexCompress=true\n"));
+        try {
+            assert Settings.flag("texCompress") : "42.21 revision (the test jar) is verified";
+            Settings.VERIFIED_REVISIONS = java.util.Set.of();
+            assert !Settings.flag("texCompress") : "an unverified revision keeps the gate closed";
+            Settings.VERIFIED_REVISIONS = java.util.Set.of("4a0e9546ec", "3d39148846");
+            assert Settings.flag("texCompress") : "42.21 and 42.22 are both verified";
+        } finally {
+            Settings.VERIFIED_REVISIONS = saved;
+        }
     }
 
     static String read(File f) {
