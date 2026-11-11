@@ -77,6 +77,9 @@ jobs:
             echo "no signing secrets: the build is unsigned"
           fi
 
+      - name: Lua test runner
+        run: sudo apt-get install -y -qq luajit
+
       - name: Build and test
         run: |
           JDK="$JAVA_HOME" PZ_GAME="$RUNNER_TEMP/pz" ./build.sh || {

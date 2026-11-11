@@ -5,7 +5,7 @@
 [h1]PZ Butter[/h1]
 PZ Butter makes Project Zomboid Build 42 run smoother. It is one mod that covers the work of many performance mods: sound, lighting, wall cutaways, weather, zombie updates, vehicles, UI redraws, texture memory and loading. It works out of the box: subscribe, enable, play. Every feature has a switch in Options > Mods, and anything you switch off runs the way the game normally does.
 
-[h2]Vanilla vs PZ Optimization vs PZ Butter[/h2]
+[h2]How does it compare?[/h2]
 [table]
 [tr][th]Scene[/th][th]Metric[/th][th]Vanilla[/th][th]PZ Optimization[/th][th]PZ Butter[/th][/tr]
 [tr][td]S3 (town walk)[/td][td]p50 frame ms[/td][td]TBD[/td][td]TBD[/td][td]TBD[/td][/tr]
@@ -17,7 +17,7 @@ PZ Butter makes Project Zomboid Build 42 run smoother. It is one mod that covers
 [/table]
 [i]Test machine: Intel Core i7-8700K (6 cores, 12 threads) at 3.7 GHz, NVIDIA GeForce RTX 3080, 16 GB RAM, Fedora Linux, Project Zomboid Build 42.21, vanilla game with no other mods. Three runs per setting, median shown.[/i]
 
-[h2]Mechanics it covers[/h2]
+[h2]What does it address?[/h2]
 [list]
 [*] Sound: ambience and zombie sound updates, world-sound cleanup, hearing, audio limiter, FMOD slot-exhaustion crash
 [*] Lighting: light lookups, light switches, lighting thread rate, rebake budgets
@@ -33,7 +33,9 @@ PZ Butter makes Project Zomboid Build 42 run smoother. It is one mod that covers
 [*] Boot and loading: mod options loading
 [/list]
 
-[h2]Planned for the future[/h2]
+What it doesn't cover: JVM flags.
+
+[h2]What's next?[/h2]
 [list]
 [*] Project Viewpoint support (waiting for 0.1.7 public release)
 [*] A separate Lua speedup mod, if the research shows it works
@@ -49,10 +51,19 @@ PZ Butter makes Project Zomboid Build 42 run smoother. It is one mod that covers
 [*] The absolute fragmentation of optimization mods on the workshop. I have seen the xkcd comic, and yes, there are now 15 competing standards. I hope I offer enough reason for you to pick this one :)
 [/list]
 
+[h2]What mods does it speed up?[/h2]
+[h5][h5]
+[list]
+[*] I am feeling really iffy about allegations of stolen code in PZ_Optimization
+[*] I don't like that the two biggest / most well-known optimization mods currently require or suggest outside installation. Even if it's optional. Arguably ZombieBuddy requirement is the same, but at least if you already have it, then nothing extra is required for you.
+[*] I wanted to optimize the mods as well, as long as their authors are okay with that. Since Butter Frames already runs in Java, might as well move some of your favorite mods in there too, right?
+[*] The absolute fragmentation of optimization mods on the workshop. I have seen the xkcd comic, and yes, there are now 15 competing standards. I hope I offer enough reason for you to pick this one :)
+[/list]
+
 [h2]For mod authors[/h2]
 If PZ Butter covers or patches your mod and you want that support removed, tell me and I will remove it. If you want the optimized code for your mod to include in your own release, I will give it to you. Contact: comments on this page.
 
-[h2]Install[/h2]
+[h2]How do I install it?[/h2]
 [b]You only need ZombieBuddy.[/b] Nothing else to download, no extra programs, no files to copy.
 [list]
 [*] Project Zomboid Build 42.21 or later.

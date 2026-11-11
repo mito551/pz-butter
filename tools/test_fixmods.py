@@ -78,6 +78,35 @@ class PackageRulesTest(unittest.TestCase):
         self.assertEqual([os.path.basename(d) for d in fixmods.shipped(self.root)], ["PZButter_KI5"])
 
 
+
+    def test_shippedJarsIncludeCoreAndExcludeUnshipped(self):
+        core = os.path.join(self.root, "PZButter")
+        os.makedirs(os.path.join(core, "42", "media"))
+        make_mod(self.root, "PZButter_Ship", "")
+        make_mod(self.root, "PZButter_Lua", "")
+        make_mod(self.root, "PZButter_Skip", "")
+        with open(os.path.join(self.root, "UNSHIPPED"), "w") as f:
+            f.write("PZButter_Skip\n")
+        build = os.path.join(self.root, "build")
+        jars = [
+            ("PZButter", "42/media/java/common/PZButter.jar"),
+            ("PZButter_Ship", "42/media/java/client/Ship.jar"),
+            ("PZButter_Ship", "42.20/media/java/client/Ship.jar"),
+            ("PZButter_Skip", "42/media/java/client/Skip.jar"),
+        ]
+        for module, rel in jars:
+            path = os.path.join(build, module, rel)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "wb") as f:
+                f.write(b"jar")
+        os.makedirs(os.path.join(build, "PZButter_Lua", "42", "media", "lua"))
+
+        self.assertEqual([
+            os.path.join(build, "PZButter", "42/media/java/common/PZButter.jar"),
+            os.path.join(build, "PZButter_Ship", "42/media/java/client/Ship.jar"),
+            os.path.join(build, "PZButter_Ship", "42.20/media/java/client/Ship.jar"),
+        ], fixmods.shipped_jars(self.root, build))
+
 class OverrideFreshnessTest(unittest.TestCase):
     """Plan 18 B-D8-9: full-file overrides drift when the target mod updates its file."""
 
@@ -174,7 +203,6 @@ class AddModTest(unittest.TestCase):
         out = self.run_lib("remove_mod", block, "CD_Perf")
         self.assertEqual(out, "mods\n{\n    mod = CD_PerfX,\n    mod = PZButter,\n}\n")  # only the exact id
         self.assertEqual(self.run_lib("remove_mod", out, "CD_Perf"), out)  # not listed: unchanged
-
 
 if __name__ == "__main__":
     unittest.main()

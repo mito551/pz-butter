@@ -171,7 +171,27 @@ def shipped(mod_root):
     return [d for d in fix_mod_dirs(mod_root) if os.path.basename(d) not in skip]
 
 
+def shipped_jars(mod_root, build_root):
+    """JARs in the build output belonging to the core and shipped fix mods."""
+    modules = [os.path.join(mod_root, "PZButter")] + shipped(mod_root)
+    out = []
+    for d in modules:
+        built = os.path.join(build_root, os.path.basename(d))
+        for root, dirs, files in os.walk(built):
+            dirs.sort()
+            for name in sorted(files):
+                if name.endswith(".jar"):
+                    out.append(os.path.join(root, name))
+    return out
+
+
 def main(argv):
+    if argv[:1] == ["--shipped-jars"]:
+        if len(argv) != 3:
+            raise SystemExit("usage: fixmods.py --shipped-jars MOD_ROOT BUILD_ROOT")
+        for jar in shipped_jars(argv[1], argv[2]):
+            print(jar)
+        return
     if argv[:1] == ["--shipped"]:
         for d in shipped(argv[1]):
             print(d)
