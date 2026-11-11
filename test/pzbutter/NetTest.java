@@ -91,13 +91,17 @@ public final class NetTest {
         } catch (ReflectiveOperationException e) {
             throw new RuntimeException(e);
         }
-        // the leftovers from serverNioPool() (4,096s and 8,192s) must not answer a 16,384-byte packet
+        // A smaller recycled reader must not answer a larger request and must remain pooled.
+        zombie.network.ZomboidNetData seed4096 = new zombie.network.ZomboidNetData(4096);
+        check("seed 4096 pooled", ServerPatches.nioRecycle(seed4096));
         zombie.network.ZomboidNetData big = ServerPatches.pooledBig(16384);
+        check("smaller recycled buffer answered 16384 request", big != seed4096);
         check("bigger ask gets a big enough reader", big != null && big.buffer.bb.capacity() >= 16384);
         ServerPatches.nioRecycle(big);
         zombie.network.ZomboidNetData again = ServerPatches.pooledBig(16384);
         check("equal ask reuses the big reader", again == big);
         zombie.network.ZomboidNetData small = ServerPatches.pooledBig(4096);
+        check("non-fitting pooled buffer was dropped", small == seed4096);
         check("smaller ask never under-caps", small != null && small.buffer.bb.capacity() >= 4096);
     }
 
