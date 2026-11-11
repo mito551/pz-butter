@@ -1,6 +1,6 @@
 id=PZButter_TsarsLib
 name=PZ Butter: TsarsLib poll
-description=TsarsLib asks the server for its animation data every 100 ticks, forever. This asks once on the first tick and then at most every 5 minutes. Enabling this mod is its switch. Needs PZ Butter.
+description=TsarsLib counts every tick to poll the server for other players' animation state, which it only does on a multiplayer client. Outside a multiplayer client this takes that handler off OnTick; on a client it changes nothing. Enabling this mod is its switch. Needs PZ Butter.
 modversion=0.1
 versionMin=42.21
 require=\PZButter,\tsarslib

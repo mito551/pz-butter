@@ -65,29 +65,28 @@ assert(Damn.check(DAMN.Spawns, { getX = function() return 30 end, getY = functio
 assert(checks == 2, "stale index rebuilt after add")
 PZButter = savedPZButter
 
--- tsarRoutedOnce: Tsar.lua loads before the census finishes (as in the game); it takes the handler over at OnGameStart
+-- tsarslib: its OnTick handler only ever sends on a multiplayer client. Single player: taken off
+-- OnTick, nothing added, nothing requested. Multiplayer client: left exactly as it is.
 local requests = 0
 ModData = { request = function(name) requests = requests + 1 end }
 local tsarFn = function() end
 Stubs.setSource(tsarFn, "/mods/modA/tsarlibModDataRequest.lua", 9)
 Events.OnTick.Add(tsarFn)
-dofile(root .. "/mod/PZButter_TsarsLib/42/media/lua/client/PZButter_TsarsLib/Tsar.lua")
+local client = false
+function isClient() return client end
+local tsarFile = root .. "/mod/PZButter_TsarsLib/42/media/lua/client/PZButter_TsarsLib/Tsar.lua"
+dofile(tsarFile)
 assert(Stubs.count("OnTick", tsarFn) == 1, "Tsar.lua took the handler over before OnGameStart")
-for _, cb in ipairs(Events.OnGameStart.callbacks) do cb() end
-local tsar = PZButter.Tsar
-tsar.now = function() return now end
-assert(Stubs.count("OnTick", tsarFn) == 0, "original tsar handler was not routed away at OnGameStart")
-assert(tsar.minutes == 5, "the interval is a constant 5 min")
+local ticksBefore = #Events.OnTick.callbacks
+PZButter.Tsar.install()
+assert(Stubs.count("OnTick", tsarFn) == 0, "single player: the tsarslib handler was not taken off OnTick")
+assert(#Events.OnTick.callbacks == ticksBefore - 1, "single player: nothing may replace the handler")
+for _, fn in ipairs(Events.OnTick.callbacks) do fn() end
+assert(requests == 0, "single player: no request, as in the original")
 
-for _, fn in ipairs(Events.OnTick.callbacks) do fn() end
-assert(requests == 1, "first tick requests")
-for _, fn in ipairs(Events.OnTick.callbacks) do fn() end
-assert(requests == 1, "inside the interval no request")
-now = now + 5 * 60000 - 1
-for _, fn in ipairs(Events.OnTick.callbacks) do fn() end
-assert(requests == 1, "just before the interval no request")
-now = now + 1
-for _, fn in ipairs(Events.OnTick.callbacks) do fn() end
-assert(requests == 2, "interval elapsed: request")
+client = true
+Events.OnTick.Add(tsarFn)
+PZButter.Tsar.install()
+assert(Stubs.count("OnTick", tsarFn) == 1, "multiplayer client: the poll must stay")
 
 Stubs.realPrint("tsar_damn_test: ok")
