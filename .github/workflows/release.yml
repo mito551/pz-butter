@@ -15,9 +15,9 @@ jobs:
     runs-on: ubuntu-latest
     env:
       ZB_VERSION: v2.3.4
-      # 42.21 is no longer the newest build: 'unstable' now serves 42.22. Set PZ_SERVER_BETA to the Steam beta branch that still holds 42.21.
-      PZ_SERVER_BETA: unstable
-      PZ_SERVER_KEY: 42.21-unstable
+      # 42.21 is served by the Steam beta branch "42.21" of the dedicated server.
+      PZ_SERVER_BETA: "42.21"
+      PZ_SERVER_KEY: "42.21"
     steps:
       - uses: actions/checkout@v7
 
