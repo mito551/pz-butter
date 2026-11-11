@@ -820,6 +820,9 @@ public final class LuaPatches {
         java.lang.reflect.Method m = methodOf(mc);
         boolean stat = java.lang.reflect.Modifier.isStatic(m.getModifiers());
         java.lang.invoke.MethodHandle h = java.lang.invoke.MethodHandles.lookup().unreflect(m);
+        // a variable-arity method unreflects to a collector handle, which would pack the already-packed Lua arguments a second
+        // time (getText("UI_NMM_By", author) got the Object[] {author} as its argument); stock's Method.invoke is fixed arity
+        h = h.asFixedArity();
         h = h.asSpreader(Object[].class, m.getParameterTypes().length);
         Object owner = null;
         boolean hasSelf = false;
