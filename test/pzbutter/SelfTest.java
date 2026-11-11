@@ -43,6 +43,7 @@ public final class SelfTest {
         frameFailureDisables();   // last: it switches the clock off
         DeliveryTest.run();
         GuardTest.run();
+        ArgWritableTest.run();
         LuaBudgetTest.run();
         LuaUiTest.run();
         UiRetainTest.run();
