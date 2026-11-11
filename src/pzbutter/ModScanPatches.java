@@ -237,7 +237,7 @@ public final class ModScanPatches {
     @Patch(className = "zombie.gameStates.ChooseGameInfo$Mod", methodName = "addPack")
     public static class FloorPack {
         @Patch.OnEnter
-        public static void enter(@Patch.Argument(0) String name, @Patch.Argument(1) int flags) {
+        public static void enter(@Patch.Argument(0) String name, @Patch.Argument(value = 1, readOnly = false) int flags) {
             try {
                 if (ModScanPatches.floorSet(name, flags)) flags |= 4;
             } catch (Throwable t) {

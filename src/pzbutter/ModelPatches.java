@@ -48,7 +48,7 @@ public final class ModelPatches {
     @Patch(className = "zombie.core.skinnedmodel.model.ModelSlotRenderData", methodName = "initModelInst")
     public static class NullModel {
         @Patch.OnEnter
-        public static void enter(@Patch.Argument(0) ArrayList insts) {
+        public static void enter(@Patch.Argument(value = 0, readOnly = false) ArrayList insts) {
             if (!guard.on) return;
             try {
                 ArrayList filtered = ModelPatches.filterNullModels(insts);
@@ -173,7 +173,7 @@ public final class ModelPatches {
     public static class AnimScope {
         @Patch.OnEnter(skipOn = true)
         public static boolean enter(final @Patch.Argument(0) File root, @Patch.Argument(1) String rel,
-                @Patch.Argument(2) boolean recurse, @Patch.Argument(3) zombie.ZomboidFileSystem.IWalkFilesVisitor visitor) {
+                @Patch.Argument(2) boolean recurse, @Patch.Argument(value = 3, readOnly = false) zombie.ZomboidFileSystem.IWalkFilesVisitor visitor) {
             if (!scopeGuard.on) return false;
             try {
                 Object w = ModelPatches.animScopeVisit(root, rel, recurse, visitor);
