@@ -508,7 +508,7 @@ final class ZombieTest {
             // with NaN scores (equal to everything) the game's TimSort may itself reject the comparator: then ours must reject it the same way
             // and leave the array in the same half-sorted state, since the comparison sequence is the same
             String stockEnd = null, fastEnd = null;
-            try { new zombie.entity.util.TimSort<Object>().doSort(a, (x, y) -> CullSort.compareScores(sc.get(x), sc.get(y)), lo, hi); }
+            try { stockSort(a, (x, y) -> CullSort.compareScores(sc.get(x), sc.get(y)), lo, hi); }
             catch (IllegalArgumentException e) { stockEnd = e.getMessage(); threw++; }
             int[] calls = {0};
             CullSort.Memo fast = new CullSort.Memo();
@@ -521,6 +521,26 @@ final class ZombieTest {
             assert java.util.Arrays.equals(a, b) && calls[0] <= hi - lo && (fastEnd != null || hi - lo < 2 || calls[0] == hi - lo) : run;
         }
         assert threw > 0 && threw < 300 : threw;                                           // both the accepted and the rejected case ran
+    }
+
+    /** The game's own sort of the cull list: 42.21 and the early 42.22 build used zombie.entity.util.TimSort, later builds List.sort (the JDK's TimSort). */
+    static void stockSort(Object[] a, java.util.Comparator<Object> c, int lo, int hi) {
+        Class<?> ts;
+        try {
+            ts = Class.forName("zombie.entity.util.TimSort");
+        } catch (ClassNotFoundException e) {
+            java.util.Arrays.sort(a, lo, hi, c);
+            return;
+        }
+        try {
+            ts.getMethod("doSort", Object[].class, java.util.Comparator.class, int.class, int.class)
+                .invoke(ts.getDeclaredConstructor().newInstance(), a, c, lo, hi);
+        } catch (java.lang.reflect.InvocationTargetException e) {
+            if (e.getCause() instanceof RuntimeException r) throw r;
+            throw new AssertionError(e.getCause());
+        } catch (ReflectiveOperationException e) {
+            throw new AssertionError(e);
+        }
     }
 
     static void cullSortCompareArithmetic() {

@@ -321,7 +321,7 @@ public final class CellSpread {
         public int maxLevel(Object chunk) { return ((zombie.iso.IsoChunk) chunk).maxLevel; }
         public void ensureAt(int x, int y, int level) {
             zombie.iso.IsoGridSquare sq = zombie.network.ServerMap.instance.getGridSquare(x, y, level);
-            if (sq != null && !sq.getObjects().isEmpty())
+            if (sq != null && !GridObjects.isEmpty(GridObjects.of(sq)))
                 zombie.iso.IsoWorld.instance.currentCell.EnsureSurroundNotNull(sq.x, sq.y, level);
         }
         public void borderRecalcAt(int x, int y, int level) {

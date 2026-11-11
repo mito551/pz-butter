@@ -93,8 +93,9 @@ final class SoundFixes {
                     for (int x = map.getWorldXMinTiles(); x <= map.getWorldXMaxTiles(); x++) {
                         IsoGridSquare sq = cell.getGridSquare(x, y, z);
                         if (sq == null) continue;
-                        for (int i = 0; i < sq.getObjects().size(); i++) {
-                            IsoObject o = sq.getObjects().get(i);
+                        Object objs = GridObjects.of(sq);   // PZArrayList or a plain List, depending on the game build
+                        for (int i = 0; i < GridObjects.size(objs); i++) {
+                            IsoObject o = (IsoObject) GridObjects.get(objs, i);
                             o.checkHaveElectricity();
                         }
                     }

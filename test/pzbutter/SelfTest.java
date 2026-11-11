@@ -45,6 +45,8 @@ public final class SelfTest {
         DeliveryTest.run();
         GuardTest.run();
         ArgWritableTest.run();
+        GridObjectsTest.run();
+        GameFieldsTest.run();
         LuaBudgetTest.run();
         LuaUiTest.run();
         UiRetainTest.run();

@@ -197,9 +197,9 @@ final class ChunkTrees {
         for (int k = 0; k < 2; k++) {
             IsoGridSquare sq = k == 0 ? c.getGridSquare(0, 7, 0) : c.getGridSquare(7, 0, 0);
             if (sq == null) continue;
-            var objs = sq.getObjects();
-            for (int i = 0; i < objs.size(); i++) {
-                if (!(objs.get(i) instanceof IsoTree t)) continue;
+            Object objs = GridObjects.of(sq);   // PZArrayList or a plain List, depending on the game build
+            for (int i = 0; i < GridObjects.size(objs); i++) {
+                if (!(GridObjects.get(objs, i) instanceof IsoTree t)) continue;
                 IsoGridSquare rs = renderSquare.apply(t);
                 if (rs == null || rs.chunk == null || rs.chunk == c) continue;
                 if (f == null) f = new Follow();

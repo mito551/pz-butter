@@ -318,9 +318,11 @@ public final class ChunkPatches {
 
     private static void pzaFields() throws Exception {
         if (pzaElements != null) return;
-        pzaElements = zombie.util.list.PZArrayList.class.getDeclaredField("elements");
+        // by name: later 42.22 builds have no PZArrayList (the patch below then matches nothing and this is never reached)
+        Class<?> pza = Class.forName("zombie.util.list.PZArrayList");
+        pzaElements = pza.getDeclaredField("elements");
         pzaElements.setAccessible(true);
-        pzaNum = zombie.util.list.PZArrayList.class.getDeclaredField("numElements");
+        pzaNum = pza.getDeclaredField("numElements");
         pzaNum.setAccessible(true);
     }
 
@@ -390,7 +392,7 @@ public final class ChunkPatches {
         if (!hotLoopsGuard.on) return null;
         hotFields();
         java.util.List<?> list = (java.util.List<?>) fStencilAreas.get(cell);
-        int tileScale = zombie.core.Core.tileScale;
+        int tileScale = GameFields.tileScale();   // read at run time: a live field on some builds, a constant on others
         for (int i = 0, n = list.size(); i < n; i++) {
             zombie.iso.IsoCell.StencilArea sa = (zombie.iso.IsoCell.StencilArea) list.get(i);
             if (x + 32.0f * tileScale > sa.stencilX1()

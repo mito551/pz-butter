@@ -1294,11 +1294,22 @@ final class ChunkTest {
         Settings.load(SelfTest.write("enabled=true\n"));
         ChunkPatches.initFboChunkMisc();
         check("fboChunkMisc defaults off", !ChunkPatches.fboGuard.on);
-        zombie.util.list.PZArrayList<Object> list = new zombie.util.list.PZArrayList<>(Object.class, 8);
-        list.add("x");
-        list.add("z");
+        // PZArrayList is in the early 42.x builds only; later 42.22 builds use a plain List, and the patch has nothing to match there
+        Class<?> pza;
+        try {
+            pza = Class.forName("zombie.util.list.PZArrayList");
+        } catch (ClassNotFoundException e) {
+            System.out.println("[test] fboChunkMisc: this game build has no PZArrayList, the contains patch is skipped");
+            return;
+        }
+        java.lang.reflect.Method add = pza.getMethod("add", Object.class);
+        java.lang.reflect.Method has = pza.getMethod("contains", Object.class);
+        java.lang.reflect.Constructor<?> ctor = pza.getConstructor(Class.class, int.class);
+        Object list = ctor.newInstance(Object.class, 8);
+        add.invoke(list, "x");
+        add.invoke(list, "z");
         check("guard off: core declines", ChunkPatches.containsFast(list, "x") == null);
-        check("guard off: stock still answers", list.contains("x"));
+        check("guard off: stock still answers", (Boolean) has.invoke(list, "x"));
 
         Settings.load(SelfTest.write("enabled=true\nfboChunkMisc=true\n"));
         ChunkPatches.initFboChunkMisc();
@@ -1306,19 +1317,19 @@ final class ChunkTest {
         String a1 = new StringBuilder("a").toString();
         String a2 = new StringBuilder("a").toString();
         check("distinct refs, equal value", a1 != a2 && a1.equals(a2));
-        zombie.util.list.PZArrayList<Object> mix = new zombie.util.list.PZArrayList<>(Object.class, 4);
-        mix.add(null);
-        mix.add(a1);
-        mix.add(new Eq(7));
-        mix.add("m");
-        zombie.util.list.PZArrayList<Object> empty = new zombie.util.list.PZArrayList<>(Object.class, 4);
+        Object mix = ctor.newInstance(Object.class, 4);
+        add.invoke(mix, (Object) null);
+        add.invoke(mix, a1);
+        add.invoke(mix, new Eq(7));
+        add.invoke(mix, "m");
+        Object empty = ctor.newInstance(Object.class, 4);
         Object[] probes = {null, a2, new Eq(7), "m", "x", "q", new Object()};
         for (Object p : probes) {
-            check("empty list matches stock for " + p, ChunkPatches.containsFast(empty, p) == Boolean.FALSE && !empty.contains(p));
+            check("empty list matches stock for " + p, ChunkPatches.containsFast(empty, p) == Boolean.FALSE && !(Boolean) has.invoke(empty, p));
             check("containsFast matches stock for " + p, ChunkPatches.containsFast(mix, p) != null
-                && (Boolean) ChunkPatches.containsFast(mix, p) == mix.contains(p));
+                && (Boolean) ChunkPatches.containsFast(mix, p) == (Boolean) has.invoke(mix, p));
         }
-        check("bound: null answer stops at numElements", !ChunkPatches.containsFast(list, null) && !list.contains(null));
+        check("bound: null answer stops at numElements", !ChunkPatches.containsFast(list, null) && !(Boolean) has.invoke(list, (Object) null));
         check("hit inside the bound still answers", ChunkPatches.containsFast(list, "z") == Boolean.TRUE);
     }
 

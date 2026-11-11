@@ -606,7 +606,7 @@ final class BakeHold {
             if (rc == before && rc != null) {   // the stock preamble, offsets 0-116
                 ((FBORenderChunkManager) mgr).renderChunk = rc;
                 xoffH.set(mgr, rc.w / 2f);
-                yoffH.set(mgr, yoff(rc.getMinLevel(), rc.getTopLevel(), FBORenderChunk.PIXELS_PER_LEVEL,
+                yoffH.set(mgr, yoff(rc.getMinLevel(), rc.getTopLevel(), GameFields.pixelsPerLevel(),
                                     FBORenderLevels.extraHeightForJumboTrees(rc.getMinLevel(), rc.getTopLevel())));
                 return true;
             }

@@ -6,7 +6,6 @@ import zombie.iso.IsoObject;
 import zombie.iso.SpriteDetails.IsoFlagType;
 import zombie.iso.objects.GridSquareEdgeFacingDirection;
 import zombie.iso.objects.IsoWindow;
-import zombie.util.list.PZArrayList;
 
 /** Plan 6 edgeTestFast: hand-written isBlockedTo. The choices (sign-pattern table, shared neighbours, lambda leaves) are recorded in the Plan 6 progress ledger. */
 final class EdgeTest {
@@ -40,20 +39,22 @@ final class EdgeTest {
         sq.hasProperty(dir == GridSquareEdgeFacingDirection.NORTH_SOUTH ? IsoFlagType.collideN : IsoFlagType.collideW)
             && !sq.isWindow(dir);
 
+    // the object list is read through GridObjects: PZArrayList (backing array) on the early builds, a plain List on later ones
     private static final Facing WINDOW = (sq, dir) -> {
-        PZArrayList<IsoObject> objs = sq.getObjects();
-        Object[] a = objs.getElements();
-        for (int i = 0, n = objs.size(); i < n; i++) {
-            if (a[i] instanceof IsoWindow w && w.isBlocked(dir)) return true;
+        Object objs = GridObjects.of(sq);
+        Object[] a = GridObjects.hasElements() ? GridObjects.elements(objs) : null;
+        for (int i = 0, n = GridObjects.size(objs); i < n; i++) {
+            Object o = a != null ? a[i] : GridObjects.get(objs, i);
+            if (o instanceof IsoWindow w && w.isBlocked(dir)) return true;
         }
         return false;
     };
 
     private static final Facing DOOR = (sq, dir) -> {
-        PZArrayList<IsoObject> objs = sq.getObjects();
-        Object[] a = objs.getElements();
-        for (int i = 0, n = objs.size(); i < n; i++) {
-            if (IsoGridSquare.isBlockedDoor((IsoObject) a[i], dir)) return true;
+        Object objs = GridObjects.of(sq);
+        Object[] a = GridObjects.hasElements() ? GridObjects.elements(objs) : null;
+        for (int i = 0, n = GridObjects.size(objs); i < n; i++) {
+            if (IsoGridSquare.isBlockedDoor((IsoObject) (a != null ? a[i] : GridObjects.get(objs, i)), dir)) return true;
         }
         return false;
     };
