@@ -37,7 +37,7 @@ public class Main {
         LuaBudget.init();
         LuaFast.init();
         LuaTiming.init();
-        HitchSampler.init(); ServerTick.init(); CellSpread.init(); NetStats.init();
+        HitchSampler.init(); ServerTick.init(); CellSpread.init(); NetStats.init(); ServerPatches.initNioPool();
         StallProbe.init();
         LuaGate.init();
         LuaPatches.initPoolPut();

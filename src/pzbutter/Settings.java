@@ -562,6 +562,8 @@ public final class Settings {
 + "modScanWalk=false\n"
 + "# serverCellSpread (server): spread a cell's second-stage load over ticks inside a per-tick budget (at least one chunk per tick); keeps a 120 ms floor near a player.\n"
 + "serverCellSpread=false\n"
++ "# serverNioPool (server): oversized network packets (>2048 bytes) come back around in a small pool of direct buffers instead of one allocation per packet; the game's own pool covers the common sizes already.\n"
++ "serverNioPool=false\n"
 + "#\n"
 + "# Remote vehicles (Plan 15 Task 8, covers SmoothRide). vehicleSendMs: driver physics send period, 16-150, 150 = stock. vehicleRemoteSmooth: buffer and draw other players' cars smoothly.\n"
 + "vehicleSendMs=150\n"

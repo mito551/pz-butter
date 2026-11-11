@@ -36,6 +36,48 @@ public final class NetTest {
         check("null args skipped", MpClientPatches.skipDrop(drop, null));
         check("other packet kept", !MpClientPatches.skipDrop(PacketTypes.PacketType.Equip, odd));
         check("null type kept", !MpClientPatches.skipDrop(null, odd));
+        serverNioPool();
+    }
+
+    /** serverNioPool: oversized packets' readers pool around instead of one ZomboidNetData per packet. */
+    static void serverNioPool() throws Exception {
+        // Server-side key: Settings.flag side-gates it off on a client JVM, so the pool core is exercised with the
+        // guard set directly (the Side.SERVER list membership is pinned in SideTests/Settings template).
+        Settings.load(SelfTest.write("enabled=true\nserverNioPool=true\n"));
+        ServerPatches.initNioPool();
+        ServerPatches.nioGuard.on = true;
+
+        zombie.network.ZomboidNetData first = ServerPatches.pooledBig(4096);
+        check("oversized packet answered", first != null);
+        check("buffer is direct off-heap", first.buffer != null && first.buffer.bb != null && first.buffer.bb.isDirect());
+        check("capacity kept", first.buffer.bb.capacity() == 4096);
+        first.type = null;
+
+        // discard recycles every non-stock capacity.
+        ServerPatches.nioRecycle(first);
+        zombie.network.ZomboidNetData second = ServerPatches.pooledBig(4096);
+        check("recycled buffer reused", second == first);
+
+        // stock-sized packets belong the game's own pool.
+        zombie.network.ZomboidNetData small = new zombie.network.ZomboidNetData(2048);
+        check("stock capacity not ours", !ServerPatches.nioRecycle(small));
+        check("small not pooled", ServerPatches.pooledBig(2048) == null);
+
+        ServerPatches.nioRecycle(second);
+        check("pool bounded", ServerPatches.bigPoolCount() <= ServerPatches.BIG_CAP);
+        for (int i = 0; i < 80; i++) {
+            zombie.network.ZomboidNetData d = new zombie.network.ZomboidNetData(8192);
+            ServerPatches.nioRecycle(d);
+        }
+        check("pool cap honoured", ServerPatches.bigPoolCount() <= ServerPatches.BIG_CAP);
+
+        // guard off: stock behaviour (fresh allocation each ask, no recycling).
+        Settings.load(SelfTest.write("enabled=true\n"));
+        ServerPatches.initNioPool();
+        check("defaults off", !ServerPatches.nioGuard.on);
+        zombie.network.ZomboidNetData off = ServerPatches.pooledBig(4096);
+        check("guard off declines", off == null);
+        check("guard off no recycle", !ServerPatches.nioRecycle(new zombie.network.ZomboidNetData(4096)));
     }
 
     private static void check(String what, boolean ok) {
