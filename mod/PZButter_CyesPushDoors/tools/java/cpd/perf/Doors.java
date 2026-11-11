@@ -18,6 +18,30 @@ import zombie.iso.objects.IsoThumpable;
 public final class Doors {
     private Doors() {}
 
+    // getObjects() returns PZArrayList on some game builds and a plain List on others; a direct call is bound to one descriptor,
+    // so it is resolved by name when the class loads.
+    private static final java.lang.invoke.MethodHandle OBJECTS = objectsHandle();
+
+    private static java.lang.invoke.MethodHandle objectsHandle() {
+        try {
+            return java.lang.invoke.MethodHandles.lookup().unreflect(IsoGridSquare.class.getMethod("getObjects"))
+                .asType(java.lang.invoke.MethodType.methodType(Object.class, IsoGridSquare.class));
+        } catch (ReflectiveOperationException e) {
+            throw new ExceptionInInitializerError(e);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<IsoObject> objectsOf(IsoGridSquare square) {
+        try {
+            return (List<IsoObject>) (Object) OBJECTS.invokeExact(square);
+        } catch (RuntimeException | Error e) {
+            throw e;
+        } catch (Throwable t) {
+            throw new IllegalStateException(t);
+        }
+    }
+
     /** Same test as CyesPushDoors.isSupportedDoor. */
     static boolean isSupportedDoor(IsoObject object) {
         if (object instanceof IsoDoor) return true;
@@ -45,7 +69,7 @@ public final class Doors {
             for (int sy = py - radius; sy <= py + radius; sy++) {
                 IsoGridSquare square = cell.getGridSquare(sx, sy, pz);
                 if (square == null) continue;
-                List<IsoObject> objects = square.getObjects();
+                List<IsoObject> objects = objectsOf(square);
                 if (objects == null) continue;
                 for (int i = 0, n = objects.size(); i < n; i++) {
                     IsoObject object = objects.get(i);
