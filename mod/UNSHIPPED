@@ -1,5 +1,6 @@
 # Fix mods built but not packaged or installed: one PZButter_<Target> id per line.
 # Their targets are gone for now (the Viewpoint add-ons; back with the next Viewpoint version).
+# ViewpointExtendedSupport: override withdrawn 2026-11-11, built from 0.4.46 while the target is at 0.4.56 (see its tools/README.txt).
 PZButter_ViewpointExtendedSupport
 PZButter_ViewpointLivingProps
 PZButter_SunflowersUltimateCharacterOverhaul
