@@ -140,6 +140,12 @@ end
 
 local stepCount = 0
 
+-- Kahlua has no global next()
+local function isEmpty(t)
+    for _ in pairs(t) do return false end
+    return true
+end
+
 --- Advances the sliced walks, sharing SLICE_BUDGET squares fairly between dogs, and
 --- every 600 ticks forgets dogs nobody asked about for FORGET_MS.
 function M.step()
@@ -152,7 +158,7 @@ function M.step()
         end
         for i = 1, #gone do forget(gone[i]) end
     end
-    if next(builds) == nil then return end
+    if isEmpty(builds) then return end
     local budget = SLICE_BUDGET
     while budget > 0 do
         local dogs = {}
