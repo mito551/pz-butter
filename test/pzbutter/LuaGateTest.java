@@ -1766,6 +1766,29 @@ final class LuaGateTest {
     static int throwCount;
     public static int throwing(String s) { throwCount++; return Integer.parseInt(s); }
 
+    /** Like the game's getText(String, Object...): static and variable arity. */
+    public static String joinVar(String key, Object... a) {
+        return key + "|" + a.length + "|" + (a.length > 0 && a[0] != null ? a[0].getClass().getSimpleName() : "-");
+    }
+
+    public String joinVarInst(String key, Object... a) { return joinVar(key, a); }
+
+    /** A ReturnValues on its own empty frame, so the first pushed value sits at stack slot 0. */
+    static se.krka.kahlua.integration.expose.ReturnValues rvFresh() {
+        se.krka.kahlua.vm.Coroutine co = new se.krka.kahlua.vm.Coroutine();
+        co.objectStack = new Object[64];
+        co.environment = null;
+        return se.krka.kahlua.integration.expose.ReturnValues.get(new se.krka.kahlua.converter.KahluaConverterManager(),
+                new se.krka.kahlua.vm.LuaCallFrame(co));
+    }
+
+    /** The value the return plumbing pushed first onto the frame's stack. */
+    static Object rvTop(se.krka.kahlua.integration.expose.ReturnValues rv) throws Exception {
+        java.lang.reflect.Field f = se.krka.kahlua.integration.expose.ReturnValues.class.getDeclaredField("callFrame");
+        f.setAccessible(true);
+        return ((se.krka.kahlua.vm.LuaCallFrame) f.get(rv)).coroutine.objectStack[0];
+    }
+
     static void luaCallInvoker() throws Exception {
         Settings.load(SelfTest.write("enabled=true\n"));
         LuaPatches.initInv();
@@ -1821,6 +1844,26 @@ final class LuaGateTest {
         assert LuaPatches.callThrough(mct, null, rv5, new Object[] {"not a number"}) : "the throw is swallowed";
         assert throwCount == tb + 1 : "the method ran and threw";
         assert rvArgs(rv5) == 0 : "nothing pushed after the throw";
+
+        // a variable-arity method (the game's getText(String, Object...)): the Lua arguments arrive packed as {key, Object[]{...}};
+        // the invoker must hand the method the same array as stock, not wrap it a second time (the Mods screen showed
+        // "by [Ljava.lang.Object;@..." for getText("UI_NMM_By", author))
+        Object[] packed = new Object[] {"UI_NMM_By", new Object[] {"Xen"}};
+        String want = "UI_NMM_By|1|String";
+        for (boolean stat : new boolean[] {true, false}) {
+            se.krka.kahlua.integration.expose.caller.MethodCaller mcvar = stat
+                    ? new se.krka.kahlua.integration.expose.caller.MethodCaller(
+                            LuaGateTest.class.getMethod("joinVar", String.class, Object[].class), null, false)
+                    : new se.krka.kahlua.integration.expose.caller.MethodCaller(
+                            LuaGateTest.class.getMethod("joinVarInst", String.class, Object[].class), null, true);
+            LuaGateTest self = stat ? null : new LuaGateTest();
+            for (int i = 0; i < 64; i++) LuaPatches.callThrough(mcvar, self, rvNil(), packed);
+            for (int i = 0; i < 3; i++) {
+                se.krka.kahlua.integration.expose.ReturnValues rvv = rvFresh();
+                assert LuaPatches.callThrough(mcvar, self, rvv, packed) : "the varargs invoker answers";
+                assert want.equals(rvTop(rvv)) : (stat ? "static" : "instance") + " varargs through the invoker: " + rvTop(rvv);
+            }
+        }
 
         // guard off answers stock
         Settings.load(SelfTest.write("enabled=true\n"));
