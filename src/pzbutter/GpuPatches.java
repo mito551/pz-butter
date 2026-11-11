@@ -455,8 +455,9 @@ public final class GpuPatches {
     }
 
     // ---- glBufferBindCache: the bound buffer per target is remembered and a rebind of the same buffer is
-    // skipped. Every bind path the game uses is hooked: the VBO wrappers and the GL15 bind (which the GL20,
-    // GL30 and GL43 names resolve to); a delete clears the deleted name on every target. ----
+    // skipped. Every bind path the game uses is hooked once: the GL15 bind (which the GL20, GL30, GL43 names and
+    // GLBufferObject15 resolve to) and the ARB wrapper (it calls a different function); a delete clears the deleted
+    // name on every target. ----
 
     public static final Guard bcGuard = new Guard("glBufferBindCache");
 
@@ -522,13 +523,8 @@ public final class GpuPatches {
         }
     }
 
-    @Patch(className = "zombie.core.VBO.GLBufferObject15", methodName = "glBindBuffer")
-    public static class Vbo15Bind {
-        @Patch.OnEnter(skipOn = true)
-        public static boolean enter(@Patch.This Object self, @Patch.Argument(0) int target, @Patch.Argument(1) int buffer) {
-            return onBind(target, buffer);
-        }
-    }
+    // GLBufferObject15.glBindBuffer is not hooked: it calls the hooked GL15.glBindBuffer, and a second hook in the same call chain
+    // would find the first one's record and skip the real bind (the buffer never gets bound).
 
     @Patch(className = "zombie.core.VBO.GLBufferObject15", methodName = "glDeleteBuffers", strictMatch = true)
     public static class Vbo15Delete {

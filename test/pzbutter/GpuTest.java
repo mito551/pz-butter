@@ -1021,6 +1021,17 @@ final class GpuTest {
         GpuPatches.deleted(7);
         assert GpuPatches.sameBind(34962, 6) : "deleting another name leaves this one";
 
+        // one hook per call chain: GLBufferObject15.glBindBuffer calls GL15.glBindBuffer, so hooking both makes the inner hook
+        // see the outer one's record, skip the real bind, and every GL15-path bind never reaches the driver (the load hung on it)
+        java.util.Set<String> binds = new java.util.HashSet<>();
+        for (Class<?> c : GpuPatches.class.getDeclaredClasses()) {
+            me.zed_0xff.zombie_buddy.Patch p = c.getAnnotation(me.zed_0xff.zombie_buddy.Patch.class);
+            if (p != null && p.methodName().equals("glBindBuffer")) binds.add(p.className());
+        }
+        assert binds.contains("org.lwjgl.opengl.GL15") : "the GL15 bind stays hooked: " + binds;
+        assert !binds.contains("zombie.core.VBO.GLBufferObject15") : "GLBufferObject15.glBindBuffer calls the hooked GL15 bind: " + binds;
+        assert binds.contains("zombie.core.VBO.GLBufferObjectARB") : "the ARB wrapper calls an unhooked function: " + binds;
+
         Settings.load(SelfTest.write("enabled=true\n"));
         GpuPatches.initBindCache();
         assert !GpuPatches.bcGuard.on : "defaults restored";
