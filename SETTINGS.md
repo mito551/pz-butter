@@ -143,6 +143,7 @@ The mod creates `~/Zomboid/PZButter.properties` on first start and reads it once
 | `bakeBudgetGpu` | With `bakeBudgetAdaptive`: the bake budget also counts the GPU's time for the frame, from GPU timestamps read three frames later. It never waits for the GPU. Off by default. |
 | `gpuStats` | Diagnostic. Once a minute the console gets what the Plan 9 keys did: mappings saved, storage waits, uploads and storage changes, textures given back, names from the pool, answers from the records, GPU time per frame. With `frameLog`, the same as one line a minute in `Zomboid/pzbutter/gpu.out`. Off by default. |
 | `limiterSleep` | The frame limiter sleeps until 0.2 ms before the frame instead of spinning. On by default. |
+| `lowerCpuMode` | Sleeps after each main, lighting and render pass while the window is behind or the game is paused: 1 = paused or behind, 2 = paused and behind, 3 = always (frame cap by sleeping), 4 = never. Off by default. |
 | `renderIdleWait` | The render thread waits for the next frame instead of spinning. Off by default. |
 | `presentPacing` | Hold each swap to a steady time after the game moment it shows (`auto` with VRR, `off`, `on`). Off by default. |
 | `presentPacingMaxPct` | With `presentPacing`: the longest hold, as a percentage of a frame (default `100`). |

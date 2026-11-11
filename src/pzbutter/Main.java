@@ -20,6 +20,7 @@ public class Main {
         SpikeContext.init();
         PresentLog.init();
         LimiterSleep.init();
+        CpuPatches.init();
         RenderIdle.init();
         InputLatch.init();
         if (InputLatch.latch) SwapHold.serveDuringWait = DeliveryPatches::serveInputRequest;

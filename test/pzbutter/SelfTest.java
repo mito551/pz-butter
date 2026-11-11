@@ -65,6 +65,7 @@ public final class SelfTest {
         SpikeTest.run();
         ChunkShimTest.run();
         BoostTest.run();
+        CpuTest.run();
         ZombieTest.run();
         AnimSkipTest.run();
         WorkerTest.run();

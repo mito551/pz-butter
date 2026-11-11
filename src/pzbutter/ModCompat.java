@@ -47,7 +47,8 @@ final class ModCompat {
         SoundPatches.class, WorldPatches.class, ChunkPatches.class, LogPatches.class, ZombiePatches.class, GpuPatches.class, CensusPatches.class,
         VehiclePatches.class, StreamPatches.class, LoadPatches.class, RuntimePatches.class, DevPatches.class, CameraPatches.class, ClockPatches.class,
         ServerPatches.class, HostPatches.class, MpClientPatches.class, NetStatsPatches.class, ThirdPartyPatches.class,
-        DistributionInsertPatches.class, ModelPatches.class, ModScanPatches.class, ViewpointPatches.class, LightingPatches.class};
+        DistributionInsertPatches.class, ModelPatches.class, ModScanPatches.class, ViewpointPatches.class, LightingPatches.class,
+        CpuPatches.class};
 
     private static final String PATCH = "Lme/zed_0xff/zombie_buddy/Patch;";
     private static final String ON_ENTER = "Lme/zed_0xff/zombie_buddy/Patch$OnEnter;";
@@ -216,6 +217,9 @@ Map.entry("LoadPatches.WaitFileTask", k("textureBufferMb")),
         Map.entry("ViewpointPatches.DaylightSnap", k("viewpointPartsSum")),
         Map.entry("LightingPatches.VisionOnce", k("lightVisionOnce")),
         Map.entry("LightingPatches.VisionMemo", k("lightVisionOnce")),
+        Map.entry("CpuPatches.MainPass", k("lowerCpuMode")),
+        Map.entry("CpuPatches.RenderPass", k("lowerCpuMode")),
+        Map.entry("CpuPatches.LightPass", k("lowerCpuMode")),
         Map.entry("ScriptPatches.FindItemOnce", k("findItemOnce", "findItemKept")),
         Map.entry("ScriptPatches.SmReset", k("findItemKept")),
         Map.entry("ScriptPatches.SmParseScript", k("findItemKept")),
