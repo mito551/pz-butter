@@ -23,6 +23,30 @@ import zombie.iso.objects.IsoWorldInventoryObject;
 public final class Near {
     private Near() {}
 
+    // getObjects() returns PZArrayList on some game builds and a plain List on others; a direct call is bound to one descriptor,
+    // so it is resolved by name when the class loads.
+    private static final java.lang.invoke.MethodHandle OBJECTS = objectsHandle();
+
+    private static java.lang.invoke.MethodHandle objectsHandle() {
+        try {
+            return java.lang.invoke.MethodHandles.lookup().unreflect(IsoGridSquare.class.getMethod("getObjects"))
+                .asType(java.lang.invoke.MethodType.methodType(Object.class, IsoGridSquare.class));
+        } catch (ReflectiveOperationException e) {
+            throw new ExceptionInInitializerError(e);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<IsoObject> objectsOf(IsoGridSquare square) {
+        try {
+            return (List<IsoObject>) (Object) OBJECTS.invokeExact(square);
+        } catch (RuntimeException | Error e) {
+            throw e;
+        } catch (Throwable t) {
+            throw new IllegalStateException(t);
+        }
+    }
+
     @LuaMethod(name = "cdNear", global = true)
     public static KahluaTable near(double x, double y, double z, double r,
                                  boolean wantZombies, boolean wantAnimals,
@@ -67,7 +91,7 @@ public final class Near {
                         }
                     }
                     if (fs != null) {
-                        List<IsoObject> ob = sq.getObjects();
+                        List<IsoObject> ob = objectsOf(sq);
                         if (ob != null) for (int i = 0, n = ob.size(); i < n; i++) {
                             Object o = ob.get(i);
                             if (o instanceof IsoFeedingTrough) fs.rawset(++nf, o);
