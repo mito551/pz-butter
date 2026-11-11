@@ -2,5 +2,5 @@ name=PZ Butter fix: QoL Compendium
 id=PZButter_QoLCompendium
 versionMin=42.21
 require=\QoLCompendium
-description=Load-after patches for QoL Compendium: overlay early-out (QoLC-3), weapon condition cache (QoLC-4).
+description=Load-after patch for QoL Compendium: the immersive overlays sample the moodles every tenth frame while no overlay is showing (QoLC-3).
 loadModAfter=QoLCompendium

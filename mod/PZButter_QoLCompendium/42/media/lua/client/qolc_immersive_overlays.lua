@@ -63,15 +63,9 @@ local function GetAlpha(BlendCurrent, StrengthOption)
 end
 
 local function OnPreUIDraw()
-	local Player = getPlayer()
-	if not Player then return end
-
-	local Moodles = Player:getMoodles()
-	if not Moodles then return end
-
 	-- PZ Butter QoLC-3: early-out while all blends are zero. Moodle levels are only
-	-- re-sampled every tenth frame in that idle state, which keeps the JNI getters
-	-- (getMoodleLevel) off the hot path; the moment a blend is non-zero the body
+	-- re-sampled every tenth frame in that idle state, which keeps the engine calls
+	-- (getPlayer, getMoodles, five getMoodleLevel) off the hot path; the moment a blend is non-zero the body
 	-- runs every frame so fade-out finishes before the bar reaches zero.
 	local allBlendsZero = BlendHyperthermiaCurrent <= 0 and BlendHypothermiaCurrent <= 0
 		and BlendHealthCurrent <= 0 and BlendTiredCurrent <= 0 and BlendPainCurrent <= 0
@@ -79,6 +73,12 @@ local function OnPreUIDraw()
 		FrameCounter = FrameCounter + 1
 		if (FrameCounter % 10) ~= 0 then return end
 	end
+	local Player = getPlayer()
+	if not Player then return end
+
+	local Moodles = Player:getMoodles()
+	if not Moodles then return end
+
 	--// Levels
 	-- Build 42 renamed these constants to UPPER_SNAKE_CASE
 	local HyperthermiaLevel = Moodles:getMoodleLevel(MoodleType.HYPERTHERMIA)
