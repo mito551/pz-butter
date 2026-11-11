@@ -149,3 +149,8 @@ end"""
 if __name__ == "__main__":
     edit("client/WKT_GroundKeys.lua", ground)
     edit("client/WKT_InventoryMark.lua", inventory)
+
+# WKT_PerfPatch.lua re-implements parts of WKT_Pointer.lua and checks this number at load
+_p = os.path.join(SRC, "client/WKT_Pointer.lua")
+print("WKT_Pointer.lua characters (POINTER_CHARS in WKT_PerfPatch.lua):",
+      sum(len(l) for l in open(_p, encoding="utf-8", newline="").read().replace("\r\n", "\n").split("\n")))

@@ -27,6 +27,27 @@ require "WKT_KeyRings"
 require "WKT_Pointer"
 
 if WKT.PerfPatched then return end
+
+-- render and refreshTracked below are re-implementations of WKT_Pointer.lua as it was when this
+-- file was written. If that file has changed since, they would undo the change, so the original
+-- is left alone. The number is the file's length in characters without line ends, the same
+-- measure tools/build_wkt.py uses (it prints the current value); update it after re-checking
+-- the functions below against the new file.
+local POINTER_CHARS = 23915
+do
+    local ok, r = pcall(getModFileReader, "WhoseKeyIsThis", "media/lua/client/WKT_Pointer.lua", false)
+    if ok and r then
+        local n, line = 0, r:readLine()
+        while line do n = n + #line; line = r:readLine() end
+        r:close()
+        if n ~= POINTER_CHARS then
+            print("[WKT_Perf] off: WKT_Pointer.lua of Whose Key Is This? changed since WKT_Perf was written ("
+                .. n .. " characters, expected " .. POINTER_CHARS .. "); the original runs unpatched")
+            return
+        end
+    end
+end
+
 WKT.PerfPatched = true
 
 local FONT_HGT_SMALL = getTextManager():getFontHeight(UIFont.Small)
