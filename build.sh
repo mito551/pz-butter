@@ -34,14 +34,15 @@ printf 'ZB-Preload: true\n' > "$B/MANIFEST.MF"
 cp -r "$HERE/mod" "$B/mod"
 mkdir -p "$B/mod/PZButter/42/media/java/common"
 cp "$B/PZButter.jar" "$B/mod/PZButter/42/media/java/common/"
-# ZombieBuddy signature (.zbs beside the jar): ZB preloads only signed jars of trusted authors. Key and SteamID stay outside the repo.
+# ZombieBuddy signature (.zbs beside every jar in the build, unshipped fix mods included): ZB preloads only signed jars of trusted authors. Key and SteamID stay outside the repo.
 ZBS_KEY="${PZB_ZBS_KEY:-$HOME/.config/pz-butter/zbs-ed25519.key}"
 ZBS_ID="${PZB_ZBS_STEAMID:-$(cat "$HOME/.config/pz-butter/zbs-steamid" 2>/dev/null || true)}"   # set -e: a missing file must not end the build (CI has no key)
 if [[ -f "$ZBS_KEY" && -n "$ZBS_ID" ]]; then
-    "$JDK/bin/java" -cp "$PZ_GAME/ZombieBuddy.jar" "$HERE/tools/ZbsSign.java" sign "$ZBS_KEY" "$ZBS_ID" \
-        "$B/mod/PZButter/42/media/java/common/PZButter.jar" | tail -1
+    while IFS= read -r jar; do
+        "$JDK/bin/java" -cp "$PZ_GAME/ZombieBuddy.jar" "$HERE/tools/ZbsSign.java" sign "$ZBS_KEY" "$ZBS_ID" "$jar"
+    done < <(find "$B/mod" -name '*.jar' | sort)
 else
-    echo "unsigned (no $ZBS_KEY or SteamID): ZombieBuddy will not preload this build"
+    echo "unsigned (no $ZBS_KEY or SteamID): ZombieBuddy will not preload any JAR in this build"
 fi
 echo "built $B/PZButter.jar"
 
