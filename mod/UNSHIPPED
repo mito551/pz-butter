@@ -1,19 +1,4 @@
 # Fix mods built but not packaged or installed: one PZButter_<Target> id per line.
-# Their targets are gone for now (the Viewpoint add-ons; back with the next Viewpoint version).
-# ViewpointExtendedSupport: override withdrawn 2026-11-11, built from 0.4.46 while the target is at 0.4.56 (see its tools/README.txt).
-PZButter_ViewpointExtendedSupport
-PZButter_ViewpointLivingProps
-PZButter_SunflowersUltimateCharacterOverhaul
-# No measured gain in the 2026-11-07/08 A/Bs (full list, 3 runs per arm, p99 within noise), so not in 1.0 (user, 2026-11-08).
-# They need refinement: a scene or setting where a gain shows, or a conclusion that none is possible.
-PZButter_CompanionDogs
-PZButter_CyesPushDoors
-PZButter_EvolvingTraitsWorld
-# ImmersiveSnow: its only change (merged tick listeners) measured slower offline and was removed (2026-11-10); the mod is a stub until ISnow.bench shows a target.
-PZButter_ImmersiveSnow
-PZButter_WhoseKeyIsThis
-PZButter_TsarsLib
+# Only a mod whose licence explicitly forbids redistribution stays out (user, 2026-11-12).
+# DamnSpawns: it carries a modified copy of damnlib's DAMN_Spawns.lua, whose header forbids redistribution and modification (Plan 18 B-D8-2).
 PZButter_DamnSpawns
-# Placeholder only (2026-11-10 review): no patch code, just the shared PZBClaim.lua that nothing in the mod calls.
-# Candidates once profiled in game: ProjectViewpointQOL.lua onTick and updateLootHint (OnRenderTick), ViewpointController.lua tickHandler (OnRenderTick), ViewpointController_Options.lua syncTick.
-PZButter_ProjectViewpointQOLLegacy
