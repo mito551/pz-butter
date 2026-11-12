@@ -75,7 +75,7 @@ FIX_NOTE=""
 while IFS= read -r fm; do
     id="$(basename "$fm")"
     cp -a "$fm" "$DEST/Contents/mods/$id" || die "copy of $id failed"
-    rm -rf -- "$DEST/Contents/mods/$id/tools" "$DEST/Contents/mods/$id/upstream"
+    rm -rf -- "$DEST/Contents/mods/$id/tools" "$DEST/Contents/mods/$id/upstream" "$DEST/Contents/mods/$id/42/tools" "$DEST/Contents/mods/$id/42/upstream"
     find "$DEST/Contents/mods/$id" \( -name '.keep' -o -name '.DS_Store' -o -name '*.tmp' -o -name 'test-*' -o -name '.pzbutter-build' \) -delete
     python3 "$TOOLS/fixmods.py" --packaged "$DEST/Contents/mods/$id" || die "$id fails the fix-mod rules"
     if grep -Eq '^require=.*\\PZButter(,|$)' "$fm/42/mod.info"; then need=" (needs PZ Butter)"; else need=" (standalone)"; fi
